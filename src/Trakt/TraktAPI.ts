@@ -41,16 +41,16 @@ export class TraktAPI {
     }
   }
 
-  private async getList(platform: FlixPatrolPlatform): Promise<TraktList> {
+  private async getList(listName: string): Promise<TraktList> {
     let list: TraktList;
     try {
-      logger.info(`Getting list ${platform}-top10 from trakt`);
-      list = await this.trakt.users.list.get({ username: 'me', id: `${platform}-top10` });
+      logger.info(`Getting list ${listName} from trakt`);
+      list = await this.trakt.users.list.get({ username: 'me', id: listName });
     } catch (getErr) {
       if ((getErr as Error).message.includes('404 (Not Found)')) {
-        logger.warn(`List ${platform}-top10 was not found on trakt, creating it`);
+        logger.warn(`List ${listName} was not found on trakt, creating it`);
         try {
-          list = await this.trakt.users.lists.create({ username: 'me', name: `${platform}-top10` });
+          list = await this.trakt.users.lists.create({ username: 'me', name: listName });
           // Avoid Trakt rate limite
           await Utils.sleep(2000);
         } catch (createErr) {
@@ -151,9 +151,9 @@ export class TraktAPI {
     }
   }
 
-  public async pushToList(tmdbIDs: FlixPatrolTMDBIds, platform: FlixPatrolPlatform, type: FlixPatrolType) {
+  public async pushToList(tmdbIDs: FlixPatrolTMDBIds, listName: string, type: FlixPatrolType) {
     const traktType: TraktType = type === 'Movies' ? 'movie' : 'show';
-    const list = await this.getList(platform);
+    const list = await this.getList(listName);
     const items = await this.getListItems(list, traktType);
     if (items.length > 0) {
       await this.removeListItems(list, items, traktType);

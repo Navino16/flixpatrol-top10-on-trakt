@@ -1,14 +1,36 @@
 {
-  "FlixPatrol" : {
-    "location": "world",
-    "platform": [
-      "netflix",
-      "disney",
-      "amazon-prime",
-      "apple-tv",
-      "paramount-plus"
-    ]
-  },
+  "FlixPatrol" : [
+    {
+      "platform": "netflix",
+      "location": "world",
+      "fallback": false,
+      "public": true
+    },
+    {
+      "platform": "disney",
+      "location": "world",
+      "fallback": false,
+      "public": true
+    },
+    {
+      "platform": "amazon-prime",
+      "location": "world",
+      "fallback": false,
+      "public": true
+    },
+    {
+      "platform": "apple-tv",
+      "location": "world",
+      "fallback": false,
+      "public": true
+    },
+    {
+      "platform": "paramount-plus",
+      "location": "world",
+      "fallback": false,
+      "public": true
+    }
+  ],
   "Trakt" : {
     "saveFile": ".trakt",
     "clientId": "You need to replace this client ID",

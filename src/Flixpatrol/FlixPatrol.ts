@@ -126,7 +126,7 @@ export class FlixPatrol {
     return regex ? regex[3] : null;
   }
 
-  public async getTop10(type: FlixPatrolType, platform: FlixPatrolPlatform, location: FlixPatrolLocation = 'world'): Promise<FlixPatrolTMDBIds> {
+  public async getTop10(type: FlixPatrolType, platform: FlixPatrolPlatform, location: FlixPatrolLocation, fallback: FlixPatrolLocation | false): Promise<FlixPatrolTMDBIds> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
@@ -134,10 +134,9 @@ export class FlixPatrol {
     }
     const results = FlixPatrol.parseTop10Page(type, location, platform, html);
     // Fallback to world if no match
-    // TODO: Make this optional
-    if (results.length === 0) {
-      logger.warn(`No ${type} found for ${platform}, falling back to world search`);
-      return this.getTop10(type, platform, 'world');
+    if (fallback !== false && results.length === 0) {
+      logger.warn(`No ${type} found for ${platform}, falling back to ${fallback} search`);
+      return this.getTop10(type, platform, fallback, false);
     }
 
     const TMDBIds: FlixPatrolTMDBIds = [];
