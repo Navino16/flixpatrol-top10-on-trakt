@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "*"
 
 jobs:
   build:
@@ -68,9 +68,15 @@ jobs:
         with:
           name: flixpatrol
           path: bin/
+      - name: Build Changelog
+        id: github_release
+        uses: mikepenz/release-changelog-builder-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
+          body: ${{steps.github_release.outputs.changelog}}
           files: |
             bin/flixpatrol-top10-linux
             bin/flixpatrol-top10-macos
