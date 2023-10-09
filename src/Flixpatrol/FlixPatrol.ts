@@ -109,7 +109,8 @@ export class FlixPatrol {
   private async convertToTMDBId(result: FlixPatrolMatchResult) : Promise<FlixPatrolTMDBId> {
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
-      throw new Error('FlixPatrol Error: unable to get FlixPatrol detail page');
+      logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
+      process.exit(1);
     }
 
     const dom = new JSDOM(html);
@@ -128,7 +129,8 @@ export class FlixPatrol {
   public async getTop10(type: FlixPatrolType, platform: FlixPatrolPlatform, location: FlixPatrolLocation = 'world'): Promise<FlixPatrolTMDBIds> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
     if (html === null) {
-      throw new Error('FlixPatrol Error: unable to get FlixPatrol top10 page');
+      logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
+      process.exit(1);
     }
     const results = FlixPatrol.parseTop10Page(type, location, platform, html);
     // Fallback to world if no match

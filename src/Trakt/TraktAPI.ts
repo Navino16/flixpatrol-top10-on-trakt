@@ -95,7 +95,7 @@ export class TraktAPI {
   }
 
   private async removeListItems(list: TraktList, items: TraktItem[], type: TraktType): Promise<void> {
-    logger.info(`Trakt list ${list.ids.slug} contain ${items.length} items of ${type}, removing them`);
+    logger.info(`Trakt list ${list.ids.slug} contain ${items.length} ${type}, removing them`);
     const toRemove: { ids: TraktIds }[] = [];
     items.forEach((item) => {
       const id = TraktAPI.getItemTraktId(item);
@@ -124,6 +124,7 @@ export class TraktAPI {
   }
 
   private async addItemsToList(list: TraktList, tmdbIDs: FlixPatrolTMDBIds, type: TraktType) {
+    logger.info(`Adding ${tmdbIDs.length} ${type} into Trakt list ${list.ids.slug}`);
     const toAdd: { ids: TraktIds }[] = [];
     tmdbIDs.forEach((tmdbID) => {
       toAdd.push({ ids: { tmdb: parseInt(tmdbID, 10) } });
