@@ -79,7 +79,7 @@ jobs:
       - name: Debug
         shell: bash
         run: |
-          echo ${{needs.tag-new-versions.outputs.newTag}}
+          echo ${{needs.tag-new-versions.outputs.tag}}
       - name: Restore build artifact
         uses: actions/download-artifact@v3
         with:
