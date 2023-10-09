@@ -4,31 +4,31 @@
       "platform": "netflix",
       "location": "world",
       "fallback": false,
-      "public": true
+      "privacy": "private"
     },
     {
       "platform": "disney",
       "location": "world",
       "fallback": false,
-      "public": true
+      "privacy": "private"
     },
     {
       "platform": "amazon-prime",
       "location": "world",
       "fallback": false,
-      "public": true
+      "privacy": "private"
     },
     {
       "platform": "apple-tv",
       "location": "world",
       "fallback": false,
-      "public": true
+      "privacy": "private"
     },
     {
       "platform": "paramount-plus",
       "location": "world",
       "fallback": false,
-      "public": true
+      "privacy": "private"
     }
   ],
   "Trakt" : {

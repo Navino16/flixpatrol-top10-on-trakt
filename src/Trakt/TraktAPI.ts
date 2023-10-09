@@ -1,9 +1,9 @@
 import Trakt, {
-  TraktAccessExport, TraktIds, TraktItem, TraktList, TraktOptions, TraktType, UsersListItemsAddRemove,
+  TraktAccessExport, TraktIds, TraktItem, TraktList, TraktOptions, TraktPrivacy, TraktType, UsersListItemsAddRemove,
 } from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils } from '../Utils';
-import { FlixPatrolPlatform, FlixPatrolTMDBIds, FlixPatrolType } from '../Flixpatrol';
+import { FlixPatrolTMDBIds, FlixPatrolType } from '../Flixpatrol';
 
 export class TraktAPI {
   private trakt: Trakt;
@@ -41,7 +41,7 @@ export class TraktAPI {
     }
   }
 
-  private async getList(listName: string): Promise<TraktList> {
+  private async getList(listName: string, privacy: TraktPrivacy): Promise<TraktList> {
     let list: TraktList;
     try {
       logger.info(`Getting list ${listName} from trakt`);
@@ -50,7 +50,7 @@ export class TraktAPI {
       if ((getErr as Error).message.includes('404 (Not Found)')) {
         logger.warn(`List ${listName} was not found on trakt, creating it`);
         try {
-          list = await this.trakt.users.lists.create({ username: 'me', name: listName });
+          list = await this.trakt.users.lists.create({ username: 'me', name: listName, privacy });
           // Avoid Trakt rate limite
           await Utils.sleep(2000);
         } catch (createErr) {
@@ -151,9 +151,13 @@ export class TraktAPI {
     }
   }
 
-  public async pushToList(tmdbIDs: FlixPatrolTMDBIds, listName: string, type: FlixPatrolType) {
+  public async pushToList(tmdbIDs: FlixPatrolTMDBIds, listName: string, type: FlixPatrolType, privacy: TraktPrivacy) {
     const traktType: TraktType = type === 'Movies' ? 'movie' : 'show';
-    const list = await this.getList(listName);
+    let list = await this.getList(listName, privacy);
+    if (list.privacy !== privacy) {
+      logger.info(`Trakt list ${list.ids.slug} privacy doesn't match the wanted privacy (${privacy}), updating list privacy`);
+      list = await this.trakt.users.list.update({ username: 'me', id: listName, privacy });
+    }
     const items = await this.getListItems(list, traktType);
     if (items.length > 0) {
       await this.removeListItems(list, items, traktType);
@@ -161,7 +165,5 @@ export class TraktAPI {
       await Utils.sleep(2000);
     }
     await this.addItemsToList(list, tmdbIDs, traktType);
-    // console.log(items);
-    // this.trakt.users.lists.create({ });
   }
 }

@@ -158,7 +158,7 @@ declare module 'trakt.tv' {
     person?: TraktPerson;
   }
 
-  type TraktPrivacy = 'private' | 'link' | 'friends' | 'public';
+  export type TraktPrivacy = 'private' | 'link' | 'friends' | 'public';
   interface BaseRequest {
     username: string;
   }
@@ -175,7 +175,7 @@ declare module 'trakt.tv' {
   interface UsersListRequest extends BaseRequest {
     id: string;
   }
-  interface UsersListUpdateRequest extends BaseRequest {
+  interface UsersListUpdateRequest extends UsersListRequest {
     name?: string;
     description?: string;
     privacy?: TraktPrivacy;

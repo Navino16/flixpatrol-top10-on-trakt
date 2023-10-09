@@ -1,16 +1,19 @@
 import config from 'config';
+import { TraktPrivacy } from 'trakt.tv';
 import { FlixPatrol, FlixPatrolLocation, FlixPatrolPlatform } from '../Flixpatrol';
 import { logger } from './Logger';
 
 export interface FlixPatrolConfig {
   platform: FlixPatrolPlatform;
-  location: FlixPatrolLocation
+  location: FlixPatrolLocation;
   fallback: FlixPatrolLocation | false;
+  privacy: TraktPrivacy;
 }
 
 export class GetAndValidateConfigs {
   public static flixPatrol(): FlixPatrolConfig[] {
     let flixPatrolConfigs: FlixPatrolConfig[] = [];
+    const traktPrivacy: string[] = ['private', 'link', 'friends', 'public'];
     try {
       flixPatrolConfigs = config.get('FlixPatrol') as FlixPatrolConfig[];
       flixPatrolConfigs.forEach((flixPatrolConfig) => {
@@ -24,6 +27,10 @@ export class GetAndValidateConfigs {
         }
         if (flixPatrolConfig.fallback !== false && !FlixPatrol.isFlixPatrolLocation(flixPatrolConfig.fallback)) {
           logger.error(`Configuration Error: ${flixPatrolConfig.fallback} is not a valid fallback for ${flixPatrolConfig.platform} on FlixPatrol`);
+          process.exit(1);
+        }
+        if (!traktPrivacy.includes(flixPatrolConfig.privacy)) {
+          logger.error(`Configuration Error: ${flixPatrolConfig.privacy} is not a valid privacy for ${flixPatrolConfig.platform} on FlixPatrol`);
           process.exit(1);
         }
       });
