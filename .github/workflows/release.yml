@@ -1,6 +1,9 @@
-name: Build & Package & Release
+name: Build, Package & Release
 
-on: push
+on:
+  push:
+    tags:
+      - '*'
 
 jobs:
   build:
