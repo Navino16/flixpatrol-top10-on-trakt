@@ -88,8 +88,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body: ${{steps.github_release.outputs.changelog}}
-          name: ${{newTag.tag}}
-          tag_name: ${{newTag.tag}}
+          name: ${{needs.newTag.tag}}
+          tag_name: ${{needs.newTag.tag}}
           files: |
             bin/flixpatrol-top10-linux
             bin/flixpatrol-top10-macos
