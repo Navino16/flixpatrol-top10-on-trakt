@@ -61,16 +61,16 @@ jobs:
   tag-new-versions:
     runs-on: ubuntu-latest
     needs: package
-    outputs:
-      newTag: ${{ steps.newTag.outputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
       - name: Create new tag
-        id: newTag
-        uses: salsify/action-detect-and-tag-new-version@v1.0.3
+        id: new-tag
+        uses: salsify/action-detect-and-tag-new-version@v2
+    outputs:
+      tag: ${{ steps.new-tag.outputs.tag }}
 
   release:
     runs-on: ubuntu-latest
@@ -79,7 +79,7 @@ jobs:
       - name: Debug
         shell: bash
         run: |
-          echo ${{needs.tag-new-versions.outputs.newTag}}
+          echo ${{needs.tag-new-versions.outputs.tag}}
       - name: Restore build artifact
         uses: actions/download-artifact@v3
         with:
@@ -94,8 +94,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body: ${{steps.github_release.outputs.changelog}}
-          name: ${{needs.tag-new-versions.outputs.newTag}}
-          tag_name: ${{needs.tag-new-versions.outputs.newTag}}
+          name: ${{needs.tag-new-versions.outputs.tag}}
+          tag_name: ${{needs.tag-new-versions.outputs.tag}}
           files: |
             bin/flixpatrol-top10-linux
             bin/flixpatrol-top10-macos
