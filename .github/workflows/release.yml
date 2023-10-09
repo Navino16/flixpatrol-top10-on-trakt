@@ -69,11 +69,6 @@ jobs:
       - name: Create new tag
         id: new-tag
         uses: salsify/action-detect-and-tag-new-version@v2
-      - name: Debug
-        shell: bash
-        run: |
-          echo ${{ steps.new-tag.outputs.tag }}
-          echo ${{ steps.new-tag.outputs.current-version }}
     outputs:
       tag: ${{ steps.new-tag.outputs.tag }}
 
@@ -81,10 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: tag-new-versions
     steps:
-      - name: Debug
-        shell: bash
-        run: |
-          echo ${{needs.tag-new-versions.outputs.tag}}
       - name: Restore build artifact
         uses: actions/download-artifact@v3
         with:
