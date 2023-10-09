@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Cache node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install project dependencies
+        run: npm ci
+      - name: Build project
+        run: npm run build
+      - name: Upload build result
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: build/
+
+  package:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Restore node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Restore build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: build/
+      - run: npm run package
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: flixpatrol
+          path: bin/
+
+  release:
+    runs-on: ubuntu-latest
+    needs: package
+    steps:
+      - name: Restore build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            bin/flixpatrol-top10-linux
+            bin/flixpatrol-top10-macos
+            bin/flixpatrol-top10-win.exe
