@@ -124,6 +124,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: PrepareReg Names
+        run: |
+          echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -139,8 +142,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{needs.tag-new-versions.outputs.tag}}
-
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:${{needs.tag-new-versions.outputs.tag}}
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-dev:
