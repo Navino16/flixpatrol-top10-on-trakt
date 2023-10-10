@@ -24,11 +24,12 @@ const trakt = new TraktAPI(traktOptions, traktSaveFile);
 trakt.connect().then(async () => {
   // eslint-disable-next-line no-restricted-syntax
   for (const flixPatrolConfig of flixPatrolConfigs) {
+    const listName = `${flixPatrolConfig.platform}-${flixPatrolConfig.location}-top10-${flixPatrolConfig.fallback === false ? 'without-fallback' : `with-${flixPatrolConfig.fallback}-fallback`}`;
     const top10Movies = await flixpatrol.getTop10('Movies', flixPatrolConfig.platform, flixPatrolConfig.location, flixPatrolConfig.fallback);
     logger.debug(`${flixPatrolConfig.platform} movies: ${top10Movies}`);
     if (top10Movies.length > 0) {
-      await trakt.pushToList(top10Movies, `${flixPatrolConfig.platform}-${flixPatrolConfig.location}-top10`, 'Movies', flixPatrolConfig.privacy);
-      logger.info(`List ${flixPatrolConfig.platform}-${flixPatrolConfig.location}-top10 updated with new movies`);
+      await trakt.pushToList(top10Movies, listName, 'Movies', flixPatrolConfig.privacy);
+      logger.info(`List ${listName} updated with new movies`);
     } else {
       logger.warn(`No movies found for ${flixPatrolConfig.platform}`);
     }
@@ -39,8 +40,8 @@ trakt.connect().then(async () => {
     const top10Shows = await flixpatrol.getTop10('TV Shows', flixPatrolConfig.platform, flixPatrolConfig.location, flixPatrolConfig.fallback);
     logger.debug(`${flixPatrolConfig.platform} shows: ${top10Shows}`);
     if (top10Shows.length > 0) {
-      await trakt.pushToList(top10Shows, `${flixPatrolConfig.platform}-${flixPatrolConfig.location}-top10`, 'TV Shows', flixPatrolConfig.privacy);
-      logger.info(`List ${flixPatrolConfig.platform}-${flixPatrolConfig.location}-top10 updated with new shows`);
+      await trakt.pushToList(top10Shows, listName, 'TV Shows', flixPatrolConfig.privacy);
+      logger.info(`List ${listName} updated with new shows`);
     } else {
       logger.warn(`No shows found for ${flixPatrolConfig.platform}`);
     }
