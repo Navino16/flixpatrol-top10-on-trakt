@@ -31,6 +31,9 @@ export class TraktAPI {
         logger.info(`Please open the verification url: ${poll.verification_url}`);
         logger.info(`And enter the following code: ${poll.user_code}`);
         return this.trakt.poll_access(poll);
+      }).catch((connectErr) => {
+        logger.error(`Trakt Error (connect): ${(connectErr as Error).message}`);
+        process.exit(1);
       });
       traktCode.then(() => {
         logger.info('Your are now connected to Trakt');
