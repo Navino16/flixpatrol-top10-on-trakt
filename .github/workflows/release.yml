@@ -132,13 +132,15 @@ jobs:
           tags: |
             # set latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{needs.tag-new-versions.outputs.tag}}
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{needs.tag-new-versions.outputs.tag}}
+
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-dev:
@@ -172,5 +174,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.meta.outputs.tags }},
           labels: ${{ steps.meta.outputs.labels }}
