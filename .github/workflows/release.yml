@@ -111,6 +111,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Restore build artifact
         uses: actions/download-artifact@v3
         with:
@@ -147,6 +149,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Restore build artifact
         uses: actions/download-artifact@v3
         with:
