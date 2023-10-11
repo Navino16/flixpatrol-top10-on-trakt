@@ -84,7 +84,8 @@ export class FlixPatrol {
     const dom = new JSDOM(html);
     let expression;
     if (location !== 'world') {
-      expression = `//h3[text() = "TOP 10 ${type}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
+      const searchType = platform === 'apple-tv' ? 'Overall' : type;
+      expression = `//h3[text() = "TOP 10 ${searchType}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
     } else {
       const id = type === 'Movies' ? 1 : 2;
       expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
@@ -106,7 +107,7 @@ export class FlixPatrol {
     return results;
   }
 
-  private async convertToTMDBId(result: FlixPatrolMatchResult) : Promise<FlixPatrolTMDBId> {
+  private async convertToTMDBId(result: FlixPatrolMatchResult, type: FlixPatrolType) : Promise<FlixPatrolTMDBId> {
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
@@ -122,11 +123,22 @@ export class FlixPatrol {
       null,
     );
 
-    const regex = match.stringValue.match(/(themoviedb\.org)(\D*)(\d+)/i);
+    let regex;
+    if (type === 'Movies') {
+      regex = match.stringValue.match(/(themoviedb\.org\/movie)(\D*)(\d+)/i);
+    } else {
+      regex = match.stringValue.match(/(themoviedb\.org\/tv)(\D*)(\d+)/i);
+    }
+
     return regex ? regex[3] : null;
   }
 
-  public async getTop10(type: FlixPatrolType, platform: FlixPatrolPlatform, location: FlixPatrolLocation, fallback: FlixPatrolLocation | false): Promise<FlixPatrolTMDBIds> {
+  public async getTop10(
+    type: FlixPatrolType,
+    platform: FlixPatrolPlatform,
+    location: FlixPatrolLocation,
+    fallback: FlixPatrolLocation | false,
+  ): Promise<FlixPatrolTMDBIds> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
@@ -143,7 +155,7 @@ export class FlixPatrol {
     // eslint-disable-next-line no-restricted-syntax
     for (const result of results) {
       // eslint-disable-next-line no-await-in-loop
-      const id = await this.convertToTMDBId(result);
+      const id = await this.convertToTMDBId(result, type);
       if (id) {
         TMDBIds.push(id);
       }
