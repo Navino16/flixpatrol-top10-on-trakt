@@ -1,5 +1,6 @@
 name: Bug Report
 description: Please do not use bug reports for support issues or feature requests.
+title: '[BUG]: '
 labels: ['not-yet-viewed', 'bug']
 assignees: 'Navino16'
 

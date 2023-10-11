@@ -1,7 +1,7 @@
 name: Bug Report
 description: Ask for a new public list
-labels: ['not-yet-viewed        
-- new-list']
+title: '[LIST]: '
+labels: ['not-yet-viewed', 'new-list']
 assignees: 'Navino16'
 
 body:
