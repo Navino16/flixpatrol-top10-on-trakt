@@ -33,6 +33,8 @@ body:
         - starz
         - viaplay
         - vudu
+    validations:
+      required: true
   - type: dropdown
     id: location
     attributes:
@@ -104,7 +106,7 @@ body:
         - greece
         - grenada
         - guadeloupe
-        - guatemala',
+        - guatemala
         - guinea
         - guinea-bissau
         - guyana
@@ -113,7 +115,7 @@ body:
         - hong-kong
         - hungary
         - iceland
-        - india',
+        - india
         - indonesia
         - iraq
         - ireland
@@ -123,7 +125,7 @@ body:
         - jamaica
         - japan
         - jordan
-        - kazakhstan',
+        - kazakhstan
         - kenya
         - kiribati
         - kosovo
@@ -133,7 +135,7 @@ body:
         - latvia
         - lebanon
         - lesotho
-        - liberia',
+        - liberia
         - libya
         - liechtenstein
         - lithuania
@@ -142,7 +144,7 @@ body:
         - malawi
         - malaysia
         - maldives
-        - mali',
+        - mali
         - malta
         - marshall-islands
         - martinique
@@ -150,7 +152,7 @@ body:
         - mauritius
         - mexico
         - micronesia
-        - moldova',
+        - moldova
         - monaco
         - mongolia
         - montenegro
@@ -159,7 +161,7 @@ body:
         - myanmar
         - namibia
         - nauru
-        - nepal',
+        - nepal
         - netherlands
         - new-caledonia
         - new-zealand
@@ -167,7 +169,7 @@ body:
         - niger
         - nigeria
         - north-macedonia
-        - norway',
+        - norway
         - oman
         - pakistan
         - palau
@@ -176,7 +178,7 @@ body:
         - papua-new-guinea
         - paraguay
         - peru
-        - philippines',
+        - philippines
         - poland
         - portugal
         - qatar
@@ -184,20 +186,20 @@ body:
         - reunion
         - romania
         - russia
-        - rwanda',
+        - rwanda
         - saint-kitts-and-nevis
         - saint-lucia
         - saint-vincent-and-the-grenadines
         - salvador
         - samoa
-        - san-marino',
+        - san-marino
         - sao-tome-and-principe
         - saudi-arabia
         - senegal
         - serbia
         - seychelles
         - sierra-leone
-        - singapore',
+        - singapore
         - slovakia
         - slovenia
         - solomon-islands
@@ -205,7 +207,7 @@ body:
         - south-africa
         - south-korea
         - south-sudan
-        - spain',
+        - spain
         - sri-lanka
         - sudan
         - suriname
@@ -214,7 +216,7 @@ body:
         - switzerland
         - taiwan
         - tajikistan
-        - tanzania',
+        - tanzania
         - thailand
         - togo
         - tonga
@@ -223,222 +225,223 @@ body:
         - turkey
         - turkmenistan
         - tuvalu
-        - uganda',
+        - uganda
         - ukraine
         - united-arab-emirates
         - united-kingdom
         - united-states
         - uruguay
         - uzbekistan
-        - vanuatu',
+        - vanuatu
         - vatican-city
         - venezuela
         - vietnam
         - yemen
         - zambia
         - zimbabwe
+    validations:
+      required: true
   - type: dropdown
     id: fallback
     attributes:
       label: Do you want any fallback in case of nothing found for your desired location?
       options:
-        - "No"
-        - "world"
-        - "afghanistan"
-        - "albania"
-        - "algeria"
-        - "andorra"
-        - "angola"
-        - "antigua-and-barbuda"
-        - "argentina"
-        - "armenia"
-        - "australia"
-        - "austria"
-        - "azerbaijan"
-        - "bahamas"
-        - "bahrain"
-        - "bangladesh"
-        - "barbados"
-        - "belarus"
-        - "belgium"
-        - "belize"
-        - "benin"
-        - "bhutan"
-        - "bolivia"
-        - "bosnia-and-herzegovina"
-        - "botswana"
-        - "brazil"
-        - "brunei"
-        - "bulgaria"
-        - "burkina-faso"
-        - "burundi"
-        - "cambodia"
-        - "cameroon"
-        - "canada"
-        - "cape-verde"
-        - "central-african-republic"
-        - "chad"
-        - "chile"
-        - "china"
-        - "colombia"
-        - "comoros"
-        - "costa-rica"
-        - "croatia"
-        - "cyprus"
-        - "czech-republic"
-        - "democratic-republic-of-the-congo"
-        - "denmark"
-        - "djibouti"
-        - "dominica"
-        - "dominican-republic"
-        - "east-timor"
-        - "ecuador"
-        - "egypt"
-        - "equatorial-guinea"
-        - "eritrea"
-        - "estonia"
-        - "ethiopia"
-        - "fiji"
-        - "finland"
-        - "france"
-        - "gabon"
-        - "gambia"
-        - "georgia"
-        - "germany"
-        - "ghana"
-        - "greece"
-        - "grenada"
-        - "guadeloupe"
-        - "guatemala',"
-        - "guinea"
-        - "guinea-bissau"
-        - "guyana"
-        - "haiti"
-        - "honduras"
-        - "hong-kong"
-        - "hungary"
-        - "iceland"
-        - "india',"
-        - "indonesia"
-        - "iraq"
-        - "ireland"
-        - "israel"
-        - "italy"
-        - "ivory-coast"
-        - "jamaica"
-        - "japan"
-        - "jordan"
-        - "kazakhstan',"
-        - "kenya"
-        - "kiribati"
-        - "kosovo"
-        - "kuwait"
-        - "kyrgyzstan"
-        - "laos"
-        - "latvia"
-        - "lebanon"
-        - "lesotho"
-        - "liberia',"
-        - "libya"
-        - "liechtenstein"
-        - "lithuania"
-        - "luxembourg"
-        - "madagascar"
-        - "malawi"
-        - "malaysia"
-        - "maldives"
-        - "mali',"
-        - "malta"
-        - "marshall-islands"
-        - "martinique"
-        - "mauritania"
-        - "mauritius"
-        - "mexico"
-        - "micronesia"
-        - "moldova',"
-        - "monaco"
-        - "mongolia"
-        - "montenegro"
-        - "morocco"
-        - "mozambique"
-        - "myanmar"
-        - "namibia"
-        - "nauru"
-        - "nepal',"
-        - "netherlands"
-        - "new-caledonia"
-        - "new-zealand"
-        - "nicaragua"
-        - "niger"
-        - "nigeria"
-        - "north-macedonia"
-        - "norway',"
-        - "oman"
-        - "pakistan"
-        - "palau"
-        - "palestine"
-        - "panama"
-        - "papua-new-guinea"
-        - "paraguay"
-        - "peru"
-        - "philippines',"
-        - "poland"
-        - "portugal"
-        - "qatar"
-        - "republic-of-the-congo"
-        - "reunion"
-        - "romania"
-        - "russia"
-        - "rwanda',"
-        - "saint-kitts-and-nevis"
-        - "saint-lucia"
-        - "saint-vincent-and-the-grenadines"
-        - "salvador"
-        - "samoa"
-        - "san-marino',"
-        - "sao-tome-and-principe"
-        - "saudi-arabia"
-        - "senegal"
-        - "serbia"
-        - "seychelles"
-        - "sierra-leone"
-        - "singapore',"
-        - "slovakia"
-        - "slovenia"
-        - "solomon-islands"
-        - "somalia"
-        - "south-africa"
-        - "south-korea"
-        - "south-sudan"
-        - "spain',"
-        - "sri-lanka"
-        - "sudan"
-        - "suriname"
-        - "swaziland"
-        - "sweden"
-        - "switzerland"
-        - "taiwan"
-        - "tajikistan"
-        - "tanzania',"
-        - "thailand"
-        - "togo"
-        - "tonga"
-        - "trinidad-and-tobago"
-        - "tunisia"
-        - "turkey"
-        - "turkmenistan"
-        - "tuvalu"
-        - "uganda',"
-        - "ukraine"
-        - "united-arab-emirates"
-        - "united-kingdom"
-        - "united-states"
-        - "uruguay"
-        - "uzbekistan"
-        - "vanuatu',"
-        - "vatican-city"
-        - "venezuela"
-        - "vietnam"
-        - "yemen"
-        - "zambia"
-        - "zimbabwe'"
+        - world
+        - afghanistan
+        - albania
+        - algeria
+        - andorra
+        - angola
+        - antigua-and-barbuda
+        - argentina
+        - armenia
+        - australia
+        - austria
+        - azerbaijan
+        - bahamas
+        - bahrain
+        - bangladesh
+        - barbados
+        - belarus
+        - belgium
+        - belize
+        - benin
+        - bhutan
+        - bolivia
+        - bosnia-and-herzegovina
+        - botswana
+        - brazil
+        - brunei
+        - bulgaria
+        - burkina-faso
+        - burundi
+        - cambodia
+        - cameroon
+        - canada
+        - cape-verde
+        - central-african-republic
+        - chad
+        - chile
+        - china
+        - colombia
+        - comoros
+        - costa-rica
+        - croatia
+        - cyprus
+        - czech-republic
+        - democratic-republic-of-the-congo
+        - denmark
+        - djibouti
+        - dominica
+        - dominican-republic
+        - east-timor
+        - ecuador
+        - egypt
+        - equatorial-guinea
+        - eritrea
+        - estonia
+        - ethiopia
+        - fiji
+        - finland
+        - france
+        - gabon
+        - gambia
+        - georgia
+        - germany
+        - ghana
+        - greece
+        - grenada
+        - guadeloupe
+        - guatemala
+        - guinea
+        - guinea-bissau
+        - guyana
+        - haiti
+        - honduras
+        - hong-kong
+        - hungary
+        - iceland
+        - india
+        - indonesia
+        - iraq
+        - ireland
+        - israel
+        - italy
+        - ivory-coast
+        - jamaica
+        - japan
+        - jordan
+        - kazakhstan
+        - kenya
+        - kiribati
+        - kosovo
+        - kuwait
+        - kyrgyzstan
+        - laos
+        - latvia
+        - lebanon
+        - lesotho
+        - liberia
+        - libya
+        - liechtenstein
+        - lithuania
+        - luxembourg
+        - madagascar
+        - malawi
+        - malaysia
+        - maldives
+        - mali
+        - malta
+        - marshall-islands
+        - martinique
+        - mauritania
+        - mauritius
+        - mexico
+        - micronesia
+        - moldova
+        - monaco
+        - mongolia
+        - montenegro
+        - morocco
+        - mozambique
+        - myanmar
+        - namibia
+        - nauru
+        - nepal
+        - netherlands
+        - new-caledonia
+        - new-zealand
+        - nicaragua
+        - niger
+        - nigeria
+        - north-macedonia
+        - norway
+        - oman
+        - pakistan
+        - palau
+        - palestine
+        - panama
+        - papua-new-guinea
+        - paraguay
+        - peru
+        - philippines
+        - poland
+        - portugal
+        - qatar
+        - republic-of-the-congo
+        - reunion
+        - romania
+        - russia
+        - rwanda
+        - saint-kitts-and-nevis
+        - saint-lucia
+        - saint-vincent-and-the-grenadines
+        - salvador
+        - samoa
+        - san-marino
+        - sao-tome-and-principe
+        - saudi-arabia
+        - senegal
+        - serbia
+        - seychelles
+        - sierra-leone
+        - singapore
+        - slovakia
+        - slovenia
+        - solomon-islands
+        - somalia
+        - south-africa
+        - south-korea
+        - south-sudan
+        - spain
+        - sri-lanka
+        - sudan
+        - suriname
+        - swaziland
+        - sweden
+        - switzerland
+        - taiwan
+        - tajikistan
+        - tanzania
+        - thailand
+        - togo
+        - tonga
+        - trinidad-and-tobago
+        - tunisia
+        - turkey
+        - turkmenistan
+        - tuvalu
+        - uganda
+        - ukraine
+        - united-arab-emirates
+        - united-kingdom
+        - united-states
+        - uruguay
+        - uzbekistan
+        - vanuatu
+        - vatican-city
+        - venezuela
+        - vietnam
+        - yemen
+        - zambia
+        - zimbabwe
