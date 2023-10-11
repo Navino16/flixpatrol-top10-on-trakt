@@ -1,5 +1,7 @@
+/* eslint-disable no-await-in-loop */
 import axios, { AxiosRequestConfig } from 'axios';
 import { JSDOM } from 'jsdom';
+import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger } from '../Utils/Logger';
 
 export interface FlixPatrolOptions {
@@ -7,7 +9,7 @@ export interface FlixPatrolOptions {
   agent?: string;
 }
 
-const flixpatrolLocation = ['world', 'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'antigua-and-barbuda',
+const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'antigua-and-barbuda',
   'argentina', 'armenia', 'australia', 'austria', 'azerbaijan', 'bahamas', 'bahrain', 'bangladesh', 'barbados',
   'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia', 'bosnia-and-herzegovina', 'botswana', 'brazil',
   'brunei', 'bulgaria', 'burkina-faso', 'burundi', 'cambodia', 'cameroon', 'canada', 'cape-verde',
@@ -31,11 +33,16 @@ const flixpatrolLocation = ['world', 'afghanistan', 'albania', 'algeria', 'andor
   'thailand', 'togo', 'tonga', 'trinidad-and-tobago', 'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda',
   'ukraine', 'united-arab-emirates', 'united-kingdom', 'united-states', 'uruguay', 'uzbekistan', 'vanuatu',
   'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia', 'zimbabwe'];
-export type FlixPatrolLocation = (typeof flixpatrolPlatform)[number];
+export type FlixPatrolTop10Location = (typeof flixpatrolTop10Platform)[number];
 
-const flixpatrolPlatform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-prime', 'apple-tv', 'chili', 'freevee', 'google',
-  'hulu', 'itunes', 'osn', 'paramount-plus', 'rakuten-tv', 'shahid', 'star-plus', 'starz', 'viaplay', 'vudu'];
-export type FlixPatrolPlatform = (typeof flixpatrolPlatform)[number];
+const flixpatrolTop10Platform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-prime', 'apple-tv', 'chili',
+  'freevee', 'google', 'hulu', 'itunes', 'osn', 'paramount-plus', 'rakuten-tv', 'shahid', 'star-plus', 'starz',
+  'viaplay', 'vudu'];
+export type FlixPatrolTop10Platform = (typeof flixpatrolTop10Platform)[number];
+
+const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
+  'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends', 'reddit'];
+export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[number];
 
 export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
@@ -45,14 +52,27 @@ export type FlixPatrolTMDBIds = string[];
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
 
+  private cache: FileSystemCache;
+
   constructor(options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
     this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
+    this.cache = Cache({
+      basePath: './.cache', // (optional) Path where cache files are stored (default).
+      ns: 'flixpatrol', // (optional) A grouping namespace for items.
+      hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
+      ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
+    });
   }
 
-  public static isFlixPatrolLocation = (x: string): x is FlixPatrolLocation => flixpatrolLocation.includes(x);
+  // eslint-disable-next-line max-len
+  public static isFlixPatrolTop10Location = (x: string): x is FlixPatrolTop10Location => flixpatrolTop10Location.includes(x);
 
-  public static isFlixPatrolPlatform = (x: string): x is FlixPatrolPlatform => flixpatrolPlatform.includes(x);
+  // eslint-disable-next-line max-len
+  public static isFlixPatrolTop10Platform = (x: string): x is FlixPatrolTop10Platform => flixpatrolTop10Platform.includes(x);
+
+  // eslint-disable-next-line max-len
+  public static isFlixPatrolPopularPlatform = (x: string): x is FlixPatrolPopularPlatform => flixpatrolPopularPlatform.includes(x);
 
   /**
    * Get one FlixPatrol HTML page and return it as a string
@@ -77,8 +97,8 @@ export class FlixPatrol {
 
   private static parseTop10Page(
     type: FlixPatrolType,
-    location: FlixPatrolLocation,
-    platform: FlixPatrolPlatform,
+    location: FlixPatrolTop10Location,
+    platform: FlixPatrolTop10Platform,
     html: string,
   ): FlixPatrolMatchResults {
     const dom = new JSDOM(html);
@@ -107,7 +127,28 @@ export class FlixPatrol {
     return results;
   }
 
-  private async convertToTMDBId(result: FlixPatrolMatchResult, type: FlixPatrolType) : Promise<FlixPatrolTMDBId> {
+  private static parsePopularPage(
+    html: string,
+  ): FlixPatrolMatchResults {
+    const dom = new JSDOM(html);
+    const match = dom.window.document.evaluate(
+      '//table[@class="card-table"]//a[@class="flex group items-center"]/@href',
+      dom.window.document,
+      null,
+      dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
+      null,
+    );
+    const results: string[] = [];
+
+    let p = match.iterateNext();
+    while (p !== null) {
+      results.push(p.textContent as string);
+      p = match.iterateNext();
+    }
+    return results;
+  }
+
+  private async getTMDBId(result: FlixPatrolMatchResult, type: FlixPatrolType) : Promise<FlixPatrolTMDBId> {
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
@@ -133,11 +174,32 @@ export class FlixPatrol {
     return regex ? regex[3] : null;
   }
 
+  private async convertResultsToIds(results: FlixPatrolMatchResults, type: FlixPatrolType) {
+    const TMDBIds: FlixPatrolTMDBIds = [];
+    // eslint-disable-next-line no-restricted-syntax
+    for (const result of results) {
+      let id = await this.cache.get(result, null);
+      if (!id) {
+        id = await this.getTMDBId(result, type);
+        if (id) {
+          logger.debug('New item added in cache');
+          await this.cache.set(result, id);
+        }
+      } else {
+        logger.debug('Item loaded from cache');
+      }
+      if (id) {
+        TMDBIds.push(id);
+      }
+    }
+    return TMDBIds;
+  }
+
   public async getTop10(
     type: FlixPatrolType,
-    platform: FlixPatrolPlatform,
-    location: FlixPatrolLocation,
-    fallback: FlixPatrolLocation | false,
+    platform: FlixPatrolTop10Platform,
+    location: FlixPatrolTop10Location,
+    fallback: FlixPatrolTop10Location | false,
   ): Promise<FlixPatrolTMDBIds> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
     if (html === null) {
@@ -151,15 +213,20 @@ export class FlixPatrol {
       return this.getTop10(type, platform, fallback, false);
     }
 
-    const TMDBIds: FlixPatrolTMDBIds = [];
-    // eslint-disable-next-line no-restricted-syntax
-    for (const result of results) {
-      // eslint-disable-next-line no-await-in-loop
-      const id = await this.convertToTMDBId(result, type);
-      if (id) {
-        TMDBIds.push(id);
-      }
+    return this.convertResultsToIds(results, type);
+  }
+
+  public async getPopular(
+    type: FlixPatrolType,
+    platform: FlixPatrolTop10Platform,
+  ) {
+    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
+    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${platform}`);
+    if (html === null) {
+      logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
+      process.exit(1);
     }
-    return TMDBIds;
+    const results = FlixPatrol.parsePopularPage(html);
+    return this.convertResultsToIds(results, type);
   }
 }

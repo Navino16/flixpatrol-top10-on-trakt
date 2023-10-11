@@ -53,9 +53,9 @@ export class TraktAPI {
       if ((getErr as Error).message.includes('404 (Not Found)')) {
         logger.warn(`List ${listName} was not found on trakt, creating it`);
         try {
+          // Avoid Trakt rate limit
+          await Utils.sleep(1000);
           list = await this.trakt.users.lists.create({ username: 'me', name: listName, privacy });
-          // Avoid Trakt rate limite
-          await Utils.sleep(2000);
         } catch (createErr) {
           logger.error(`Trakt Error (createList): ${(createErr as Error).message}`);
           process.exit(1);
@@ -119,6 +119,8 @@ export class TraktAPI {
       body.shows = toRemove;
     }
     try {
+      // Avoid Trakt rate limit
+      await Utils.sleep(1000);
       await this.trakt.users.list.items.remove(body);
     } catch (err) {
       logger.error(`Trakt Error (removeItems): ${(err as Error).message}`);
@@ -147,6 +149,8 @@ export class TraktAPI {
       body.shows = toAdd;
     }
     try {
+      // Avoid Trakt rate limit
+      await Utils.sleep(1000);
       await this.trakt.users.list.items.add(body);
     } catch (err) {
       logger.error(`Trakt Error (addItems): ${(err as Error).message}`);
@@ -159,13 +163,13 @@ export class TraktAPI {
     let list = await this.getList(listName, privacy);
     if (list.privacy !== privacy) {
       logger.info(`Trakt list ${list.ids.slug} privacy doesn't match the wanted privacy (${privacy}), updating list privacy`);
+      // Avoid Trakt rate limit
+      await Utils.sleep(1000);
       list = await this.trakt.users.list.update({ username: 'me', id: listName, privacy });
     }
     const items = await this.getListItems(list, traktType);
     if (items.length > 0) {
       await this.removeListItems(list, items, traktType);
-      // Avoid Trakt rate limite
-      await Utils.sleep(2000);
     }
     if (tmdbIDs.length > 0) {
       await this.addItemsToList(list, tmdbIDs, traktType);

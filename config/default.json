@@ -1,5 +1,5 @@
 {
-  "FlixPatrol" : [
+  "FlixPatrolTop10": [
     {
       "platform": "netflix",
       "location": "world",
@@ -31,7 +31,13 @@
       "privacy": "private"
     }
   ],
-  "Trakt" : {
+  "FlixPatrolPopular": [
+    {
+      "platform": "movie-db",
+      "privacy": "private"
+    }
+  ],
+  "Trakt": {
     "saveFile": ".trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"

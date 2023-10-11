@@ -13,7 +13,7 @@ export class Utils {
         fs.mkdirSync('./config');
       }
       fs.writeFileSync('./config/default.json', '{\n'
-        + '  "FlixPatrol" : [\n'
+        + '  "FlixPatrolTop10": [\n'
         + '    {\n'
         + '      "platform": "netflix",\n'
         + '      "location": "world",\n'
@@ -45,7 +45,13 @@ export class Utils {
         + '      "privacy": "private"\n'
         + '    }\n'
         + '  ],\n'
-        + '  "Trakt" : {\n'
+        + '  "FlixPatrolPopular": [\n'
+        + '    {\n'
+        + '      "platform": "movie-db",\n'
+        + '      "privacy": "private"\n'
+        + '    }\n'
+        + '  ],\n'
+        + '  "Trakt": {\n'
         + '    "saveFile": ".trakt",\n'
         + '    "clientId": "You need to replace this client ID",\n'
         + '    "clientSecret": "You need to replace this client secret"\n'
