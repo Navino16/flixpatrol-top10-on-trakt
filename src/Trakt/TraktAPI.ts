@@ -167,6 +167,8 @@ export class TraktAPI {
       // Avoid Trakt rate limite
       await Utils.sleep(2000);
     }
-    await this.addItemsToList(list, tmdbIDs, traktType);
+    if (tmdbIDs.length > 0) {
+      await this.addItemsToList(list, tmdbIDs, traktType);
+    }
   }
 }
