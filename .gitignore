@@ -4,3 +4,4 @@ build/
 bin/
 config/local.json
 .trakt
+.cache/

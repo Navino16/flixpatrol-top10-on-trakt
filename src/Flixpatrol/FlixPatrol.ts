@@ -1,5 +1,7 @@
+/* eslint-disable no-await-in-loop */
 import axios, { AxiosRequestConfig } from 'axios';
 import { JSDOM } from 'jsdom';
+import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger } from '../Utils/Logger';
 
 export interface FlixPatrolOptions {
@@ -45,9 +47,17 @@ export type FlixPatrolTMDBIds = string[];
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
 
+  private cache: FileSystemCache;
+
   constructor(options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
     this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
+    this.cache = Cache({
+      basePath: './.cache', // (optional) Path where cache files are stored (default).
+      ns: 'flixpatrol', // (optional) A grouping namespace for items.
+      hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
+      ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
+    });
   }
 
   public static isFlixPatrolLocation = (x: string): x is FlixPatrolLocation => flixpatrolLocation.includes(x);
@@ -154,8 +164,16 @@ export class FlixPatrol {
     const TMDBIds: FlixPatrolTMDBIds = [];
     // eslint-disable-next-line no-restricted-syntax
     for (const result of results) {
-      // eslint-disable-next-line no-await-in-loop
-      const id = await this.convertToTMDBId(result, type);
+      let id = await this.cache.get(result, null);
+      if (!id) {
+        id = await this.convertToTMDBId(result, type);
+        if (id) {
+          logger.debug('New item added in cache');
+          await this.cache.set(result, id);
+        }
+      } else {
+        logger.debug('Item loaded from cache');
+      }
       if (id) {
         TMDBIds.push(id);
       }

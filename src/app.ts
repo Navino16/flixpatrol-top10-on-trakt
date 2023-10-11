@@ -31,9 +31,6 @@ trakt.connect().then(async () => {
     await trakt.pushToList(top10Movies, listName, 'Movies', flixPatrolConfig.privacy);
     logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
 
-    // Avoid rate limit on Trakt and spam FlixPatrol
-    await Utils.sleep(5000);
-
     const top10Shows = await flixpatrol.getTop10('TV Shows', flixPatrolConfig.platform, flixPatrolConfig.location, flixPatrolConfig.fallback);
     logger.debug(`${flixPatrolConfig.platform} shows: ${top10Shows}`);
     await trakt.pushToList(top10Shows, listName, 'TV Shows', flixPatrolConfig.privacy);
