@@ -1,0 +1,48 @@
+name: Support request
+description: Please do not use support request for bug reports or feature requests.
+labels: ['not-yet-viewed', 'support']
+assignees: 'Navino16'
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        **THIS IS NOT THE PLACE TO ASK FOR FEATURE REQUESTS OR REPORT BUGS!**
+  - type: input
+    id: version
+    attributes:
+      label: Version Number
+      placeholder: eg. 1.16.0
+    validations:
+      required: true
+  - type: dropdown
+    id: branch
+    attributes:
+      label: What branch are you on?
+      options:
+        - main
+        - develop
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: A clear and concise description of what you try to achieve.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: >
+        If you issue is happening with a specific platform please paste your platform definition here
+        This will be automatically formatted into code, so no need for backticks.
+      render: yml
+  - type: input
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Please share the relevant log file with the error on [Gist](https://gist.github.com).
+      placeholder: "https://gist.github.com"
