@@ -60,13 +60,13 @@ export class FlixPatrol {
     this.options.url = options.url || 'https://flixpatrol.com';
     this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
     this.tvCache = Cache({
-      basePath: './.cache', // (optional) Path where cache files are stored (default).
+      basePath: './.cache/tv-shows', // (optional) Path where cache files are stored (default).
       ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
       hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
       ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
     });
     this.movieCache = Cache({
-      basePath: './.cache', // (optional) Path where cache files are stored (default).
+      basePath: './.cache/movies', // (optional) Path where cache files are stored (default).
       ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
       hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
       ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
