@@ -67,7 +67,7 @@ export class FlixPatrol {
     });
     this.movieCache = Cache({
       basePath: './.cache/movies', // (optional) Path where cache files are stored (default).
-      ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
+      ns: 'flixpatrol-movie', // (optional) A grouping namespace for items.
       hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
       ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
     });
