@@ -54,3 +54,9 @@ trakt.connect().then(async () => {
     logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
   }
 });
+
+process.on('SIGINT', () => {
+  logger.info('System: Receive SIGINT signal');
+  logger.info('System: Application stopped');
+  process.exit();
+});
