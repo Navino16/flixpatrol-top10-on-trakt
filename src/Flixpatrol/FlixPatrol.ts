@@ -2,11 +2,17 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
-import { logger } from '../Utils/Logger';
+import { logger } from '../Utils';
 
 export interface FlixPatrolOptions {
   url?: string;
   agent?: string;
+}
+
+export interface CacheOptions {
+  enabled: boolean;
+  savePath: string;
+  ttl: number;
 }
 
 const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'antigua-and-barbuda',
@@ -52,25 +58,27 @@ export type FlixPatrolTMDBIds = string[];
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
 
-  private tvCache: FileSystemCache;
+  private readonly tvCache: FileSystemCache | null = null;
 
-  private movieCache: FileSystemCache;
+  private readonly movieCache: FileSystemCache | null = null;
 
-  constructor(options: FlixPatrolOptions = {}) {
+  constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
     this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
-    this.tvCache = Cache({
-      basePath: './.cache/tv-shows', // (optional) Path where cache files are stored (default).
-      ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
-      hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-      ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
-    });
-    this.movieCache = Cache({
-      basePath: './.cache/movies', // (optional) Path where cache files are stored (default).
-      ns: 'flixpatrol-movie', // (optional) A grouping namespace for items.
-      hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-      ttl: 604800, // (optional) A time-to-live (in secs) on how long an item remains cached.
-    });
+    if (cacheOptions.enabled) {
+      this.tvCache = Cache({
+        basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
+        ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
+        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
+        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
+      });
+      this.movieCache = Cache({
+        basePath: `${cacheOptions.savePath}/movies`, // (optional) Path where cache files are stored (default).
+        ns: 'flixpatrol-movie', // (optional) A grouping namespace for items.
+        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
+        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
+      });
+    }
   }
 
   // eslint-disable-next-line max-len
@@ -157,6 +165,12 @@ export class FlixPatrol {
   }
 
   private async getTMDBId(result: FlixPatrolMatchResult, type: FlixPatrolType) : Promise<FlixPatrolTMDBId> {
+    if (this.tvCache !== null && this.movieCache !== null) {
+      const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
+      if (id) {
+        return id;
+      }
+    }
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
@@ -178,25 +192,20 @@ export class FlixPatrol {
     } else {
       regex = match.stringValue.match(/(themoviedb\.org\/tv)(\D*)(\d+)/i);
     }
-
-    return regex ? regex[3] : null;
+    const id = regex && regex.length === 4 ? regex[3] : null;
+    if (id && this.tvCache !== null && this.movieCache !== null) {
+      logger.debug(`New item added in ${type} cache`);
+      const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
+      logger.debug(`Cache: ${cacheInfo.path}`);
+    }
+    return id;
   }
 
   private async convertResultsToIds(results: FlixPatrolMatchResults, type: FlixPatrolType) {
     const TMDBIds: FlixPatrolTMDBIds = [];
     // eslint-disable-next-line no-restricted-syntax
     for (const result of results) {
-      let id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
-      if (!id) {
-        id = await this.getTMDBId(result, type);
-        if (id) {
-          logger.debug(`New item added in ${type} cache`);
-          const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
-          logger.debug(`Cache: ${cacheInfo.path}`);
-        }
-      } else {
-        logger.debug(`Item loaded from ${type} cache`);
-      }
+      const id = await this.getTMDBId(result, type);
       if (id) {
         TMDBIds.push(id);
       }

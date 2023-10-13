@@ -38,8 +38,13 @@
     }
   ],
   "Trakt": {
-    "saveFile": ".trakt",
+    "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"
+  },
+  "Cache": {
+    "enabled": true,
+    "savePath": "./config/.cache",
+    "ttl": 604800
   }
 }

@@ -52,7 +52,7 @@ export class Utils {
         + '    }\n'
         + '  ],\n'
         + '  "Trakt": {\n'
-        + '    "saveFile": ".trakt",\n'
+        + '    "saveFile": "./config/.trakt",\n'
         + '    "clientId": "You need to replace this client ID",\n'
         + '    "clientSecret": "You need to replace this client secret"\n'
         + '  }\n'

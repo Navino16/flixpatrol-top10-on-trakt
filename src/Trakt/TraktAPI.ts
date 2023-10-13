@@ -1,18 +1,27 @@
 import Trakt, {
-  TraktAccessExport, TraktIds, TraktItem, TraktList, TraktOptions, TraktPrivacy, TraktType, UsersListItemsAddRemove,
+  TraktAccessExport, TraktIds, TraktItem, TraktList, TraktPrivacy, TraktType, UsersListItemsAddRemove,
 } from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils } from '../Utils';
 import { FlixPatrolTMDBIds, FlixPatrolType } from '../Flixpatrol';
+
+export interface TraktAPIOptions {
+  saveFile: string;
+  clientId: string;
+  clientSecret: string;
+}
 
 export class TraktAPI {
   private trakt: Trakt;
 
   private readonly traktSaveFile: string;
 
-  constructor(options: TraktOptions, traktSaveFile: string) {
-    this.trakt = new Trakt(options);
-    this.traktSaveFile = traktSaveFile;
+  constructor(options: TraktAPIOptions) {
+    this.trakt = new Trakt({
+      client_id: options.clientId,
+      client_secret: options.clientSecret,
+    });
+    this.traktSaveFile = options.saveFile;
   }
 
   public async connect() {
