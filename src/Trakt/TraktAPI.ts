@@ -20,27 +20,25 @@ export class TraktAPI {
       logger.info(`Loading trakt informations from file ${this.traktSaveFile}`);
       const data = fs.readFileSync(this.traktSaveFile, 'utf8');
       const token: TraktAccessExport = JSON.parse(data);
-      this.trakt.import_token(token).then((newTokens) => {
-        logger.debug(`Trakt informations from file ${this.traktSaveFile} loaded`);
-        fs.writeFileSync(this.traktSaveFile, JSON.stringify(newTokens));
-        logger.debug(`Trakt informations saved to file ${this.traktSaveFile}`);
-      });
+      const newToken = await this.trakt.import_token(token);
+      logger.debug(`Trakt informations from file ${this.traktSaveFile} loaded`);
+      fs.writeFileSync(this.traktSaveFile, JSON.stringify(newToken));
+      logger.debug(`Trakt informations saved to file ${this.traktSaveFile}`);
     } else {
       logger.info(`No trakt file ${this.traktSaveFile} found, initializing a new trakt connection`);
-      const traktCode = this.trakt.get_codes().then((poll) => {
-        logger.info(`Please open the verification url: ${poll.verification_url}`);
-        logger.info(`And enter the following code: ${poll.user_code}`);
-        return this.trakt.poll_access(poll);
-      }).catch((connectErr) => {
-        logger.error(`Trakt Error (connect): ${(connectErr as Error).message}`);
-        process.exit(1);
-      });
-      traktCode.then(() => {
+      try {
+        const traktPoll = await this.trakt.get_codes();
+        logger.info(`Please open the verification url: ${traktPoll.verification_url}`);
+        logger.info(`And enter the following code: ${traktPoll.user_code}`);
+        await this.trakt.poll_access(traktPoll);
         logger.info('Your are now connected to Trakt');
         const token = this.trakt.export_token();
         fs.writeFileSync(this.traktSaveFile, JSON.stringify(token));
         logger.debug(`Trakt informations saved to file ${this.traktSaveFile}`);
-      });
+      } catch (connectErr) {
+        logger.error(`Trakt Error (connect): ${(connectErr as Error).message}`);
+        process.exit(1);
+      }
     }
   }
 
