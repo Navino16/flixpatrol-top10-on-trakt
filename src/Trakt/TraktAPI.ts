@@ -192,12 +192,23 @@ export class TraktAPI {
     }
   }
 
-  public async getFirstItemByQuery(type: TraktSearchType, query: string): Promise<TraktSearchItem | null> {
+  // eslint-disable-next-line max-len
+  public async getFirstItemByQuery(searchType: TraktSearchType, title: string, year: number): Promise<TraktSearchItem | null> {
     const items = await this.trakt.search.text({
-      type,
-      query,
+      type: searchType,
+      query: title,
       fields: 'title',
     });
+
+    // eslint-disable-next-line no-restricted-syntax
+    for (const item of items) {
+      if (searchType === 'movie' && item.movie?.year === year) {
+        return item;
+      }
+      if (searchType === 'show' && item.show?.year === year) {
+        return item;
+      }
+    }
 
     return items.length > 0 ? items[0] : null;
   }
