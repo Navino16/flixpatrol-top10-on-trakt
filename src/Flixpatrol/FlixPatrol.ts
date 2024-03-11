@@ -198,10 +198,10 @@ export class FlixPatrol {
     let item;
     let id;
     if (type === 'Movies') {
-      item = await trakt.getFirstItemByQuery('movie', `${title} (${year})`);
+      item = await trakt.getFirstItemByQuery('movie', title, parseInt(year, 10));
       id = item && item.movie && item.movie.ids.trakt ? item.movie.ids.trakt : null;
     } else {
-      item = await trakt.getFirstItemByQuery('show', `${title} (${year})`);
+      item = await trakt.getFirstItemByQuery('show', title, parseInt(year, 10));
       id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
     }
 
