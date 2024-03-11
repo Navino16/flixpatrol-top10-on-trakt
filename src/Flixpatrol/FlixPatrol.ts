@@ -3,6 +3,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger } from '../Utils';
+import { TraktAPI, TraktTVId, TraktTVIds } from '../Trakt';
 
 export interface FlixPatrolOptions {
   url?: string;
@@ -53,8 +54,7 @@ export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[numbe
 export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
 type FlixPatrolMatchResults = string[];
-type FlixPatrolTMDBId = string | null;
-export type FlixPatrolTMDBIds = string[];
+
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
 
@@ -164,7 +164,8 @@ export class FlixPatrol {
     return results;
   }
 
-  private async getTMDBId(result: FlixPatrolMatchResult, type: FlixPatrolType) : Promise<FlixPatrolTMDBId> {
+  // eslint-disable-next-line max-len
+  private async getTraktTVId(result: FlixPatrolMatchResult, type: FlixPatrolType, trakt: TraktAPI) : Promise<TraktTVId> {
     if (this.tvCache !== null && this.movieCache !== null) {
       const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
       if (id) {
@@ -178,21 +179,32 @@ export class FlixPatrol {
     }
 
     const dom = new JSDOM(html);
-    const match = dom.window.document.evaluate(
-      '//script[@type="application/ld+json"]',
+    const title = dom.window.document.evaluate(
+      '//div[@class="mb-6"]//h1[@class="mb-3"]/text()',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
-    );
+    ).stringValue;
 
-    let regex;
+    const year = dom.window.document.evaluate(
+      '//div[@class="mb-6"]//span[5]/span/text()',
+      dom.window.document,
+      null,
+      dom.window.XPathResult.STRING_TYPE,
+      null,
+    ).stringValue;
+
+    let item;
+    let id;
     if (type === 'Movies') {
-      regex = match.stringValue.match(/(themoviedb\.org\/movie)(\D*)(\d+)/i);
+      item = await trakt.getFirstItemByQuery('movie', `${title} (${year})`);
+      id = item && item.movie && item.movie.ids.trakt ? item.movie.ids.trakt : null;
     } else {
-      regex = match.stringValue.match(/(themoviedb\.org\/tv)(\D*)(\d+)/i);
+      item = await trakt.getFirstItemByQuery('show', `${title} (${year})`);
+      id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
     }
-    const id = regex && regex.length === 4 ? regex[3] : null;
+
     if (id && this.tvCache !== null && this.movieCache !== null) {
       logger.debug(`New item added in ${type} cache`);
       const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
@@ -201,16 +213,16 @@ export class FlixPatrol {
     return id;
   }
 
-  private async convertResultsToIds(results: FlixPatrolMatchResults, type: FlixPatrolType) {
-    const TMDBIds: FlixPatrolTMDBIds = [];
+  private async convertResultsToIds(results: FlixPatrolMatchResults, type: FlixPatrolType, trakt: TraktAPI) {
+    const traktTVIds: TraktTVIds = [];
     // eslint-disable-next-line no-restricted-syntax
     for (const result of results) {
-      const id = await this.getTMDBId(result, type);
+      const id = await this.getTraktTVId(result, type, trakt);
       if (id) {
-        TMDBIds.push(id);
+        traktTVIds.push(id);
       }
     }
-    return TMDBIds;
+    return traktTVIds;
   }
 
   public async getTop10(
@@ -218,26 +230,29 @@ export class FlixPatrol {
     platform: FlixPatrolTop10Platform,
     location: FlixPatrolTop10Location,
     fallback: FlixPatrolTop10Location | false,
-  ): Promise<FlixPatrolTMDBIds> {
+    trakt: TraktAPI,
+  ): Promise<TraktTVIds> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
       process.exit(1);
     }
     const results = FlixPatrol.parseTop10Page(type, location, platform, html);
+
     // Fallback to world if no match
     if (fallback !== false && results.length === 0) {
       logger.warn(`No ${type} found for ${platform}, falling back to ${fallback} search`);
-      return this.getTop10(type, platform, fallback, false);
+      return this.getTop10(type, platform, fallback, false, trakt);
     }
 
-    return this.convertResultsToIds(results, type);
+    return this.convertResultsToIds(results, type, trakt);
   }
 
   public async getPopular(
     type: FlixPatrolType,
     platform: FlixPatrolTop10Platform,
-  ) {
+    trakt: TraktAPI,
+  ): Promise<TraktTVIds> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${platform}`);
     if (html === null) {
@@ -245,6 +260,6 @@ export class FlixPatrol {
       process.exit(1);
     }
     const results = FlixPatrol.parsePopularPage(html);
-    return this.convertResultsToIds(results, type);
+    return this.convertResultsToIds(results, type, trakt);
   }
 }

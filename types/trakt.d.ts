@@ -29,6 +29,10 @@ declare module 'trakt.tv' {
   }
 
   export type TraktType = 'movie' | 'show' | 'season' | 'episode' | 'person';
+  export type TraktSearchType = 'movie' | 'show' | 'episode' | 'person' | 'list';
+  export type TraktSearchIDType = 'trakt' | 'imdb' | 'tmdb' | 'tvdb';
+  export type TraktSearchFields = 'title' | 'tagline' | 'overview' | 'people' | 'translations' | 'aliases' | 'name' | 'biography' | 'description';
+
   export interface TraktIds {
     slug?: string;
     trakt?: number;
@@ -209,6 +213,16 @@ declare module 'trakt.tv' {
     rank: number[];
   }
 
+  export interface TraktSearchItem {
+    type: TraktSearchType;
+    score: number;
+    movie?: TraktMovie;
+    show?: TraktShow;
+    episode?: TraktShowEpisode;
+    person?: TraktPerson;
+    list?: TraktList;
+  }
+
   interface Users {
     lists: {
       get(body: BaseRequest): Promise<TraktList[]>;
@@ -249,8 +263,28 @@ declare module 'trakt.tv' {
     stats();
   }
 
+  interface SearchRequest {
+    type: TraktSearchType;
+    query: string;
+    fields?: TraktSearchFields;
+  }
+
+  interface SearchIDRequest {
+    id_type: TraktSearchIDType;
+    id: string;
+    type?: TraktSearchType;
+    fields?: TraktSearchFields;
+  }
+
+  interface Search {
+    text(request: SearchRequest): Promise<TraktSearchItem[]>;
+    id(request: SearchIDRequest): Promise<TraktSearchItem[]>;
+  }
+
   class Trakt {
     users: Users;
+
+    search: Search;
 
     constructor(settings: TraktOptions, debug?: boolean = false);
     get_url(): string;

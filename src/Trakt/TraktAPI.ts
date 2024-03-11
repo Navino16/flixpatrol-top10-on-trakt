@@ -1,15 +1,25 @@
 import Trakt, {
-  TraktAccessExport, TraktIds, TraktItem, TraktList, TraktPrivacy, TraktType, UsersListItemsAddRemove,
+  TraktAccessExport,
+  TraktIds,
+  TraktItem,
+  TraktList,
+  TraktPrivacy,
+  TraktSearchItem,
+  TraktSearchType,
+  TraktType,
+  UsersListItemsAddRemove,
 } from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils } from '../Utils';
-import { FlixPatrolTMDBIds, FlixPatrolType } from '../Flixpatrol';
 
 export interface TraktAPIOptions {
   saveFile: string;
   clientId: string;
   clientSecret: string;
 }
+
+export type TraktTVId = number | null;
+export type TraktTVIds = number[];
 
 export class TraktAPI {
   private trakt: Trakt;
@@ -135,11 +145,11 @@ export class TraktAPI {
     }
   }
 
-  private async addItemsToList(list: TraktList, tmdbIDs: FlixPatrolTMDBIds, type: TraktType) {
-    logger.info(`Adding ${tmdbIDs.length} ${type} into Trakt list ${list.ids.slug}`);
+  private async addItemsToList(list: TraktList, traktTVIDs: TraktTVIds, type: TraktType) {
+    logger.info(`Adding ${traktTVIDs.length} ${type} into Trakt list ${list.ids.slug}`);
     const toAdd: { ids: TraktIds }[] = [];
-    tmdbIDs.forEach((tmdbID) => {
-      toAdd.push({ ids: { tmdb: parseInt(tmdbID, 10) } });
+    traktTVIDs.forEach((traktTVID) => {
+      toAdd.push({ ids: { trakt: traktTVID } });
     });
     const body: UsersListItemsAddRemove = {
       id: `${list.ids.trakt}`,
@@ -165,8 +175,7 @@ export class TraktAPI {
     }
   }
 
-  public async pushToList(tmdbIDs: FlixPatrolTMDBIds, listName: string, type: FlixPatrolType, privacy: TraktPrivacy) {
-    const traktType: TraktType = type === 'Movies' ? 'movie' : 'show';
+  public async pushToList(traktTVIDs: TraktTVIds, listName: string, type: TraktType, privacy: TraktPrivacy) {
     let list = await this.getList(listName, privacy);
     if (list.privacy !== privacy) {
       logger.info(`Trakt list ${list.ids.slug} privacy doesn't match the wanted privacy (${privacy}), updating list privacy`);
@@ -174,12 +183,22 @@ export class TraktAPI {
       await Utils.sleep(1000);
       list = await this.trakt.users.list.update({ username: 'me', id: listName, privacy });
     }
-    const items = await this.getListItems(list, traktType);
+    const items = await this.getListItems(list, type);
     if (items.length > 0) {
-      await this.removeListItems(list, items, traktType);
+      await this.removeListItems(list, items, type);
     }
-    if (tmdbIDs.length > 0) {
-      await this.addItemsToList(list, tmdbIDs, traktType);
+    if (traktTVIDs.length > 0) {
+      await this.addItemsToList(list, traktTVIDs, type);
     }
+  }
+
+  public async getFirstItemByQuery(type: TraktSearchType, query: string): Promise<TraktSearchItem | null> {
+    const items = await this.trakt.search.text({
+      type,
+      query,
+      fields: 'title',
+    });
+
+    return items.length > 0 ? items[0] : null;
   }
 }

@@ -20,14 +20,14 @@ trakt.connect().then(async () => {
   for (const top10 of flixPatrolTop10) {
     const listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
 
-    const top10Movies = await flixpatrol.getTop10('Movies', top10.platform, top10.location, top10.fallback);
+    const top10Movies = await flixpatrol.getTop10('Movies', top10.platform, top10.location, top10.fallback, trakt);
     logger.debug(`${top10.platform} movies: ${top10Movies}`);
-    await trakt.pushToList(top10Movies, listName, 'Movies', top10.privacy);
+    await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
     logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
 
-    const top10Shows = await flixpatrol.getTop10('TV Shows', top10.platform, top10.location, top10.fallback);
+    const top10Shows = await flixpatrol.getTop10('TV Shows', top10.platform, top10.location, top10.fallback, trakt);
     logger.debug(`${top10.platform} shows: ${top10Shows}`);
-    await trakt.pushToList(top10Shows, listName, 'TV Shows', top10.privacy);
+    await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
     logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
   }
 
@@ -35,14 +35,14 @@ trakt.connect().then(async () => {
   for (const popular of flixPatrolPopulars) {
     const listName = `${popular.platform}-popular`;
 
-    const popularMovies = await flixpatrol.getPopular('Movies', popular.platform);
+    const popularMovies = await flixpatrol.getPopular('Movies', popular.platform, trakt);
     logger.debug(`${popular.platform} movies: ${popularMovies}`);
-    await trakt.pushToList(popularMovies, listName, 'Movies', popular.privacy);
+    await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
     logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
 
-    const popularShows = await flixpatrol.getPopular('TV Shows', popular.platform);
+    const popularShows = await flixpatrol.getPopular('TV Shows', popular.platform, trakt);
     logger.debug(`${popular.platform} shows: ${popularShows}`);
-    await trakt.pushToList(popularShows, listName, 'TV Shows', popular.privacy);
+    await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
     logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
   }
 });
