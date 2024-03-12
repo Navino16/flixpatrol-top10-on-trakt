@@ -1,21 +1,22 @@
 import config from 'config';
-import { TraktPrivacy } from 'trakt.tv';
-import {
-  CacheOptions, FlixPatrol, FlixPatrolTop10Location, FlixPatrolTop10Platform,
-} from '../Flixpatrol';
+import type { TraktPrivacy } from 'trakt.tv';
+import type { CacheOptions, FlixPatrolTop10Location, FlixPatrolTop10Platform } from '../Flixpatrol';
+import { FlixPatrol } from '../Flixpatrol';
 import { logger } from './Logger';
-import { TraktAPIOptions } from '../Trakt';
+import type { TraktAPIOptions } from '../Trakt';
 
 export interface FlixPatrolTop10 {
   platform: FlixPatrolTop10Platform;
   location: FlixPatrolTop10Location;
   fallback: FlixPatrolTop10Location | false;
   privacy: TraktPrivacy;
+  limit: number;
 }
 
 export interface FlixPatrolPopular {
   platform: FlixPatrolTop10Platform;
   privacy: TraktPrivacy;
+  limit: number;
 }
 
 interface CacheConfig {
@@ -35,11 +36,13 @@ interface FlixPatrolTop10Config {
   location?: FlixPatrolTop10Location;
   fallback?: FlixPatrolTop10Location | false;
   privacy?: TraktPrivacy;
+  limit?: number;
 }
 
 interface FlixPatrolPopularConfig {
   platform?: FlixPatrolTop10Platform;
   privacy?: TraktPrivacy;
+  limit?: number;
 }
 
 export class GetAndValidateConfigs {
@@ -106,6 +109,20 @@ export class GetAndValidateConfigs {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].privacy" -> ${flixPatrolTop10Config.privacy} is not a valid privacy`);
           process.exit(1);
         }
+
+        // Check if limit property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'limit')) {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolTop10Config.limit !== 'number') {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> not a valid number`);
+          process.exit(1);
+        }
+        if (flixPatrolTop10Config.limit < 1 || flixPatrolTop10Config.limit > 10) {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> limit should be a value between 1 and 10`);
+          process.exit(1);
+        }
       });
     } catch (err) {
       logger.error('Configuration Error: FlixPatrolTop10 was not found in configuration file');
@@ -144,6 +161,20 @@ export class GetAndValidateConfigs {
         }
         if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolPopularConfig.privacy)) {
           logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].privacy" -> ${flixPatrolPopularConfig.privacy} is not a valid privacy`);
+          process.exit(1);
+        }
+
+        // Check if limit property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'limit')) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolPopularConfig.limit !== 'number') {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> not a valid number`);
+          process.exit(1);
+        }
+        if (flixPatrolPopularConfig.limit < 1 || flixPatrolPopularConfig.limit > 100) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> limit should be a value between 1 and 100`);
           process.exit(1);
         }
       });

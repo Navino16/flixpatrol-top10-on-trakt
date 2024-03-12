@@ -1,8 +1,11 @@
 /* eslint-disable no-await-in-loop */
-import { CacheOptions, FlixPatrol } from './Flixpatrol';
+import type { CacheOptions } from './Flixpatrol';
+import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils } from './Utils';
-import { TraktAPI, TraktAPIOptions } from './Trakt';
-import { FlixPatrolPopular, FlixPatrolTop10, GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
+import type { FlixPatrolPopular, FlixPatrolTop10 } from './Utils/GetAndValidateConfigs';
+import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
+import type { TraktAPIOptions } from './Trakt';
+import { TraktAPI } from './Trakt';
 
 Utils.ensureConfigExist();
 
@@ -20,12 +23,16 @@ trakt.connect().then(async () => {
   for (const top10 of flixPatrolTop10) {
     const listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
 
-    const top10Movies = await flixpatrol.getTop10('Movies', top10.platform, top10.location, top10.fallback, trakt);
+    logger.info('==============================');
+    logger.info(`Getting movies for ${listName}`);
+    const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt);
     logger.debug(`${top10.platform} movies: ${top10Movies}`);
     await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
     logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
 
-    const top10Shows = await flixpatrol.getTop10('TV Shows', top10.platform, top10.location, top10.fallback, trakt);
+    logger.info('-----------------------------');
+    logger.info(`Getting shows for ${listName}`);
+    const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt);
     logger.debug(`${top10.platform} shows: ${top10Shows}`);
     await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
     logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
@@ -35,12 +42,16 @@ trakt.connect().then(async () => {
   for (const popular of flixPatrolPopulars) {
     const listName = `${popular.platform}-popular`;
 
-    const popularMovies = await flixpatrol.getPopular('Movies', popular.platform, trakt);
+    logger.info('==============================');
+    logger.info(`Getting movies for ${listName}`);
+    const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
     logger.debug(`${popular.platform} movies: ${popularMovies}`);
     await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
     logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
 
-    const popularShows = await flixpatrol.getPopular('TV Shows', popular.platform, trakt);
+    logger.info('-----------------------------');
+    logger.info(`Getting shows for ${listName}`);
+    const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
     logger.debug(`${popular.platform} shows: ${popularShows}`);
     await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
     logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
