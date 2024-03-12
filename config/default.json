@@ -4,37 +4,43 @@
       "platform": "netflix",
       "location": "world",
       "fallback": false,
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 10
     },
     {
       "platform": "disney",
       "location": "world",
       "fallback": false,
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 10
     },
     {
       "platform": "amazon-prime",
       "location": "world",
       "fallback": false,
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 10
     },
     {
       "platform": "apple-tv",
       "location": "world",
       "fallback": false,
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 10
     },
     {
       "platform": "paramount-plus",
       "location": "world",
       "fallback": false,
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 10
     }
   ],
   "FlixPatrolPopular": [
     {
       "platform": "movie-db",
-      "privacy": "private"
+      "privacy": "private",
+      "limit": 100
     }
   ],
   "Trakt": {

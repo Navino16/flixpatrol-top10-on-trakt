@@ -1,9 +1,12 @@
 /* eslint-disable no-await-in-loop */
-import axios, { AxiosRequestConfig } from 'axios';
+import type { AxiosRequestConfig } from 'axios';
+import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger } from '../Utils';
-import { TraktAPI, TraktTVId, TraktTVIds } from '../Trakt';
+import type { TraktTVId, TraktTVIds } from '../Trakt';
+import { TraktAPI } from '../Trakt';
+import type { FlixPatrolPopular, FlixPatrolTop10 } from '../Utils/GetAndValidateConfigs';
 
 export interface FlixPatrolOptions {
   url?: string;
@@ -53,7 +56,6 @@ export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[numbe
 
 export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
-type FlixPatrolMatchResults = string[];
 
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
@@ -97,7 +99,6 @@ export class FlixPatrol {
    */
   private async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
     const url = `${this.options.url}/${path}`;
-
     const axiosConfig: AxiosRequestConfig = {
       headers: {
         'User-Agent': this.options.agent,
@@ -116,12 +117,11 @@ export class FlixPatrol {
     location: FlixPatrolTop10Location,
     platform: FlixPatrolTop10Platform,
     html: string,
-  ): FlixPatrolMatchResults {
+  ): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
     let expression;
     if (location !== 'world') {
-      const searchType = platform === 'apple-tv' ? 'Overall' : type;
-      expression = `//h3[text() = "TOP 10 ${searchType}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
+      expression = `//h3[text() = "TOP 10 ${type}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
     } else {
       const id = type === 'Movies' ? 1 : 2;
       expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
@@ -145,7 +145,7 @@ export class FlixPatrol {
 
   private static parsePopularPage(
     html: string,
-  ): FlixPatrolMatchResults {
+  ): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
     const match = dom.window.document.evaluate(
       '//table[@class="card-table"]//a[@class="flex group items-center"]/@href',
@@ -213,7 +213,7 @@ export class FlixPatrol {
     return id;
   }
 
-  private async convertResultsToIds(results: FlixPatrolMatchResults, type: FlixPatrolType, trakt: TraktAPI) {
+  private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
     const traktTVIds: TraktTVIds = [];
     // eslint-disable-next-line no-restricted-syntax
     for (const result of results) {
@@ -227,22 +227,22 @@ export class FlixPatrol {
 
   public async getTop10(
     type: FlixPatrolType,
-    platform: FlixPatrolTop10Platform,
-    location: FlixPatrolTop10Location,
-    fallback: FlixPatrolTop10Location | false,
+    config: FlixPatrolTop10,
     trakt: TraktAPI,
   ): Promise<TraktTVIds> {
-    const html = await this.getFlixPatrolHTMLPage(`/top10/${platform}/${location}`);
+    const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
       process.exit(1);
     }
-    const results = FlixPatrol.parseTop10Page(type, location, platform, html);
+    let results = FlixPatrol.parseTop10Page(type, config.location, config.platform, html);
+    results = results.slice(0, config.limit);
 
     // Fallback to world if no match
-    if (fallback !== false && results.length === 0) {
-      logger.warn(`No ${type} found for ${platform}, falling back to ${fallback} search`);
-      return this.getTop10(type, platform, fallback, false, trakt);
+    if (config.fallback !== false && results.length === 0) {
+      logger.warn(`No ${type} found for ${config.platform}, falling back to ${config.fallback} search`);
+      const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
+      return this.getTop10(type, newConfig, trakt);
     }
 
     return this.convertResultsToIds(results, type, trakt);
@@ -250,16 +250,17 @@ export class FlixPatrol {
 
   public async getPopular(
     type: FlixPatrolType,
-    platform: FlixPatrolTop10Platform,
+    config: FlixPatrolPopular,
     trakt: TraktAPI,
   ): Promise<TraktTVIds> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${platform}`);
+    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
       process.exit(1);
     }
-    const results = FlixPatrol.parsePopularPage(html);
+    let results = FlixPatrol.parsePopularPage(html);
+    results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
 }

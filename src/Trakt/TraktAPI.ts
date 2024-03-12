@@ -1,4 +1,4 @@
-import Trakt, {
+import type {
   TraktAccessExport,
   TraktIds,
   TraktItem,
@@ -9,6 +9,7 @@ import Trakt, {
   TraktType,
   UsersListItemsAddRemove,
 } from 'trakt.tv';
+import Trakt from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils } from '../Utils';
 
