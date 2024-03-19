@@ -103,7 +103,7 @@ You can pass some environment variables to the tool:
 The configuration file should be stored in a directory named `config` next to the binary.
 It should be named `default.json`.
 
-At first run a default configuration file will be generated with some top10 preconfigured so you can see the file format. Feel free to edit it.
+At first run a default configuration file will be generated with some top10 preconfigured, so you can see the file format. Feel free to edit it.
 
 If there is any configuration error, the tool will exit whit information about the error.
 
