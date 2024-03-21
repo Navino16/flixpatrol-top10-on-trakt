@@ -143,7 +143,7 @@ export class GetAndValidateConfigs {
         }
 
          // Check if optional name property is valid
-        if (typeof flixPatrolTop10Config.name !== 'string') {
+        if (flixPatrolTop10Config.name !== undefined && typeof flixPatrolTop10Config.name !== 'string') {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].name" -> not a valid string`);
           process.exit(1);
         }
