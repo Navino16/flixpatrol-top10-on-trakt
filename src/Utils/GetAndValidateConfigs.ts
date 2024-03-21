@@ -11,6 +11,8 @@ export interface FlixPatrolTop10 {
   fallback: FlixPatrolTop10Location | false;
   privacy: TraktPrivacy;
   limit: number;
+  type: string;
+  name: string;
 }
 
 export interface FlixPatrolPopular {
@@ -37,6 +39,8 @@ interface FlixPatrolTop10Config {
   fallback?: FlixPatrolTop10Location | false;
   privacy?: TraktPrivacy;
   limit?: number;
+  type?: string;
+  name?: string;
 }
 
 interface FlixPatrolPopularConfig {
@@ -121,6 +125,26 @@ export class GetAndValidateConfigs {
         }
         if (flixPatrolTop10Config.limit < 1 || flixPatrolTop10Config.limit > 10) {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> limit should be a value between 1 and 10`);
+          process.exit(1);
+        }
+
+          // Check if type property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'type')) {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> type not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolTop10Config.type !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> not a valid string`);
+          process.exit(1);
+        }
+        if (!FlixPatrol.isFlixPatrolType(flixPatrolTop10Config.type)) {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> ${flixPatrolTop10Config.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
+          process.exit(1);
+        }
+
+         // Check if optional name property is valid
+        if (typeof flixPatrolTop10Config.name !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].name" -> not a valid string`);
           process.exit(1);
         }
       });
