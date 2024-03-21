@@ -5,35 +5,43 @@
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Netflix Top 10 Movies",
+      "type": "movies"
     },
     {
       "platform": "disney",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Disney Plus Top 10 Shows",
+      "type": "shows"
     },
     {
       "platform": "amazon-prime",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Amazon Prime Top 10",
+      "type": "both"
     },
     {
       "platform": "apple-tv",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "type": "both"
     },
     {
       "platform": "paramount-plus",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "type": "both"
     }
   ],
   "FlixPatrolPopular": [
