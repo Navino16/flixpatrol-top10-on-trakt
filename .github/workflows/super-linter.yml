@@ -25,6 +25,7 @@ jobs:
         uses: github/super-linter@v4
         env:
           VALIDATE_ALL_CODEBASE: true
+          LINTER_RULES_PATH: .
           JAVASCRIPT_ES_CONFIG_FILE: .eslintrc
           TYPESCRIPT_ES_CONFIG_FILE: .eslintrc
           DEFAULT_BRANCH: "main"
