@@ -39,7 +39,7 @@ body:
       description: >
         If you issue is happening with a specific platform please paste your platform definition here
         This will be automatically formatted into code, so no need for backticks.
-      render: yml
+      render: json
   - type: input
     id: logs
     attributes:
