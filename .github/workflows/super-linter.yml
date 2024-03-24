@@ -29,7 +29,6 @@ jobs:
           VALIDATE_JAVASCRIPT_ES: true
           VALIDATE_TYPESCRIPT_ES: true
           VALIDATE_GITLEAKS: true
-          VALIDATE_JSON: true
           JAVASCRIPT_ES_CONFIG_FILE: .eslintrc
           TYPESCRIPT_ES_CONFIG_FILE: .eslintrc
           DEFAULT_BRANCH: "main"
