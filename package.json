@@ -36,7 +36,7 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "axios": "^1.5.1",
+    "axios": "^1.6.8",
     "config": "^3.3.9",
     "file-system-cache": "^2.4.4",
     "jsdom": "^22.1.0",
