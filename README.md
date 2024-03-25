@@ -53,7 +53,7 @@ To get started with Flixpatrol Top 10 on Trakt for Linux / macOS, follow these s
    ````
 2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
     ````shell
-    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.1.1/flixpatrol-top10-linux
+    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.2.0/flixpatrol-top10-linux
     ````
 3. Make the downloaded binary executable
     ````shell
@@ -107,24 +107,26 @@ At first run a default configuration file will be generated with some top10 prec
 
 If there is any configuration error, the tool will exit whit information about the error.
 
-| Name                   | Descriptions                                                                                   | Values                                                                                                                                          | Default         |
-|------------------------|------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
-| FlixPatrolTop10        | An array containing as much as you want top10Config                                            |                                                                                                                                                 |                 |
-| top10Config.platform   | Which platform to get from Flixpatrol                                                          | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                 |
-| top10Config.location   | Which location to get from Flixpatrol                                                          | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                 |
-| top10Config.fallback   | If there is no show/movie found, should we fallback to another location?                       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false           |
-| top10Config.privacy    | The privacy of the generated Trakt list                                                        | private, public                                                                                                                                 | private         |
-| top10Config.limit      | How many movie/show we should get from Flixpatrol                                              | Number between 1 and 10 (included)                                                                                                              | 10              |
-| FlixPatrolPopular      | An array containing as much as you want popularConfig                                          |                                                                                                                                                 |                 |
-| popularConfig.platform | Which popular platform to get from Flixpatrol                                                  | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53))  |                 |
-| popularConfig.privacy  | The privacy of the generated Trakt list                                                        | private, public                                                                                                                                 | private         |
-| popularConfig.limit    | How many movie/show we should get from Flixpatrol                                              | Number between 1 and 100 (included)                                                                                                             | 100             |
-| Trakt.saveFile         | Where to save the Trakt session file                                                           | Any valid path                                                                                                                                  | ./config/.trakt |
-| Trakt.clientId         | You clientId from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)     | A valid traktId                                                                                                                                 |                 |
-| Trakt.clientSecret     | You clientSecret from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one) | A valid clientSecret                                                                                                                            |                 |
-| Cache.enabled          | Do you want to use cache? (You should)                                                         | true, false                                                                                                                                     | true            |
-| Cache.savePath         | Where to save the caches files                                                                 | Any valid path                                                                                                                                  | ./config/.cache |
-| Cache.ttl              | How long the cache will be valid in seconds                                                    | Any number greater than 0                                                                                                                       | 604800          |
+| Name                   | Descriptions                                                                                   | Values                                                                                                                                          | Default                                    |
+|------------------------|------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
+| FlixPatrolTop10        | An array containing as much as you want top10Config                                            |                                                                                                                                                 |                                            |
+| top10Config.platform   | Which platform to get from Flixpatrol                                                          | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                                            |
+| top10Config.location   | Which location to get from Flixpatrol                                                          | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                                            |
+| top10Config.fallback   | If there is no show/movie found, should we fallback to another location?                       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false                                      |
+| top10Config.privacy    | The privacy of the generated Trakt list                                                        | private, public                                                                                                                                 | private                                    |
+| top10Config.limit      | How many movie/show we should get from Flixpatrol                                              | Number between 1 and 10 (included)                                                                                                              | 10                                         |
+| top10Config.type       | Do you want movies, shows or both ?                                                            | movie, show, both                                                                                                                               | both                                       |
+| top10Config.name       | Optional name of the list                                                                      | Any valid string                                                                                                                                | A generated name based on the top10 config |
+| FlixPatrolPopular      | An array containing as much as you want popularConfig                                          |                                                                                                                                                 |                                            |
+| popularConfig.platform | Which popular platform to get from Flixpatrol                                                  | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53))  |                                            |
+| popularConfig.privacy  | The privacy of the generated Trakt list                                                        | private, public                                                                                                                                 | private                                    |
+| popularConfig.limit    | How many movie/show we should get from Flixpatrol                                              | Number between 1 and 100 (included)                                                                                                             | 100                                        |
+| Trakt.saveFile         | Where to save the Trakt session file                                                           | Any valid path                                                                                                                                  | ./config/.trakt                            |
+| Trakt.clientId         | You clientId from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)     | A valid traktId                                                                                                                                 |                                            |
+| Trakt.clientSecret     | You clientSecret from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one) | A valid clientSecret                                                                                                                            |                                            |
+| Cache.enabled          | Do you want to use cache? (You should)                                                         | true, false                                                                                                                                     | true                                       |
+| Cache.savePath         | Where to save the caches files                                                                 | Any valid path                                                                                                                                  | ./config/.cache                            |
+| Cache.ttl              | How long the cache will be valid in seconds                                                    | Any number greater than 0                                                                                                                       | 604800                                     |
 
 #### Example file
 ````json
@@ -135,35 +137,43 @@ If there is any configuration error, the tool will exit whit information about t
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Netflix Top 10 Movies",
+      "type": "movies"
     },
     {
       "platform": "disney",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Disney Plus Top 10 Shows",
+      "type": "shows"
     },
     {
       "platform": "amazon-prime",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "name": "Amazon Prime Top 10",
+      "type": "both"
     },
     {
       "platform": "apple-tv",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "type": "both"
     },
     {
       "platform": "paramount-plus",
       "location": "world",
       "fallback": false,
       "privacy": "private",
-      "limit": 10
+      "limit": 10,
+      "type": "both"
     }
   ],
   "FlixPatrolPopular": [
