@@ -51,7 +51,7 @@ jobs:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - name: Restore build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build
           path: build/
@@ -83,7 +83,7 @@ jobs:
     needs: tag-new-versions
     steps:
       - name: Restore build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: flixpatrol
           path: bin/
@@ -114,7 +114,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Restore build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: flixpatrol
           path: bin/
@@ -156,7 +156,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Restore build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: flixpatrol
           path: bin/
