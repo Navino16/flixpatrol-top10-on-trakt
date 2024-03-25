@@ -29,7 +29,7 @@
     "eslint": "^8.57.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-airbnb-typescript": "^17.1.0",
-    "nodemon": "^3.0.1",
+    "nodemon": "^3.1.0",
     "pkg": "^5.8.1",
     "rimraf": "^5.0.5",
     "ts-node": "^10.9.1",
