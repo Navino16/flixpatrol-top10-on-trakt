@@ -190,6 +190,14 @@ export class TraktAPI {
     }
     if (traktTVIDs.length > 0) {
       await this.addItemsToList(list, traktTVIDs, type);
+      await Utils.sleep(1000);
+      const dateOptions: Intl.DateTimeFormatOptions = {
+        weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false,
+      };
+      const currentDate = new Date().toLocaleString(undefined, dateOptions); // Get the current date and time
+      const updatedString = `Last Updated: ${currentDate}`; // Concatenate the string with the current date and time
+      logger.info(`Updating list description: "${updatedString}"`);
+      await this.trakt.users.list.update({ username: 'me', id: listName, description: updatedString });
     }
   }
 

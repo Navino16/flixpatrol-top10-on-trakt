@@ -54,6 +54,9 @@ const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-t
   'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends', 'reddit'];
 export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[number];
 
+const flixpatrolConfigType = ['movies', 'shows', 'both'];
+export type FlixPatrolConfigType = (typeof flixpatrolConfigType)[number];
+
 export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
 
@@ -91,6 +94,8 @@ export class FlixPatrol {
 
   // eslint-disable-next-line max-len
   public static isFlixPatrolPopularPlatform = (x: string): x is FlixPatrolPopularPlatform => flixpatrolPopularPlatform.includes(x);
+
+  public static isFlixPatrolType = (x: string): x is FlixPatrolConfigType => flixpatrolConfigType.includes(x);
 
   /**
    * Get one FlixPatrol HTML page and return it as a string
