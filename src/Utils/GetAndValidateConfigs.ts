@@ -12,7 +12,7 @@ export interface FlixPatrolTop10 {
   privacy: TraktPrivacy;
   limit: number;
   type: string;
-  name: string;
+  name?: string;
 }
 
 export interface FlixPatrolPopular {
@@ -21,39 +21,11 @@ export interface FlixPatrolPopular {
   limit: number;
 }
 
-interface CacheConfig {
-  enabled?: boolean;
-  savePath?: string;
-  ttl?: number;
-}
-
-interface TraktConfig {
-  saveFile?: string;
-  clientId?: string;
-  clientSecret?: string;
-}
-
-interface FlixPatrolTop10Config {
-  platform?: FlixPatrolTop10Platform;
-  location?: FlixPatrolTop10Location;
-  fallback?: FlixPatrolTop10Location | false;
-  privacy?: TraktPrivacy;
-  limit?: number;
-  type?: string;
-  name?: string;
-}
-
-interface FlixPatrolPopularConfig {
-  platform?: FlixPatrolTop10Platform;
-  privacy?: TraktPrivacy;
-  limit?: number;
-}
-
 export class GetAndValidateConfigs {
   private static traktPrivacy: string[] = ['private', 'link', 'friends', 'public'];
 
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
-    let flixPatrolTop10Configs: FlixPatrolTop10Config[];
+    let flixPatrolTop10Configs: Partial<FlixPatrolTop10>[];
     try {
       flixPatrolTop10Configs = config.get('FlixPatrolTop10');
       flixPatrolTop10Configs.forEach((flixPatrolTop10Config, index) => {
@@ -128,7 +100,7 @@ export class GetAndValidateConfigs {
           process.exit(1);
         }
 
-          // Check if type property is valid
+        // Check if type property is valid
         if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'type')) {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> type not found`);
           process.exit(1);
@@ -142,8 +114,8 @@ export class GetAndValidateConfigs {
           process.exit(1);
         }
 
-         // Check if optional name property is valid
-        if (flixPatrolTop10Config.name !== undefined && typeof flixPatrolTop10Config.name !== 'string') {
+        // Check if optional name property is valid
+        if (typeof flixPatrolTop10Config.name !== 'string' && flixPatrolTop10Config.name !== undefined) {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].name" -> not a valid string`);
           process.exit(1);
         }
@@ -156,7 +128,7 @@ export class GetAndValidateConfigs {
   }
 
   public static getFlixPatrolPopular(): FlixPatrolPopular[] {
-    let flixPatrolPopularConfigs: FlixPatrolPopularConfig[];
+    let flixPatrolPopularConfigs: Partial<FlixPatrolPopular>[];
     try {
       flixPatrolPopularConfigs = config.get('FlixPatrolPopular');
       flixPatrolPopularConfigs.forEach((flixPatrolPopularConfig, index) => {
@@ -210,7 +182,7 @@ export class GetAndValidateConfigs {
   }
 
   public static getTraktOptions(): TraktAPIOptions {
-    let traktConfig: TraktConfig;
+    let traktConfig: Partial<TraktAPIOptions>;
     try {
       traktConfig = config.get('Trakt');
 
@@ -248,7 +220,7 @@ export class GetAndValidateConfigs {
   }
 
   public static getCacheOptions(): CacheOptions {
-    let cacheConfig: CacheConfig;
+    let cacheConfig: Partial<CacheOptions>;
     try {
       cacheConfig = config.get('Cache');
 
