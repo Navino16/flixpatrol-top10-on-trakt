@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -27,8 +27,6 @@
     "@typescript-eslint/parser": "^7.7.1",
     "@vercel/ncc": "^0.38.1",
     "eslint": "^8.57.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-airbnb-typescript": "^18.0.0",
     "nodemon": "^3.1.0",
     "pkg": "^5.8.1",
     "rimraf": "^5.0.5",
