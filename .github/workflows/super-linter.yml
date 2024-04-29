@@ -6,6 +6,12 @@
 # https://github.com/github/super-linter
 name: Lint Code Base
 
+permissions:
+  contents: read
+  packages: read
+  # To report GitHub Actions status checks
+  statuses: write
+
 on:
   push:
     branches: [ main, develop ]
