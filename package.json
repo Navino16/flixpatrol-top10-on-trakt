@@ -24,7 +24,7 @@
     "@types/jsdom": "^21.1.7",
     "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^7.11.0",
-    "@typescript-eslint/parser": "^7.11.0",
+    "@typescript-eslint/parser": "^7.12.0",
     "@vercel/ncc": "^0.38.1",
     "eslint": "^8.57.0",
     "nodemon": "^3.1.3",
