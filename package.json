@@ -37,7 +37,7 @@
     "axios": "^1.7.5",
     "config": "^3.3.12",
     "file-system-cache": "^3.0.0",
-    "jsdom": "^24.1.1",
+    "jsdom": "^25.0.0",
     "trakt.tv": "^8.2.0",
     "winston": "^3.14.2"
   }
