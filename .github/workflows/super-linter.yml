@@ -35,6 +35,6 @@ jobs:
           VALIDATE_JAVASCRIPT_ES: true
           VALIDATE_TYPESCRIPT_ES: true
           VALIDATE_GITLEAKS: true
-          JAVASCRIPT_ES_CONFIG_FILE: .eslintrc
-          TYPESCRIPT_ES_CONFIG_FILE: .eslintrc
+          JAVASCRIPT_ES_CONFIG_FILE: eslint.config.mjs
+          TYPESCRIPT_ES_CONFIG_FILE: eslint.config.mjs
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
