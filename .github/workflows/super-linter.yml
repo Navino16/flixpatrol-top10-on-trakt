@@ -26,7 +26,18 @@ jobs:
         with:
           # Full git history is needed to get a proper list of changed files within `super-linter`
           fetch-depth: 0
-
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Cache node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install project dependencies
+        run: npm ci
       - name: Lint Code Base
         uses: github/super-linter@v7
         env:
