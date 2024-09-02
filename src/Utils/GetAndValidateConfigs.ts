@@ -121,7 +121,7 @@ export class GetAndValidateConfigs {
         }
       });
     } catch (err) {
-      logger.error('Configuration Error: FlixPatrolTop10 was not found in configuration file');
+      logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
     return flixPatrolTop10Configs as FlixPatrolTop10[];
@@ -175,7 +175,7 @@ export class GetAndValidateConfigs {
         }
       });
     } catch (err) {
-      logger.error('Configuration Error: FlixPatrolPopular was not found in configuration file');
+      logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
     return flixPatrolPopularConfigs as FlixPatrolPopular[];
@@ -213,7 +213,7 @@ export class GetAndValidateConfigs {
         process.exit(1);
       }
     } catch (err) {
-      logger.error('Configuration Error: Trakt was not found in configuration file');
+      logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
     return traktConfig as TraktAPIOptions;
@@ -251,7 +251,7 @@ export class GetAndValidateConfigs {
         process.exit(1);
       }
     } catch (err) {
-      logger.error('Configuration Error: Cache was not found in configuration file');
+      logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
     return cacheConfig as CacheOptions;

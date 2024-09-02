@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop */
+ 
 import type { AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
@@ -153,7 +153,7 @@ export class FlixPatrol {
   ): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
     const match = dom.window.document.evaluate(
-      '//table[@class="card-table"]//a[@class="flex group items-center"]/@href',
+      '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href',
       dom.window.document,
       null,
       dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
@@ -220,7 +220,7 @@ export class FlixPatrol {
 
   private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
     const traktTVIds: TraktTVIds = [];
-    // eslint-disable-next-line no-restricted-syntax
+     
     for (const result of results) {
       const id = await this.getTraktTVId(result, type, trakt);
       if (id) {

@@ -1,14 +1,14 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start": "npm run build && node build/app.js",
     "start:dev": "nodemon",
-    "lint": "eslint . --ext .ts",
-    "lint-and-fix": "eslint . --ext .ts --fix",
+    "lint": "eslint .",
+    "lint-and-fix": "eslint . --fix",
     "test": "echo \"Error: no test specified\" && exit 1",
     "package": "npm run build && rm -rf bin/ &&  npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node18-linux-x64,node18-macos-x64,node18-win-x64 -o bin/flixpatrol-top10"
   },
@@ -20,25 +20,26 @@
   "author": "Navino16",
   "license": "GPL-3.0",
   "devDependencies": {
+    "@eslint/js": "^9.9.1",
     "@types/config": "^3.3.4",
-    "@types/jsdom": "^21.1.6",
-    "@types/node": "^20.12.7",
-    "@typescript-eslint/eslint-plugin": "^7.7.1",
-    "@typescript-eslint/parser": "^7.7.1",
+    "@types/eslint__js": "^8.42.3",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.5.2",
     "@vercel/ncc": "^0.38.1",
-    "eslint": "^8.57.0",
-    "nodemon": "^3.1.0",
+    "eslint": "^9.9.1",
+    "nodemon": "^3.1.4",
     "pkg": "^5.8.1",
-    "rimraf": "^5.0.5",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.3.0"
   },
   "dependencies": {
-    "axios": "^1.7.4",
-    "config": "^3.3.11",
-    "file-system-cache": "^2.4.4",
-    "jsdom": "^24.0.0",
+    "axios": "^1.7.7",
+    "config": "^3.3.12",
+    "file-system-cache": "^2.4.7",
+    "jsdom": "^25.0.0",
     "trakt.tv": "^8.2.0",
-    "winston": "^3.13.0"
+    "winston": "^3.14.2"
   }
 }
