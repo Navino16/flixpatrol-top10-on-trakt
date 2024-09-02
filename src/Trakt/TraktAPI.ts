@@ -209,7 +209,7 @@ export class TraktAPI {
       fields: 'title',
     });
 
-    // eslint-disable-next-line no-restricted-syntax
+     
     for (const item of items) {
       if (searchType === 'movie' && item.movie?.year === year) {
         return item;

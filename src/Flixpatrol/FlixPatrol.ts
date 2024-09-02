@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop */
+ 
 import type { AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
@@ -220,7 +220,7 @@ export class FlixPatrol {
 
   private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
     const traktTVIds: TraktTVIds = [];
-    // eslint-disable-next-line no-restricted-syntax
+     
     for (const result of results) {
       const id = await this.getTraktTVId(result, type, trakt);
       if (id) {

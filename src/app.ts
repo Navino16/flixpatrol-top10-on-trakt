@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop */
+ 
 import type { CacheOptions } from './Flixpatrol';
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils } from './Utils';
@@ -19,7 +19,7 @@ const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI(traktOptions);
 
 trakt.connect().then(async () => {
-  // eslint-disable-next-line no-restricted-syntax
+   
   for (const top10 of flixPatrolTop10) {
     let listName: string;
     if (top10.name) {
@@ -46,7 +46,7 @@ trakt.connect().then(async () => {
     }
   }
 
-  // eslint-disable-next-line no-restricted-syntax
+   
   for (const popular of flixPatrolPopulars) {
     const listName = `${popular.platform}-popular`;
 
