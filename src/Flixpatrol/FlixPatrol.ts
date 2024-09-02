@@ -153,7 +153,7 @@ export class FlixPatrol {
   ): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
     const match = dom.window.document.evaluate(
-      '//table[@class="card-table"]//a[@class="flex group items-center"]/@href',
+      '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href',
       dom.window.document,
       null,
       dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
