@@ -14,7 +14,7 @@
 [![Static Badge](https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
 [![Static Badge](https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
 
-This tool get TODAY top 10 from flixpatrol and push the result on trakt list (useful for syncing with PMM)
+This tool get TODAY top 10 from flixpatrol and push the result on trakt list (useful for syncing with Kometa)
 
 ⚠️ Running on your own risk of being IP banned from FlixPatrol
 
@@ -53,7 +53,7 @@ To get started with Flixpatrol Top 10 on Trakt for Linux / macOS, follow these s
    ````
 2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
     ````shell
-    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.4.0/flixpatrol-top10-linux
+    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.4.1/flixpatrol-top10-linux
     ````
 3. Make the downloaded binary executable
     ````shell
