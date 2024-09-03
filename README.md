@@ -14,7 +14,7 @@
 [![Static Badge](https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
 [![Static Badge](https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
 
-This tool get TODAY top 10 from flixpatrol and push the result on trakt list (useful for syncing with PMM)
+This tool get TODAY top 10 from flixpatrol and push the result on trakt list (useful for syncing with Kometa)
 
 ⚠️ Running on your own risk of being IP banned from FlixPatrol
 
