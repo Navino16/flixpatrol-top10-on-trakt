@@ -2,7 +2,7 @@
 import type { CacheOptions } from './Flixpatrol';
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils } from './Utils';
-import type { FlixPatrolPopular, FlixPatrolTop10 } from './Utils/GetAndValidateConfigs';
+import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from './Utils/GetAndValidateConfigs';
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import type { TraktAPIOptions } from './Trakt';
 import { TraktAPI } from './Trakt';
@@ -14,11 +14,13 @@ const cacheOptions: CacheOptions = GetAndValidateConfigs.getCacheOptions();
 const traktOptions: TraktAPIOptions = GetAndValidateConfigs.getTraktOptions();
 const flixPatrolTop10: FlixPatrolTop10[] = GetAndValidateConfigs.getFlixPatrolTop10();
 const flixPatrolPopulars: FlixPatrolPopular[] = GetAndValidateConfigs.getFlixPatrolPopular();
+const flixPatrolMostWatched: FlixPatrolMostWatched = GetAndValidateConfigs.getFlixPatrolMostWatched();
 
 logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
 logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
 logger.silly(`flixPatrolTop10: ${JSON.stringify(flixPatrolTop10)}`);
 logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
+logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
 
 const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI(traktOptions);
