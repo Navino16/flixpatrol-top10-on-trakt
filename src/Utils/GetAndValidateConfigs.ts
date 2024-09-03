@@ -19,6 +19,8 @@ export interface FlixPatrolPopular {
   platform: FlixPatrolTop10Platform;
   privacy: TraktPrivacy;
   limit: number;
+  type: string;
+  name?: string;
 }
 
 export class GetAndValidateConfigs {
@@ -171,6 +173,26 @@ export class GetAndValidateConfigs {
         }
         if (flixPatrolPopularConfig.limit < 1 || flixPatrolPopularConfig.limit > 100) {
           logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> limit should be a value between 1 and 100`);
+          process.exit(1);
+        }
+
+        // Check if type property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'type')) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> type not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolPopularConfig.type !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> not a valid string`);
+          process.exit(1);
+        }
+        if (!FlixPatrol.isFlixPatrolType(flixPatrolPopularConfig.type)) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> ${flixPatrolPopularConfig.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
+          process.exit(1);
+        }
+
+        // Check if optional name property is valid
+        if (typeof flixPatrolPopularConfig.name !== 'string' && flixPatrolPopularConfig.name !== undefined) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].name" -> not a valid string`);
           process.exit(1);
         }
       });
