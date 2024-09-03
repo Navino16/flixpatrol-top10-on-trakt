@@ -53,21 +53,30 @@ trakt.connect().then(async () => {
 
 
   for (const popular of flixPatrolPopulars) {
-    const listName = `${popular.platform}-popular`;
+    let listName: string;
+    if (popular.name) {
+      listName = popular.name.toLowerCase().replace(/\s+/g, '-');
+    } else {
+      listName = `${popular.platform}-popular`;
+    }
 
-    logger.info('==============================');
-    logger.info(`Getting movies for ${listName}`);
-    const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
-    logger.debug(`${popular.platform} movies: ${popularMovies}`);
-    await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
-    logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
+    if (popular.type === 'movies' || popular.type === 'both') {
+      logger.info('==============================');
+      logger.info(`Getting movies for ${listName}`);
+      const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
+      logger.debug(`${popular.platform} movies: ${popularMovies}`);
+      await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
+      logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
+    }
 
-    logger.info('-----------------------------');
-    logger.info(`Getting shows for ${listName}`);
-    const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
-    logger.debug(`${popular.platform} shows: ${popularShows}`);
-    await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
-    logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
+    if (popular.type === 'shows' || popular.type === 'both') {
+      logger.info('==============================');
+      logger.info(`Getting shows for ${listName}`);
+      const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
+      logger.debug(`${popular.platform} shows: ${popularShows}`);
+      await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
+      logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
+    }
   }
 });
 
