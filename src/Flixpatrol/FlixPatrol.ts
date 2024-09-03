@@ -102,7 +102,7 @@ export class FlixPatrol {
    * @private
    * @param path
    */
-  private async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
+  public async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
     const url = `${this.options.url}/${path}`;
     logger.silly(`Accessing URL: ${url}`);
     const axiosConfig: AxiosRequestConfig = {
@@ -252,8 +252,12 @@ export class FlixPatrol {
     type: FlixPatrolType,
     config: FlixPatrolTop10,
     trakt: TraktAPI,
+    html: string | null = null,
   ): Promise<TraktTVIds> {
-    const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+    if (html === null) {
+      html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+    }
+
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
       process.exit(1);

@@ -33,10 +33,12 @@ trakt.connect().then(async () => {
       listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     }
 
+    const html = await flixpatrol.getFlixPatrolHTMLPage(`/top10/${top10.platform}/${top10.location}`);
+
     if (top10.type === 'movies' || top10.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting movies for ${listName}`);
-      const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt);
+      const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt, html);
       logger.debug(`${top10.platform} movies: ${top10Movies}`);
       await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
       logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
@@ -44,7 +46,7 @@ trakt.connect().then(async () => {
     if (top10.type === 'shows' || top10.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting shows for ${listName}`);
-      const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt);
+      const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt, html);
       logger.debug(`${top10.platform} shows: ${top10Shows}`);
       await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
       logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
