@@ -1,4 +1,4 @@
- 
+
 import type { CacheOptions } from './Flixpatrol';
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils } from './Utils';
@@ -15,11 +15,16 @@ const traktOptions: TraktAPIOptions = GetAndValidateConfigs.getTraktOptions();
 const flixPatrolTop10: FlixPatrolTop10[] = GetAndValidateConfigs.getFlixPatrolTop10();
 const flixPatrolPopulars: FlixPatrolPopular[] = GetAndValidateConfigs.getFlixPatrolPopular();
 
+logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
+logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
+logger.silly(`flixPatrolTop10: ${JSON.stringify(flixPatrolTop10)}`);
+logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
+
 const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI(traktOptions);
 
 trakt.connect().then(async () => {
-   
+
   for (const top10 of flixPatrolTop10) {
     let listName: string;
     if (top10.name) {
@@ -46,7 +51,7 @@ trakt.connect().then(async () => {
     }
   }
 
-   
+
   for (const popular of flixPatrolPopulars) {
     const listName = `${popular.platform}-popular`;
 

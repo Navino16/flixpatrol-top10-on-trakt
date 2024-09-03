@@ -83,6 +83,7 @@ export class TraktAPI {
         process.exit(1);
       }
     }
+    logger.silly(`Trakt list: ${JSON.stringify(list)}`)
     return list;
   }
 
@@ -95,6 +96,7 @@ export class TraktAPI {
       logger.error(`Trakt Error (listItems): ${(err as Error).message}`);
       process.exit(1);
     }
+    logger.silly(`Trakt list items: ${JSON.stringify(items)}`)
     return items;
   }
 
@@ -122,6 +124,7 @@ export class TraktAPI {
       const id = TraktAPI.getItemTraktId(item);
       toRemove.push({ ids: { trakt: id } });
     });
+    logger.silly(`Trakt id items to remove: ${JSON.stringify(toRemove)}`)
     const body: UsersListItemsAddRemove = {
       id: `${list.ids.trakt}`,
       username: 'me',
@@ -152,6 +155,7 @@ export class TraktAPI {
     traktTVIDs.forEach((traktTVID) => {
       toAdd.push({ ids: { trakt: traktTVID } });
     });
+    logger.silly(`Trakt id items to add: ${JSON.stringify(toAdd)}`)
     const body: UsersListItemsAddRemove = {
       id: `${list.ids.trakt}`,
       username: 'me',
@@ -209,7 +213,8 @@ export class TraktAPI {
       fields: 'title',
     });
 
-     
+    logger.silly(`Items found on Trakt: ${JSON.stringify(items)}`)
+
     for (const item of items) {
       if (searchType === 'movie' && item.movie?.year === year) {
         return item;

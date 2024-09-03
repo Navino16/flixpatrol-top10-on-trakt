@@ -1,4 +1,4 @@
- 
+
 import type { AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
@@ -104,6 +104,7 @@ export class FlixPatrol {
    */
   private async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
     const url = `${this.options.url}/${path}`;
+    logger.silly(`Accessing URL: ${url}`);
     const axiosConfig: AxiosRequestConfig = {
       headers: {
         'User-Agent': this.options.agent,
@@ -111,6 +112,7 @@ export class FlixPatrol {
     };
 
     const res = await axios.get(url, axiosConfig);
+    logger.silly(`Status code: ${res.status}`);
     if (res.status !== 200) {
       return null;
     }
@@ -131,6 +133,8 @@ export class FlixPatrol {
       const id = type === 'Movies' ? 1 : 2;
       expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
     }
+
+    logger.silly(`Xpath expression for top10 page: ${expression}`)
     const match = dom.window.document.evaluate(
       expression,
       dom.window.document,
@@ -145,6 +149,7 @@ export class FlixPatrol {
       results.push(p.textContent as string);
       p = match.iterateNext();
     }
+    logger.silly(`Xpath matches: ${results}`)
     return results;
   }
 
@@ -152,8 +157,10 @@ export class FlixPatrol {
     html: string,
   ): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
+    const expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
+    logger.silly(`Xpath expression for popular page: ${expression}`)
     const match = dom.window.document.evaluate(
-      '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href',
+      expression,
       dom.window.document,
       null,
       dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
@@ -166,6 +173,7 @@ export class FlixPatrol {
       results.push(p.textContent as string);
       p = match.iterateNext();
     }
+    logger.silly(`Xpath matches: ${results}`);
     return results;
   }
 
@@ -174,6 +182,7 @@ export class FlixPatrol {
     if (this.tvCache !== null && this.movieCache !== null) {
       const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
       if (id) {
+        logger.silly(`Found ${result} in cache. Id: ${id}`);
         return id;
       }
     }
@@ -184,21 +193,27 @@ export class FlixPatrol {
     }
 
     const dom = new JSDOM(html);
+    const titleExpression = '//div[@class="mb-6"]//h1[@class="mb-3"]/text()';
+    logger.silly(`Xpath expression for getting release title: ${titleExpression}`)
     const title = dom.window.document.evaluate(
-      '//div[@class="mb-6"]//h1[@class="mb-3"]/text()',
+      titleExpression,
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
     ).stringValue;
+    logger.silly(`Release title: ${title}`);
 
+    const yearExpression = '//div[@class="mb-6"]//span[5]/span/text()';
+    logger.silly(`Xpath expression for getting release year: ${yearExpression}`)
     const year = dom.window.document.evaluate(
-      '//div[@class="mb-6"]//span[5]/span/text()',
+      yearExpression,
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
     ).stringValue;
+    logger.silly(`Release year: ${year}`);
 
     let item;
     let id;
@@ -210,6 +225,9 @@ export class FlixPatrol {
       id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
     }
 
+    logger.silly(`Matched item: ${JSON.stringify(item)}`);
+    logger.silly(`Trakt id: ${id}`);
+
     if (id && this.tvCache !== null && this.movieCache !== null) {
       logger.debug(`New item added in ${type} cache`);
       const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
@@ -220,7 +238,7 @@ export class FlixPatrol {
 
   private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
     const traktTVIds: TraktTVIds = [];
-     
+
     for (const result of results) {
       const id = await this.getTraktTVId(result, type, trakt);
       if (id) {
