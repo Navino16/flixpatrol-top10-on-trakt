@@ -53,7 +53,7 @@ To get started with Flixpatrol Top 10 on Trakt for Linux / macOS, follow these s
    ````
 2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
     ````shell
-    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.3.1/flixpatrol-top10-linux
+    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.4.0/flixpatrol-top10-linux
     ````
 3. Make the downloaded binary executable
     ````shell
