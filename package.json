@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
