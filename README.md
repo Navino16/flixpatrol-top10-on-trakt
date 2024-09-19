@@ -53,7 +53,7 @@ To get started with Flixpatrol Top 10 on Trakt for Linux / macOS, follow these s
    ````
 2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
     ````shell
-    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.4.1/flixpatrol-top10-linux
+    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/download/v2.5.1/flixpatrol-top10-linux
     ````
 3. Make the downloaded binary executable
     ````shell
@@ -128,7 +128,7 @@ If there is any configuration error, the tool will exit whit information about t
 | flixPatrolMostWatched.privacy      | The privacy of the generated Trakt list                                                                                                | Yes       | private, public                                                                                                                                 | private                                      |
 | flixPatrolMostWatched.type         | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
 | flixPatrolMostWatched.limit        | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number between 1 and 50 (included)                                                                                                              | 50                                           |
-| flixPatrolMostWatched.year         | Year of the most watched list                                                                                                          | Yes       | Number between 2023 current year (included)                                                                                                     | 50                                           |
+| flixPatrolMostWatched.year         | Year of the most watched list. Check https://flixpatrol.com/most-watched/ to see available list.                                       | Yes       | Number between 2023 current year (included)                                                                                                     | 50                                           |
 | flixPatrolMostWatched.name         | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | most-watched                                 |
 | flixPatrolMostWatched.premiere     | Year of movie/show release. It will only return most watched movies/shows of this year. If omitted, all movie/shows are returned       | No        | Year between 1980 and current year (included)                                                                                                   | All                                          |
 | flixPatrolMostWatched.country      | Release country of movie/show. It will only return most watched movies/shows of this country. If omitted, all movie/shows are returned | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          | All                                          |
@@ -196,12 +196,15 @@ If there is any configuration error, the tool will exit whit information about t
       "limit": 100
     }
   ],
-  "FlixPatrolMostWatched": {
-    "enabled": true,
-    "privacy": "public",
-    "limit": 50,
-    "type": "both"
-  },
+  "FlixPatrolMostWatched": [
+    {
+      "enabled": true,
+      "privacy": "public",
+      "year": 2023,
+      "limit": 50,
+      "type": "both"
+    }
+  ],
   "Trakt": {
     "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
