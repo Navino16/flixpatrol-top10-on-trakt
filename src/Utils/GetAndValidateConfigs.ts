@@ -28,10 +28,12 @@ export interface FlixPatrolMostWatched {
   privacy: TraktPrivacy;
   type: string;
   limit: number;
+  year: number;
   name?: string;
   premiere?: number;
   country?: FlixPatrolTop10Location;
   original?: boolean;
+  orderByViews?: boolean;
 }
 
 export class GetAndValidateConfigs {
@@ -214,104 +216,127 @@ export class GetAndValidateConfigs {
     return flixPatrolPopularConfigs as FlixPatrolPopular[];
   }
 
-  public static getFlixPatrolMostWatched(): FlixPatrolMostWatched {
-    let flixPatrolMostWatchedConfig: Partial<FlixPatrolMostWatched>;
+  public static getFlixPatrolMostWatched(): FlixPatrolMostWatched[] {
+    let flixPatrolMostWatchedConfigs: Partial<FlixPatrolMostWatched>[];
+
+    const currentYear = new Date().getFullYear();
 
     try {
-      flixPatrolMostWatchedConfig = config.get('FlixPatrolMostWatched');
+      flixPatrolMostWatchedConfigs = config.get('FlixPatrolMostWatched');
 
-      // Check if enabled property is valid
-      if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'enabled')) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.enabled" -> property not found`);
-        process.exit(1);
-      }
-      if (typeof flixPatrolMostWatchedConfig.enabled !== 'boolean') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.enabled" -> not a valid boolean`);
-        process.exit(1);
-      }
+      flixPatrolMostWatchedConfigs.forEach((flixPatrolMostWatchedConfig, index) => {
+        // Check if enabled property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'enabled')) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].enabled" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolMostWatchedConfig.enabled !== 'boolean') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].enabled" -> not a valid boolean`);
+          process.exit(1);
+        }
 
-      // Check if privacy property is valid
-      if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'privacy')) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.privacy" -> property not found`);
-        process.exit(1);
-      }
-      if (typeof flixPatrolMostWatchedConfig.privacy !== 'string') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.privacy" -> not a valid string`);
-        process.exit(1);
-      }
-      if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolMostWatchedConfig.privacy)) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.privacy" -> ${flixPatrolMostWatchedConfig.privacy} is not a valid privacy`);
-        process.exit(1);
-      }
+        // Check if privacy property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'privacy')) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolMostWatchedConfig.privacy !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> not a valid string`);
+          process.exit(1);
+        }
+        if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolMostWatchedConfig.privacy)) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> ${flixPatrolMostWatchedConfig.privacy} is not a valid privacy`);
+          process.exit(1);
+        }
 
-      // Check if limit property is valid
-      if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'limit')) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.limit" -> property not found`);
-        process.exit(1);
-      }
-      if (typeof flixPatrolMostWatchedConfig.limit !== 'number') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.limit" -> not a valid number`);
-        process.exit(1);
-      }
-      if (flixPatrolMostWatchedConfig.limit < 1 || flixPatrolMostWatchedConfig.limit > 50) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.limit" -> limit should be a value between 1 and 50`);
-        process.exit(1);
-      }
+        // Check if limit property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'limit')) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolMostWatchedConfig.limit !== 'number') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> not a valid number`);
+          process.exit(1);
+        }
+        if (flixPatrolMostWatchedConfig.limit < 1 || flixPatrolMostWatchedConfig.limit > 50) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> limit should be a value between 1 and 50`);
+          process.exit(1);
+        }
 
-      // Check if type property is valid
-      if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'type')) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.type" -> type not found`);
-        process.exit(1);
-      }
-      if (typeof flixPatrolMostWatchedConfig.type !== 'string') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.type" -> not a valid string`);
-        process.exit(1);
-      }
-      if (!FlixPatrol.isFlixPatrolType(flixPatrolMostWatchedConfig.type)) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.type" -> ${flixPatrolMostWatchedConfig.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
-        process.exit(1);
-      }
+        // Check if year property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'year')) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> property not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolMostWatchedConfig.year !== 'number') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> not a valid number`);
+          process.exit(1);
+        }
+        if (flixPatrolMostWatchedConfig.year < 2023 || flixPatrolMostWatchedConfig.year > currentYear) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> year should be a value between 2023 and ${currentYear}`);
+          process.exit(1);
+        }
 
-      // Check if optional premiere property is valid
-      if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'premiere') && typeof flixPatrolMostWatchedConfig.premiere !== 'number') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.premiere" -> not a valid number`);
-        process.exit(1);
-      }
-      const maxYear = new Date().getFullYear() - 1;
-      if (flixPatrolMostWatchedConfig.premiere !== undefined
-        && (flixPatrolMostWatchedConfig.premiere < 1980 || flixPatrolMostWatchedConfig.premiere > maxYear)) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.premiere" -> limit should be a value between 1980 and ${maxYear}`);
-        process.exit(1);
-      }
+        // Check if type property is valid
+        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'type')) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> type not found`);
+          process.exit(1);
+        }
+        if (typeof flixPatrolMostWatchedConfig.type !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> not a valid string`);
+          process.exit(1);
+        }
+        if (!FlixPatrol.isFlixPatrolType(flixPatrolMostWatchedConfig.type)) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> ${flixPatrolMostWatchedConfig.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
+          process.exit(1);
+        }
 
-      // Check if optional country property is valid
-      if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'country') && typeof flixPatrolMostWatchedConfig.country !== 'string') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.country" -> not a valid string`);
-        process.exit(1);
-      }
-      if (flixPatrolMostWatchedConfig.country !== undefined
-        && !FlixPatrol.isFlixPatrolTop10Location(flixPatrolMostWatchedConfig.country)) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.country" -> ${flixPatrolMostWatchedConfig.country} is not a valid location`);
-        process.exit(1);
-      }
+        // Check if optional premiere property is valid
+        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'premiere') && typeof flixPatrolMostWatchedConfig.premiere !== 'number') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].premiere" -> not a valid number`);
+          process.exit(1);
+        }
+        if (flixPatrolMostWatchedConfig.premiere !== undefined
+          && (flixPatrolMostWatchedConfig.premiere < 1980 || flixPatrolMostWatchedConfig.premiere > currentYear)) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].premiere" -> limit should be a value between 1980 and ${currentYear}`);
+          process.exit(1);
+        }
 
-      // Check if optional original property is valid
-      if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'original') && typeof flixPatrolMostWatchedConfig.original !== 'boolean') {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.original" -> not a valid boolean`);
-        process.exit(1);
-      }
+        // Check if optional country property is valid
+        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'country') && typeof flixPatrolMostWatchedConfig.country !== 'string') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].country" -> not a valid string`);
+          process.exit(1);
+        }
+        if (flixPatrolMostWatchedConfig.country !== undefined
+          && !FlixPatrol.isFlixPatrolTop10Location(flixPatrolMostWatchedConfig.country)) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].country" -> ${flixPatrolMostWatchedConfig.country} is not a valid location`);
+          process.exit(1);
+        }
 
-      // Check if optional name property is valid
-      if (typeof flixPatrolMostWatchedConfig.name !== 'string' && flixPatrolMostWatchedConfig.name !== undefined) {
-        logger.error(`Configuration Error: Property "FlixPatrolMostWatched.name" -> not a valid string`);
-        process.exit(1);
-      }
+        // Check if optional original property is valid
+        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'original') && typeof flixPatrolMostWatchedConfig.original !== 'boolean') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].original" -> not a valid boolean`);
+          process.exit(1);
+        }
+
+        // Check if optional original property is valid
+        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'orderByViews') && typeof flixPatrolMostWatchedConfig.orderByViews !== 'boolean') {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].orderByViews" -> not a valid boolean`);
+          process.exit(1);
+        }
+
+        // Check if optional name property is valid
+        if (typeof flixPatrolMostWatchedConfig.name !== 'string' && flixPatrolMostWatchedConfig.name !== undefined) {
+          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].name" -> not a valid string`);
+          process.exit(1);
+        }
+      });
     } catch (err) {
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
 
-    return flixPatrolMostWatchedConfig as FlixPatrolMostWatched;
+    return flixPatrolMostWatchedConfigs as FlixPatrolMostWatched[];
   }
 
   public static getTraktOptions(): TraktAPIOptions {
