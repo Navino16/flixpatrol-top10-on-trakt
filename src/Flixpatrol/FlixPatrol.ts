@@ -6,7 +6,7 @@ import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger } from '../Utils';
 import type { TraktTVId, TraktTVIds } from '../Trakt';
 import { TraktAPI } from '../Trakt';
-import type { FlixPatrolPopular, FlixPatrolTop10 } from '../Utils/GetAndValidateConfigs';
+import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from '../Utils/GetAndValidateConfigs';
 
 export interface FlixPatrolOptions {
   url?: string;
@@ -103,7 +103,7 @@ export class FlixPatrol {
    * @param path
    */
   public async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
-    const url = `${this.options.url}/${path}`;
+    const url = `${this.options.url}${path}`;
     logger.silly(`Accessing URL: ${url}`);
     const axiosConfig: AxiosRequestConfig = {
       headers: {
@@ -125,7 +125,6 @@ export class FlixPatrol {
     platform: FlixPatrolTop10Platform,
     html: string,
   ): FlixPatrolMatchResult[] {
-    const dom = new JSDOM(html);
     let expression;
     if (location !== 'world') {
       expression = `//h3[text() = "TOP 10 ${type}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
@@ -134,31 +133,32 @@ export class FlixPatrol {
       expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
     }
 
-    logger.silly(`Xpath expression for top10 page: ${expression}`)
-    const match = dom.window.document.evaluate(
-      expression,
-      dom.window.document,
-      null,
-      dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
-      null,
-    );
-    const results: string[] = [];
-
-    let p = match.iterateNext();
-    while (p !== null) {
-      results.push(p.textContent as string);
-      p = match.iterateNext();
-    }
-    logger.silly(`Xpath matches: ${results}`)
-    return results;
+    return FlixPatrol.parsePage(expression, html, 'top10');
   }
 
   private static parsePopularPage(
     html: string,
   ): FlixPatrolMatchResult[] {
-    const dom = new JSDOM(html);
     const expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
-    logger.silly(`Xpath expression for popular page: ${expression}`)
+
+    return FlixPatrol.parsePage(expression, html, 'popular');
+  }
+
+  private static parseMostWatchedPage(
+    html: string,
+    config: FlixPatrolMostWatched
+  ): FlixPatrolMatchResult[] {
+    let expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
+    if (config.original !== undefined && config.original) {
+      expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href'
+    }
+
+    return FlixPatrol.parsePage(expression, html, 'most-watched');
+  }
+
+  private static parsePage(expression: string, html: string, pageName: string): FlixPatrolMatchResult[] {
+    const dom = new JSDOM(html);
+    logger.silly(`Xpath expression for ${pageName} page: ${expression}`)
     const match = dom.window.document.evaluate(
       expression,
       dom.window.document,
@@ -287,6 +287,36 @@ export class FlixPatrol {
       process.exit(1);
     }
     let results = FlixPatrol.parsePopularPage(html);
+    results = results.slice(0, config.limit);
+    return this.convertResultsToIds(results, type, trakt);
+  }
+
+  public async getMostWatched(
+    type: FlixPatrolType,
+    config: FlixPatrolMostWatched,
+    trakt: TraktAPI,
+  ): Promise<TraktTVIds> {
+    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
+    let url = `/most-watched/${config.year}/${urlType}`;
+    if (config.country !== undefined) {
+      url += `-from-${config.country}`;
+    }
+    if (config.premiere !== undefined && config.premiere) {
+      url += `-${config.premiere}`;
+    }
+    if (type !== 'Movies') {
+      url += '-grouped';
+    }
+    if (config.orderByViews !== undefined && config.orderByViews) {
+      url += '/by-views';
+    }
+
+    const html = await this.getFlixPatrolHTMLPage(url);
+    if (html === null) {
+      logger.error('FlixPatrol Error: unable to get FlixPatrol most-watched page');
+      process.exit(1);
+    }
+    let results = FlixPatrol.parseMostWatchedPage(html, config);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
