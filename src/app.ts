@@ -89,10 +89,10 @@ trakt.connect().then(async () => {
       if (mostWatched.name) {
         listName = mostWatched.name.toLowerCase().replace(/\s+/g, '-');
       } else {
-        listName = 'most-watched-netflix';
+        listName = `most-watched-${mostWatched.year}-netflix`;
         listName = mostWatched.original !== undefined ? `${listName}-original` : listName;
-        listName = mostWatched.premiere !== undefined ? `${listName}-${mostWatched.premiere}` : listName;
-        listName = mostWatched.country !== undefined ? `${listName}-${mostWatched.country}` : listName;
+        listName = mostWatched.premiere !== undefined ? `${listName}-${mostWatched.premiere}-premiere` : listName;
+        listName = mostWatched.country !== undefined ? `${listName}-from-${mostWatched.country}` : listName;
       }
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
