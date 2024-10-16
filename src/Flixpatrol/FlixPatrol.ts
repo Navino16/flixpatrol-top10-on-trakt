@@ -1,5 +1,5 @@
 
-import type { AxiosRequestConfig } from 'axios';
+import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
@@ -111,12 +111,17 @@ export class FlixPatrol {
       },
     };
 
-    const res = await axios.get(url, axiosConfig);
-    logger.silly(`Status code: ${res.status}`);
-    if (res.status !== 200) {
+    try {
+      const res = await axios.get(url, axiosConfig);
+      logger.silly(`Status code: ${res.status}`);
+      if (res.status !== 200) {
+        return null;
+      }
+      return res.data;
+    } catch (error) {
+      logger.error(`Error getting flixPatrolHTMLPage: ${error}`);
       return null;
     }
-    return res.data;
   }
 
   private static parseTop10Page(
