@@ -40,6 +40,6 @@
     "file-system-cache": "^2.4.7",
     "jsdom": "^25.0.1",
     "trakt.tv": "^8.2.0",
-    "winston": "^3.15.0"
+    "winston": "^3.17.0"
   }
 }
