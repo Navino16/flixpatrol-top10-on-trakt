@@ -132,10 +132,10 @@ export class FlixPatrol {
   ): FlixPatrolMatchResult[] {
     let expression;
     if (location !== 'world') {
-      expression = `//h3[text() = "TOP 10 ${type}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
+      expression = `//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
     } else {
-      const id = type === 'Movies' ? 1 : 2;
-      expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
+      const id = type === 'Movies' ? 'movies' : 'tv-shows';
+      expression = `//div[@id="toc-${platform}-${id}"]//table//a[contains(@class, "hover:underline")]/@href`;
     }
 
     return FlixPatrol.parsePage(expression, html, 'top10');
