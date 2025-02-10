@@ -38,14 +38,11 @@ jobs:
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - name: Install project dependencies
         run: npm ci
-      - name: Lint Code Base
-        uses: github/super-linter@v7
+      - name: Run lint
+        run: npm run lint
+      - name: Check git leak
+        uses: super-linter/super-linter@v7.2.1
         env:
           VALIDATE_ALL_CODEBASE: true
-          LINTER_RULES_PATH: .
-          VALIDATE_JAVASCRIPT_ES: true
-          VALIDATE_TYPESCRIPT_ES: true
           VALIDATE_GITLEAKS: true
-          JAVASCRIPT_ES_CONFIG_FILE: eslint.config.mjs
-          TYPESCRIPT_ES_CONFIG_FILE: eslint.config.mjs
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

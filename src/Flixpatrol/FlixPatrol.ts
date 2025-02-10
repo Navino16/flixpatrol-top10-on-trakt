@@ -1,5 +1,5 @@
 
-import type { AxiosRequestConfig } from 'axios';
+import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
@@ -111,12 +111,17 @@ export class FlixPatrol {
       },
     };
 
-    const res = await axios.get(url, axiosConfig);
-    logger.silly(`Status code: ${res.status}`);
-    if (res.status !== 200) {
+    try {
+      const res = await axios.get(url, axiosConfig);
+      logger.silly(`Status code: ${res.status}`);
+      if (res.status !== 200) {
+        return null;
+      }
+      return res.data;
+    } catch (error) {
+      logger.error(`Error getting flixPatrolHTMLPage: ${error}`);
       return null;
     }
-    return res.data;
   }
 
   private static parseTop10Page(
@@ -127,10 +132,10 @@ export class FlixPatrol {
   ): FlixPatrolMatchResult[] {
     let expression;
     if (location !== 'world') {
-      expression = `//h3[text() = "TOP 10 ${type}"]/following-sibling::div//a[@class="hover:underline"]/@href`;
+      expression = `//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
     } else {
-      const id = type === 'Movies' ? 1 : 2;
-      expression = `//div[@id="${platform}-${id}"]//a[contains(@class, "hover:underline")]/@href`;
+      const id = type === 'Movies' ? 'movies' : 'tv-shows';
+      expression = `//div[@id="toc-${platform}-${id}"]//table//a[contains(@class, "hover:underline")]/@href`;
     }
 
     return FlixPatrol.parsePage(expression, html, 'top10');
