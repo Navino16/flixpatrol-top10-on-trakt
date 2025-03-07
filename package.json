@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "npm run build && rm -rf bin/ &&  npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node22-linux-x64,node22-macos-x64,node22-win-x64 -o bin/flixpatrol-top10"
+    "package": "npm run build && rm -rf bin/ &&  npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node22-linux-x64,node22-macos-x64,node22-win-x64 --public -o bin/flixpatrol-top10"
   },
   "keywords": [
     "Flixpatrol",
