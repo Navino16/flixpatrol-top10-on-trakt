@@ -45,9 +45,12 @@ const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', '
   'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia', 'zimbabwe'];
 export type FlixPatrolTop10Location = (typeof flixpatrolTop10Platform)[number];
 
-const flixpatrolTop10Platform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-prime', 'apple-tv', 'chili',
-  'freevee', 'google', 'hulu', 'itunes', 'osn', 'paramount-plus', 'rakuten-tv', 'shahid', 'star-plus', 'starz',
-  'viaplay', 'vudu'];
+const flixpatrolTop10Platform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
+  'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus', 'francetv',
+  'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema', 'lemino',
+  'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv', 'raiplay',
+  'rakuten-tv', 'rtl-plus', 'shahid', 'starz', 'streamz', 'tf1', 'tod', 'tubi', 'u-next', 'viaplay', 'videoland',
+  'viki', 'vix', 'voyo', 'vudu', 'watchit', 'wavve', 'wow', 'zee5'];
 export type FlixPatrolTop10Platform = (typeof flixpatrolTop10Platform)[number];
 
 const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
