@@ -35,7 +35,7 @@
     "typescript-eslint": "^8.26.0"
   },
   "dependencies": {
-    "axios": "^1.7.9",
+    "axios": "^1.8.3",
     "config": "^3.3.12",
     "file-system-cache": "^2.4.7",
     "jsdom": "^26.0.0",
