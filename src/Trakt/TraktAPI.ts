@@ -196,7 +196,7 @@ export class TraktAPI {
       await this.addItemsToList(list, traktTVIDs, type);
       await Utils.sleep(1000);
       const dateOptions: Intl.DateTimeFormatOptions = {
-        weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
+        weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
       };
       const currentDate = new Date().toLocaleString(undefined, dateOptions); // Get the current date and time
       const updatedString = `Last Updated: ${currentDate}`; // Concatenate the string with the current date and time

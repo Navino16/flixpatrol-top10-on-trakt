@@ -201,7 +201,7 @@ export class FlixPatrol {
     }
 
     const dom = new JSDOM(html);
-    const titleExpression = '//div[@class="mb-6"]//h1[@class="mb-3"]/text()';
+    const titleExpression = '//div[@class="mb-6"]//h1[@class="mb-4"]/text()';
     logger.silly(`Xpath expression for getting release title: ${titleExpression}`)
     const title = dom.window.document.evaluate(
       titleExpression,
