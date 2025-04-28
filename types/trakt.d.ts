@@ -286,7 +286,7 @@ declare module 'trakt.tv' {
 
     search: Search;
 
-    constructor(settings: TraktOptions, debug?: boolean = false);
+    constructor(settings: TraktOptions, debug?: boolean);
     get_url(): string;
     exchange_code(code: string, state?: unknown): Promise<TraktAccess>;
     get_codes(): Promise<TraktDeviceCode>;
@@ -297,6 +297,6 @@ declare module 'trakt.tv' {
     revoke_token(): void;
   }
 
-  declare const Trakt: Trakt;
+  // declare const Trakt: Trakt;
   export default Trakt;
 }
