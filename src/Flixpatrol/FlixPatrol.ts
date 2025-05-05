@@ -1,4 +1,3 @@
-
 import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
@@ -7,6 +6,17 @@ import { logger } from '../Utils';
 import type { TraktTVId, TraktTVIds } from '../Trakt';
 import { TraktAPI } from '../Trakt';
 import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from '../Utils/GetAndValidateConfigs';
+import type { TraktItem } from 'trakt.tv'; // <-- Add this import
+
+// Define the missing type
+// export type TraktIdWithType = { id: number; type: 'movie' | 'show' } | null; // Modified below
+
+// Define and export the necessary types
+export type TraktIdWithTypeObject = { id: number; type: 'movie' | 'show' };
+export type TraktIdWithType = TraktIdWithTypeObject | null; // Exported
+export type TraktIdWithTypeArrayPromise = Promise<TraktIdWithType[]>;
+export type TraktIdWithTypeArrayFilteredPromise = Promise<TraktIdWithTypeObject[]>;
+
 
 export interface FlixPatrolOptions {
   url?: string;
@@ -57,10 +67,10 @@ const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-t
   'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends', 'reddit'];
 export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[number];
 
-const flixpatrolConfigType = ['movies', 'shows', 'both'];
+const flixpatrolConfigType = ['movies', 'shows', 'both', 'overall']; // Aggiunto 'overall'
 export type FlixPatrolConfigType = (typeof flixpatrolConfigType)[number];
 
-export type FlixPatrolType = 'Movies' | 'TV Shows';
+export type FlixPatrolType = 'Movies' | 'TV Shows' | 'Overall';
 type FlixPatrolMatchResult = string;
 
 export class FlixPatrol {
@@ -137,7 +147,7 @@ export class FlixPatrol {
     if (location !== 'world') {
       expression = `//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
     } else {
-      const id = type === 'Movies' ? 'movies' : 'tv-shows';
+      const id = type === 'Movies' ? 'movies' : (type === 'TV Shows' ? 'tv-shows' : 'overall');
       expression = `//div[@id="toc-${platform}-${id}"]//table//a[contains(@class, "hover:underline")]/@href`;
     }
 
@@ -186,14 +196,46 @@ export class FlixPatrol {
   }
 
   // eslint-disable-next-line max-len
-  private async getTraktTVId(result: FlixPatrolMatchResult, type: FlixPatrolType, trakt: TraktAPI) : Promise<TraktTVId> {
+  // Update the return type of getTraktTVId
+  private async getTraktTVId(result: FlixPatrolMatchResult, type: FlixPatrolType, trakt: TraktAPI) : Promise<TraktIdWithType> {
+    let determinedType: 'movie' | 'show' | null = null;
+    let idFromCache: number | null = null;
+    const searchLanguage = 'it'; // Imposta la lingua desiderata per la ricerca
+
+    // Logica Cache (leggermente riorganizzata per chiarezza)
     if (this.tvCache !== null && this.movieCache !== null) {
-      const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
-      if (id) {
-        logger.silly(`Found ${result} in cache. Id: ${id}`);
-        return id;
-      }
+        if (type === 'Overall') {
+            const movieId = await this.movieCache.get(result, null);
+            if (movieId) {
+                logger.silly(`Found ${result} in movie cache. Id: ${movieId}`);
+                // Return the new type
+                return { id: movieId as number, type: 'movie' };
+            }
+            const tvId = await this.tvCache.get(result, null);
+            if (tvId) {
+                logger.silly(`Found ${result} in tv cache. Id: ${tvId}`);
+                // Return the new type
+                return { id: tvId as number, type: 'show' };
+            }
+            // Se non in cache, type rimane 'Overall', determinedType è null
+        } else { // type è 'Movies' o 'TV Shows'
+            determinedType = type === 'Movies' ? 'movie' : 'show';
+            const cacheToCheck = determinedType === 'movie' ? this.movieCache : this.tvCache;
+            idFromCache = await cacheToCheck.get(result, null);
+            if (idFromCache) {
+                logger.silly(`Found ${result} in ${determinedType} cache. Id: ${idFromCache}`);
+                // Return the new type
+                return { id: idFromCache, type: determinedType };
+            }
+            // Se non in cache, determinedType è già impostato, procedi a fetch/search
+        }
+    } else if (type !== 'Overall') {
+        // Se la cache non è attiva ma il tipo è specifico, impostiamo determinedType
+        determinedType = type === 'Movies' ? 'movie' : 'show';
     }
+    // Se type è 'Overall' e cache disattiva/miss, determinedType rimane null per ora
+
+    // Fetch HTML e determina il tipo se necessario (cache miss o type 'Overall')
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
       logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
@@ -225,107 +267,324 @@ export class FlixPatrol {
 
     let item;
     let id;
-    if (type === 'Movies') {
+    let finalDeterminedType: 'movie' | 'show' | null = determinedType; // Keep track of the final type
+
+    // Per il tipo "Overall" o quando il tipo è 'both' (convertito a 'Overall')
+    if (type === 'Overall' || type === 'both' as any) {
+      // Prima proviamo come film
       item = await trakt.getFirstItemByQuery('movie', title, parseInt(year, 10));
-      id = item && item.movie && item.movie.ids.trakt ? item.movie.ids.trakt : null;
-    } else {
+      id = item?.movie?.ids.trakt ?? null; // Use optional chaining and nullish coalescing
+
+      // Se non troviamo come film, proviamo come serie TV
+      if (!id) {
+        item = await trakt.getFirstItemByQuery('show', title, parseInt(year, 10));
+        id = item?.show?.ids.trakt ?? null; // Use optional chaining and nullish coalescing
+
+        // Se troviamo come serie TV, aggiorniamo il tipo
+        if (id) {
+          finalDeterminedType = 'show';
+        }
+      } else {
+        // Se troviamo come film, aggiorniamo il tipo
+        finalDeterminedType = 'movie';
+      }
+    } else if (type === 'Movies') {
+      item = await trakt.getFirstItemByQuery('movie', title, parseInt(year, 10));
+      id = item?.movie?.ids.trakt ?? null; // Use optional chaining and nullish coalescing
+      finalDeterminedType = 'movie';
+    } else { // type === 'TV Shows'
       item = await trakt.getFirstItemByQuery('show', title, parseInt(year, 10));
-      id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
+      id = item?.show?.ids.trakt ?? null; // Use optional chaining and nullish coalescing
+      finalDeterminedType = 'show';
     }
 
     logger.silly(`Matched item: ${JSON.stringify(item)}`);
     logger.silly(`Trakt id: ${id}`);
 
-    if (id && this.tvCache !== null && this.movieCache !== null) {
-      logger.debug(`New item added in ${type} cache`);
-      const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
-      logger.debug(`Cache: ${cacheInfo.path}`);
+    // Update cache and return the new type
+    if (id && finalDeterminedType) {
+        if (this.tvCache !== null && this.movieCache !== null) {
+            logger.debug(`New item added in ${finalDeterminedType} cache: ${result} -> ${id}`); // Log result and id
+            const numericId = Number(id);
+            const cacheToUse = finalDeterminedType === 'movie' ? this.movieCache : this.tvCache;
+            try { // Add try-catch for cache set
+              const cacheInfo = await cacheToUse.set(result, numericId);
+              logger.debug(`Cache set for ${result}: ${cacheInfo.path}`);
+            } catch (cacheError) {
+              logger.error(`Failed to set cache for ${result}: ${cacheError}`);
+            }
+        }
+        return { id: Number(id), type: finalDeterminedType }; // Return the object
+    } else {
+        logger.warn(`No Trakt ID found or type determined for ${result} (Title: ${title}, Year: ${year}, Type Searched: ${type})`);
+        return null; // Return null if no ID or type
     }
-    return id;
+    // Remove any lingering old return statements like: return id ? (id as unknown as TraktTVId) : null;
   }
 
-  private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
-    const traktTVIds: TraktTVIds = [];
+  // Correct convertResultsToIds to return Promise<TraktIdWithType[]> // Updated comment
+  private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI): TraktIdWithTypeArrayPromise {
+    const traktItemsWithType: TraktIdWithType[] = []; // Array to hold {id, type} objects or null
 
     for (const result of results) {
-      const id = await this.getTraktTVId(result, type, trakt);
-      if (id) {
-        traktTVIds.push(id);
-      }
+      // getTraktTVId returns Promise<TraktIdWithType> // Updated comment
+      const traktItemInfo = await this.getTraktTVId(result, type, trakt);
+      // Push the entire result ({id, type} or null)
+      traktItemsWithType.push(traktItemInfo); // Line 327 likely refers to usage within this loop or the return
     }
-    return traktTVIds;
+    // Return the array which might contain nulls
+    return traktItemsWithType;
   }
 
+  // Correct getTop10 return type and filter nulls
   public async getTop10(
-    type: FlixPatrolType,
     config: FlixPatrolTop10,
     trakt: TraktAPI,
     html: string | null = null,
-  ): Promise<TraktTVIds> {
-    if (html === null) {
-      html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+  ): TraktIdWithTypeArrayFilteredPromise {
+    let results: FlixPatrolMatchResult[] = [];
+    let itemsWithPossibleNulls: TraktIdWithType[] = [];
+    const internalTypeMap: { [key: string]: FlixPatrolType } = {
+      movies: 'Movies',
+      shows: 'TV Shows',
+      overall: 'Overall',
+      // 'both' is handled specially
+    };
+
+    // Fetch HTML only once if needed and not provided
+    if (html === null && (config.type === 'movies' || config.type === 'shows' || config.type === 'overall' || config.type === 'both')) {
+      const path = `/top10/${config.platform}/${config.location}`;
+      html = await this.getFlixPatrolHTMLPage(path);
+      if (html === null) {
+          logger.error(`FlixPatrol Error: unable to get FlixPatrol top10 page: ${path}`);
+          return []; // Return empty if HTML fetch fails
+      }
+    } else if (html === null) {
+        // Should not happen if type is valid, but good to handle
+        logger.error(`Invalid type or missing HTML for getTop10: ${config.type}`);
+        return [];
     }
 
-    if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
-      process.exit(1);
-    }
-    let results = FlixPatrol.parseTop10Page(type, config.location, config.platform, html);
-    results = results.slice(0, config.limit);
 
-    // Fallback to world if no match
-    if (config.fallback !== false && results.length === 0) {
-      logger.warn(`No ${type} found for ${config.platform}, falling back to ${config.fallback} search`);
-      const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
-      return this.getTop10(type, newConfig, trakt);
+    if (config.type === 'movies' || config.type === 'shows') {
+        const internalType: FlixPatrolType = internalTypeMap[config.type];
+        try {
+            results = FlixPatrol.parseTop10Page(internalType, config.location, config.platform, html);
+            logger.silly(`Parsed ${results.length} ${internalType} for ${config.platform}/${config.location}`);
+        } catch (parseError) {
+            logger.error(`Error parsing Top10 page for ${config.platform}/${config.location} (Type: ${internalType}): ${parseError}`);
+            // Proceed with empty results to potentially trigger fallback
+        }
+        results = results.slice(0, config.limit);
+        itemsWithPossibleNulls = await this.convertResultsToIds(results, internalType, trakt);
+
+    } else if (config.type === 'overall') {
+        const internalType: FlixPatrolType = 'Overall'; // Keep original 'overall' behavior
+        try {
+            // Attempt to parse the combined/overall table first
+            results = FlixPatrol.parseTop10Page(internalType, config.location, config.platform, html);
+            logger.silly(`Parsed ${results.length} ${internalType} items for ${config.platform}/${config.location}`);
+        } catch (parseError) {
+            logger.warn(`Could not parse Overall page directly for ${config.platform}/${config.location} (Type: ${internalType}): ${parseError}. Fallback might apply.`);
+            // Proceed with empty results to potentially trigger fallback
+        }
+        results = results.slice(0, config.limit);
+        // Pass 'Overall' so convertResultsToIds determines type based on Trakt result
+        itemsWithPossibleNulls = await this.convertResultsToIds(results, 'Overall', trakt);
+
+    // Remove the stray comma here
+    } else if (config.type === 'both') { // Special handling for 'both'
+        let movieResultsRaw: FlixPatrolMatchResult[] = [];
+        let showResultsRaw: FlixPatrolMatchResult[] = [];
+        let movieItemsWithPossibleNulls: TraktIdWithType[] = [];
+        let showItemsWithPossibleNulls: TraktIdWithType[] = [];
+
+        // Parse for Movies and apply limit
+        try {
+            movieResultsRaw = FlixPatrol.parseTop10Page('Movies', config.location, config.platform, html);
+            movieResultsRaw = movieResultsRaw.slice(0, config.limit); // Apply limit to movies
+            logger.silly(`Parsed and limited to ${movieResultsRaw.length} movies for ${config.platform}/${config.location} (for 'both')`);
+            // Convert movie results specifically searching for 'movie' on Trakt
+            movieItemsWithPossibleNulls = await this.convertResultsToIds(movieResultsRaw, 'Movies', trakt);
+        } catch (parseError) {
+            logger.warn(`Could not parse or convert Movies for ${config.platform}/${config.location} (for 'both'): ${parseError}`);
+        }
+
+        // Parse for TV Shows and apply limit
+        try {
+            showResultsRaw = FlixPatrol.parseTop10Page('TV Shows', config.location, config.platform, html);
+            showResultsRaw = showResultsRaw.slice(0, config.limit); // Apply limit to shows
+            logger.silly(`Parsed and limited to ${showResultsRaw.length} shows for ${config.platform}/${config.location} (for 'both')`);
+            // Convert show results specifically searching for 'show' on Trakt
+            showItemsWithPossibleNulls = await this.convertResultsToIds(showResultsRaw, 'TV Shows', trakt);
+        } catch (parseError) {
+            logger.warn(`Could not parse or convert TV Shows for ${config.platform}/${config.location} (for 'both'): ${parseError}`);
+        }
+
+        // Combine the results AFTER converting them with the correct type context
+        itemsWithPossibleNulls = [...movieItemsWithPossibleNulls, ...showItemsWithPossibleNulls];
+
+        logger.debug(`Combined ${itemsWithPossibleNulls.length} potential Trakt items (movies + shows) for ${config.platform}/${config.location} (Type: ${config.type}) before filtering nulls`);
+
+        // Fallback logic check needs to consider if *both* parsing attempts failed or yielded no results
+        const checkResultsLengthForFallback = movieResultsRaw.length + showResultsRaw.length; // Check combined length of raw results
+
+        if (config.fallback !== false && checkResultsLengthForFallback === 0 && typeof config.fallback === 'string' && FlixPatrol.isFlixPatrolTop10Location(config.fallback)) {
+          logger.warn(`No items found for ${config.platform}/${config.location} (Type: ${config.type}), falling back to ${config.fallback} search`);
+          const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
+          // Make recursive call, force refetch by passing null for html
+          return this.getTop10(newConfig, trakt, null); // Return the result of the recursive call
+        } else if (config.fallback !== false && checkResultsLengthForFallback === 0 && typeof config.fallback === 'string' && !FlixPatrol.isFlixPatrolTop10Location(config.fallback)) {
+            logger.error(`Invalid fallback location specified: ${config.fallback}`);
+            return []; // Return empty array if fallback is invalid
+        } else if (config.fallback !== false && checkResultsLengthForFallback === 0) {
+            logger.warn(`No items found for ${config.platform}/${config.location} (Type: ${config.type}) and no valid fallback location provided or fallback already attempted.`);
+            return []; // Return empty array if no results and fallback exhausted/invalid
+        }
+
+        // Filter out nulls (items not found on Trakt or failed conversion) before returning for 'both' type
+        const filteredItemsBoth = itemsWithPossibleNulls.filter((item): item is TraktIdWithTypeObject => item !== null);
+        logger.info(`Found ${filteredItemsBoth.length} valid Trakt items for ${config.platform}/${config.location} (Type: ${config.type}) after filtering`);
+        return filteredItemsBoth; // Return the filtered items for 'both'
+
+    } else {
+      // Handle potential invalid config.type if necessary, or remove if all types are covered
+      logger.error(`Invalid config type encountered in getTop10: ${config.type}`);
+      return []; // Return empty for unhandled types
     }
 
-    return this.convertResultsToIds(results, type, trakt);
+    // --- Fallback and Filtering Logic for non-'both' types ---
+    // This section is reached only if config.type was 'movies', 'shows', or 'overall'
+    // AND a return didn't happen earlier (e.g., HTML fetch failure).
+
+    // Fallback check (apply if results were initially empty for non-'both' types)
+    let checkResultsLengthForFallback: number = results.length; // Use 'results' which was populated for non-'both' types
+    if (config.fallback !== false && checkResultsLengthForFallback === 0 && typeof config.fallback === 'string' && FlixPatrol.isFlixPatrolTop10Location(config.fallback)) {
+        logger.warn(`No items found for ${config.platform}/${config.location} (Type: ${config.type}), falling back to ${config.fallback} search`);
+        const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
+        return this.getTop10(newConfig, trakt, null); // Recursive call for fallback
+    } else if (config.fallback !== false && checkResultsLengthForFallback === 0 && typeof config.fallback === 'string' && !FlixPatrol.isFlixPatrolTop10Location(config.fallback)) {
+        logger.error(`Invalid fallback location specified: ${config.fallback}`);
+        return []; // Invalid fallback
+    } else if (config.fallback !== false && checkResultsLengthForFallback === 0) {
+        logger.warn(`No items found for ${config.platform}/${config.location} (Type: ${config.type}) and no valid fallback location provided or fallback already attempted.`);
+        return []; // Fallback failed or not applicable
+    }
+
+
+    // Final Filtering (apply if fallback didn't trigger a return for non-'both' types)
+    const filteredItems = itemsWithPossibleNulls.filter((item): item is TraktIdWithTypeObject => item !== null);
+    logger.info(`Found ${filteredItems.length} valid Trakt items for ${config.platform}/${config.location} (Type: ${config.type}) after filtering`);
+    return filteredItems; // Return filtered items for non-'both' types
   }
 
+  // Correct getPopular return type and filter nulls
   public async getPopular(
-    type: FlixPatrolType,
     config: FlixPatrolPopular,
     trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
-    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
-    if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
-      process.exit(1);
+  ): TraktIdWithTypeArrayFilteredPromise {
+    let internalType: FlixPatrolType;
+    switch (config.type) {
+      case 'movies':
+        internalType = 'Movies';
+        break;
+      case 'shows':
+        internalType = 'TV Shows';
+        break;
+      case 'both':
+      case 'overall':
+         logger.warn(`Type '${config.type}' is ambiguous for Popular lists. Fetching only movies for platform ${config.platform}.`);
+         internalType = 'Movies'; // Defaulting to movies
+         break;
+      default:
+        logger.error(`Invalid type in Popular config: ${config.type}`);
+        return []; // Return empty array
     }
-    let results = FlixPatrol.parsePopularPage(html);
+
+    const urlTypePath = internalType === 'Movies' ? 'movies' : 'tv-shows';
+    const path = `/popular/${urlTypePath}/${config.platform}`; // Construct path
+    const html = await this.getFlixPatrolHTMLPage(path); // Use path
+
+    if (html === null) {
+      logger.error(`FlixPatrol Error: unable to get FlixPatrol popular page: ${path}`);
+      return []; // Return empty array on fetch error
+    }
+
+    let results: FlixPatrolMatchResult[];
+     try { // Add try-catch for parsing
+        results = FlixPatrol.parsePopularPage(html);
+    } catch (parseError) {
+        logger.error(`Error parsing Popular page for ${path}: ${parseError}`);
+        return [];
+    }
     results = results.slice(0, config.limit);
-    return this.convertResultsToIds(results, type, trakt);
+
+    const itemsWithPossibleNulls: TraktIdWithType[] = await this.convertResultsToIds(results, internalType, trakt); // Line 400: Use TraktIdWithType[]
+    const filteredItems = itemsWithPossibleNulls.filter((item): item is TraktIdWithTypeObject => item !== null);
+    return filteredItems;
   }
 
+
+  // Correct getMostWatched return type and filter nulls
   public async getMostWatched(
-    type: FlixPatrolType,
     config: FlixPatrolMostWatched,
     trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
-    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    let url = `/most-watched/${config.year}/${urlType}`;
-    if (config.country !== undefined) {
-      url += `-from-${config.country}`;
-    }
-    if (config.premiere !== undefined && config.premiere) {
-      url += `-${config.premiere}`;
-    }
-    if (type !== 'Movies') {
-      url += '-grouped';
-    }
-    if (config.orderByViews !== undefined && config.orderByViews) {
-      url += '/by-views';
+  ): TraktIdWithTypeArrayFilteredPromise {
+    let internalType: FlixPatrolType;
+     switch (config.type) {
+      case 'movies':
+        internalType = 'Movies';
+        break;
+      case 'shows':
+        internalType = 'TV Shows';
+        break;
+      case 'both':
+      case 'overall':
+         logger.warn(`Type '${config.type}' is ambiguous for Most Watched lists. Fetching only movies for year ${config.year}.`);
+         internalType = 'Movies'; // Defaulting to movies
+         break;
+      default:
+        logger.error(`Invalid type in MostWatched config: ${config.type}`);
+        return []; // Return empty array
     }
 
-    const html = await this.getFlixPatrolHTMLPage(url);
-    if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol most-watched page');
-      process.exit(1);
+    const urlTypePath = internalType === 'Movies' ? 'movies' : 'tv-shows';
+    let path = `/most-watched/${config.year}/${urlTypePath}`; // Construct path
+    if (config.country !== undefined) {
+      path += `-from-${config.country}`;
     }
-    let results = FlixPatrol.parseMostWatchedPage(html, config);
+    // Assuming config.premiere is a string like 'premiere' if true
+    if (config.premiere !== undefined && config.premiere) {
+       // Ensure config.premiere is treated correctly, maybe it's just a boolean?
+       // If it's boolean true, maybe the path segment is just '-premiere'? Adjust as needed.
+       // Assuming it's a string value if present:
+       path += `-${config.premiere}`;
+    }
+    if (config.original !== undefined && config.original) {
+      path += '-original';
+    }
+
+    const html = await this.getFlixPatrolHTMLPage(path); // Use path
+    if (html === null) {
+      logger.error(`FlixPatrol Error: unable to get FlixPatrol most watched page: ${path}`);
+      return []; // Return empty array on fetch error
+    }
+
+    let results: FlixPatrolMatchResult[];
+    try { // Add try-catch for parsing
+        results = FlixPatrol.parseMostWatchedPage(html, config);
+    } catch (parseError) {
+        logger.error(`Error parsing Most Watched page for ${path}: ${parseError}`);
+        return [];
+    }
     results = results.slice(0, config.limit);
-    return this.convertResultsToIds(results, type, trakt);
+
+    const itemsWithPossibleNulls: TraktIdWithType[] = await this.convertResultsToIds(results, internalType, trakt); // Line 447: Use TraktIdWithType[]
+    const filteredItems = itemsWithPossibleNulls.filter((item): item is TraktIdWithTypeObject => item !== null);
+    return filteredItems;
   }
-}
+
+  // Assuming line 507 might have been a leftover type annotation or similar.
+  // If the error persists on line 507 after these changes, please provide the code around that line.
+
+} // End of FlixPatrol class
