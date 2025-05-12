@@ -141,7 +141,12 @@ export class FlixPatrol {
       expression = `//div[@id="toc-${platform}-${id}"]//table//a[contains(@class, "hover:underline")]/@href`;
     }
 
-    return FlixPatrol.parsePage(expression, html, 'top10');
+    const results =  FlixPatrol.parsePage(expression, html, 'top10');
+    if (results.length === 0) {
+      expression = `//div[h3[text() = "TOP 10 Overall"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
+      return FlixPatrol.parsePage(expression, html, 'top10');
+    }
+    return results;
   }
 
   private static parsePopularPage(
@@ -223,18 +228,31 @@ export class FlixPatrol {
     ).stringValue;
     logger.silly(`Release year: ${year}`);
 
-    let item;
-    let id;
-    if (type === 'Movies') {
+    const typeExpression = '//div[@class="mb-6"]/div/div/span[1]/text()';
+    logger.silly(`Xpath expression for getting flixpatrol type: ${typeExpression}`)
+    const flixType = dom.window.document.evaluate(
+      typeExpression,
+      dom.window.document,
+      null,
+      dom.window.XPathResult.STRING_TYPE,
+      null,
+    ).stringValue;
+    logger.silly(`Release type: ${flixType}`);
+
+    let item = null;
+    let id = null;
+    if (type === 'Movies' && flixType === 'Movie') {
       item = await trakt.getFirstItemByQuery('movie', title, parseInt(year, 10));
       id = item && item.movie && item.movie.ids.trakt ? item.movie.ids.trakt : null;
-    } else {
+    } else if (type === 'TV Shows' && flixType === 'TV Show') {
       item = await trakt.getFirstItemByQuery('show', title, parseInt(year, 10));
       id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
     }
 
-    logger.silly(`Matched item: ${JSON.stringify(item)}`);
-    logger.silly(`Trakt id: ${id}`);
+    if (id !== null) {
+      logger.silly(`Matched item: ${JSON.stringify(item)}`);
+      logger.silly(`Trakt id: ${id}`);
+    }
 
     if (id && this.tvCache !== null && this.movieCache !== null) {
       logger.debug(`New item added in ${type} cache`);
