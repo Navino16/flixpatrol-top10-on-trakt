@@ -7,7 +7,8 @@
       "privacy": "private",
       "limit": 10,
       "name": "Netflix Top 10 Movies",
-      "type": "movies"
+      "type": "movies",
+      "normalizeName": false
     },
     {
       "platform": "disney",

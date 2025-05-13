@@ -13,6 +13,7 @@ export interface FlixPatrolTop10 {
   limit: number;
   type: string;
   name?: string;
+  normalizeName?: boolean;
 }
 
 export interface FlixPatrolPopular {
@@ -21,6 +22,7 @@ export interface FlixPatrolPopular {
   limit: number;
   type: string;
   name?: string;
+  normalizeName?: boolean;
 }
 
 export interface FlixPatrolMostWatched {
@@ -30,6 +32,7 @@ export interface FlixPatrolMostWatched {
   limit: number;
   year: number;
   name?: string;
+  normalizeName?: boolean;
   premiere?: number;
   country?: FlixPatrolTop10Location;
   original?: boolean;
@@ -134,6 +137,12 @@ export class GetAndValidateConfigs {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].name" -> not a valid string`);
           process.exit(1);
         }
+
+        // Check if optional normalizeName property is valid
+        if (typeof flixPatrolTop10Config.normalizeName !== 'boolean' && flixPatrolTop10Config.normalizeName !== undefined) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
+          process.exit(1);
+        }
       });
     } catch (err) {
       logger.error(`Configuration Error: ${err}`);
@@ -206,6 +215,12 @@ export class GetAndValidateConfigs {
         // Check if optional name property is valid
         if (typeof flixPatrolPopularConfig.name !== 'string' && flixPatrolPopularConfig.name !== undefined) {
           logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].name" -> not a valid string`);
+          process.exit(1);
+        }
+
+        // Check if optional normalizeName property is valid
+        if (typeof flixPatrolPopularConfig.normalizeName !== 'boolean' && flixPatrolPopularConfig.normalizeName !== undefined) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
           process.exit(1);
         }
       });
@@ -328,6 +343,12 @@ export class GetAndValidateConfigs {
         // Check if optional name property is valid
         if (typeof flixPatrolMostWatchedConfig.name !== 'string' && flixPatrolMostWatchedConfig.name !== undefined) {
           logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].name" -> not a valid string`);
+          process.exit(1);
+        }
+
+        // Check if optional normalizeName property is valid
+        if (typeof flixPatrolMostWatchedConfig.normalizeName !== 'boolean' && flixPatrolMostWatchedConfig.normalizeName !== undefined) {
+          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
           process.exit(1);
         }
       });
