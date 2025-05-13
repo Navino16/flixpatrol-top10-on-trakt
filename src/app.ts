@@ -29,7 +29,10 @@ trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
     let listName: string;
-    if (top10.name) {
+    if (top10.name && top10.normalizeName === false) {
+      listName = top10.name;
+    }
+    else if (top10.name) {
       listName = top10.name.toLowerCase().replace(/\s+/g, '-');
     } else {
       listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
@@ -39,7 +42,7 @@ trakt.connect().then(async () => {
 
     if (top10.type === 'movies' || top10.type === 'both') {
       logger.info('==============================');
-      logger.info(`Getting movies for ${listName}`);
+      logger.info(`Getting movies for "${listName}"`);
       const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt, html);
       logger.debug(`${top10.platform} movies: ${top10Movies}`);
       await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
@@ -47,7 +50,7 @@ trakt.connect().then(async () => {
     }
     if (top10.type === 'shows' || top10.type === 'both') {
       logger.info('==============================');
-      logger.info(`Getting shows for ${listName}`);
+      logger.info(`Getting shows for "${listName}"`);
       const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt, html);
       logger.debug(`${top10.platform} shows: ${top10Shows}`);
       await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
@@ -58,7 +61,10 @@ trakt.connect().then(async () => {
 
   for (const popular of flixPatrolPopulars) {
     let listName: string;
-    if (popular.name) {
+    if (popular.name && popular.normalizeName === false) {
+      listName = popular.name;
+    }
+    else if (popular.name) {
       listName = popular.name.toLowerCase().replace(/\s+/g, '-');
     } else {
       listName = `${popular.platform}-popular`;
@@ -66,7 +72,7 @@ trakt.connect().then(async () => {
 
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
-      logger.info(`Getting movies for ${listName}`);
+      logger.info(`Getting movies for "${listName}"`);
       const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
       logger.debug(`${popular.platform} movies: ${popularMovies}`);
       await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
@@ -75,7 +81,7 @@ trakt.connect().then(async () => {
 
     if (popular.type === 'shows' || popular.type === 'both') {
       logger.info('==============================');
-      logger.info(`Getting shows for ${listName}`);
+      logger.info(`Getting shows for "${listName}"`);
       const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
       logger.debug(`${popular.platform} shows: ${popularShows}`);
       await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
@@ -86,6 +92,9 @@ trakt.connect().then(async () => {
   for (const mostWatched of flixPatrolMostWatched) {
     if (mostWatched.enabled) {
       let listName: string;
+      if (mostWatched.name && mostWatched.normalizeName === false) {
+        listName = mostWatched.name;
+      }
       if (mostWatched.name) {
         listName = mostWatched.name.toLowerCase().replace(/\s+/g, '-');
       } else {
@@ -97,7 +106,7 @@ trakt.connect().then(async () => {
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
-        logger.info(`Getting movies for ${listName}`);
+        logger.info(`Getting movies for "${listName}"`);
         const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched, trakt);
         logger.debug(`most-watched movies: ${mostWatchedMovies}`);
         await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
@@ -106,7 +115,7 @@ trakt.connect().then(async () => {
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
         logger.info('==============================');
-        logger.info(`Getting shows for ${listName}`);
+        logger.info(`Getting shows for "${listName}"`);
         const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt);
         logger.debug(`most-watched shows: ${mostWatchedShows}`);
         await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
