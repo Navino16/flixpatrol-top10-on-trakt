@@ -41,7 +41,7 @@ jobs:
       - name: Run lint
         run: npm run lint
       - name: Check git leak
-        uses: super-linter/super-linter@v7.3.0
+        uses: super-linter/super-linter@v7.4.0
         env:
           VALIDATE_ALL_CODEBASE: true
           VALIDATE_GITLEAKS: true
