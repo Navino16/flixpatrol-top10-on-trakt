@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "axios": "^1.9.0",
-    "config": "^3.3.12",
+    "config": "^4.0.0",
     "file-system-cache": "^2.4.7",
     "jsdom": "^26.1.0",
     "trakt.tv": "^8.2.0",
