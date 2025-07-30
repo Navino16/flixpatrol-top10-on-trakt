@@ -113,8 +113,8 @@ export class GetAndValidateConfigs {
           logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> not a valid number`);
           process.exit(1);
         }
-        if (flixPatrolTop10Config.limit < 1 || flixPatrolTop10Config.limit > 10) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> limit should be a value between 1 and 10`);
+        if (flixPatrolTop10Config.limit < 1) {
+          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> limit should be a value greeter or equal to 1`);
           process.exit(1);
         }
 

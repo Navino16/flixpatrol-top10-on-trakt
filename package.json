@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -20,22 +20,22 @@
   "author": "Navino16",
   "license": "GPL-3.0",
   "devDependencies": {
-    "@eslint/js": "^9.25.1",
+    "@eslint/js": "^9.31.0",
     "@types/config": "^3.3.5",
     "@types/jsdom": "^21.1.7",
-    "@types/node": "^22.15.3",
+    "@types/node": "^24.0.13",
     "@vercel/ncc": "^0.38.3",
-    "@yao-pkg/pkg": "^6.4.1",
-    "eslint": "^9.26.0",
+    "@yao-pkg/pkg": "^6.5.1",
+    "eslint": "^9.31.0",
     "nodemon": "^3.1.10",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.32.0"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.37.0"
   },
   "dependencies": {
-    "axios": "^1.9.0",
-    "config": "^3.3.12",
+    "axios": "^1.10.0",
+    "config": "^4.0.0",
     "file-system-cache": "^2.4.7",
     "jsdom": "^26.1.0",
     "trakt.tv": "^8.2.0",
