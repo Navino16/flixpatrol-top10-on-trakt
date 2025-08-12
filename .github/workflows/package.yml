@@ -1,29 +1,182 @@
-name: Build and Publish Docker Image
+name: Build, Package & Release
 
 on:
-  push:
-    branches:
-      - main  # o il branch su cui vuoi far scattare la build
   workflow_dispatch:
-  
+  push:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install project dependencies
+        run: npm ci
+      - name: Build project
+        run: npm run build
+      - name: Upload build result
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
 
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+  package:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Restore node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Restore build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build/
+      - run: npm run package
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flixpatrol
+          path: bin/
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v3
-      with:
-        context: .
-        push: true
-        tags: ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest
+  tag-new-versions:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: package
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Create new tag
+        id: new-tag
+        uses: salsify/action-detect-and-tag-new-version@v2
+    outputs:
+      tag: ${{ steps.new-tag.outputs.tag }}
+
+  release:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: tag-new-versions
+    steps:
+      - name: Restore build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Build Changelog
+        id: github_release
+        uses: mikepenz/release-changelog-builder-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{steps.github_release.outputs.changelog}}
+          name: ${{needs.tag-new-versions.outputs.tag}}
+          tag_name: ${{needs.tag-new-versions.outputs.tag}}
+          files: |
+            bin/flixpatrol-top10-linux
+            bin/flixpatrol-top10-macos
+            bin/flixpatrol-top10-win.exe
+
+  docker-main:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: tag-new-versions
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Restore build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare repository name
+        run: |
+          echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ needs.tag-new-versions.outputs.tag && format('${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:{0}', needs.tag-new-versions.outputs.tag) || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  docker-dev:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    needs: package
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Restore build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=develop
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
