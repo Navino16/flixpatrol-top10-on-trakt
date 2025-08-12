@@ -45,16 +45,16 @@ trakt.connect().then(async () => {
       logger.info(`Getting movies for "${listName}"`);
       const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt, html);
       logger.debug(`${top10.platform} movies: ${top10Movies}`);
-      await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
-      logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
+  await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
+  logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
     }
     if (top10.type === 'shows' || top10.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting shows for "${listName}"`);
       const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt, html);
       logger.debug(`${top10.platform} shows: ${top10Shows}`);
-      await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
-      logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
+  await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
+  logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
     }
   }
 
@@ -75,8 +75,8 @@ trakt.connect().then(async () => {
       logger.info(`Getting movies for "${listName}"`);
       const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
       logger.debug(`${popular.platform} movies: ${popularMovies}`);
-      await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
-      logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
+  await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
+  logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
     }
 
     if (popular.type === 'shows' || popular.type === 'both') {
@@ -84,8 +84,8 @@ trakt.connect().then(async () => {
       logger.info(`Getting shows for "${listName}"`);
       const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
       logger.debug(`${popular.platform} shows: ${popularShows}`);
-      await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
-      logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
+  await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
+  logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
     }
   }
 
@@ -109,8 +109,8 @@ trakt.connect().then(async () => {
         logger.info(`Getting movies for "${listName}"`);
         const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched, trakt);
         logger.debug(`most-watched movies: ${mostWatchedMovies}`);
-        await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
-        logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
+  await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
+  logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
       }
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
@@ -118,8 +118,8 @@ trakt.connect().then(async () => {
         logger.info(`Getting shows for "${listName}"`);
         const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt);
         logger.debug(`most-watched shows: ${mostWatchedShows}`);
-        await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
-        logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
+  await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
+  logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
       }
     }
   }
