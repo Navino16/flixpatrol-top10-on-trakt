@@ -83,6 +83,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: tag-new-versions
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # Scarica tutta la cronologia git
+          fetch-tags: true  # Scarica tutti i tag
       - name: Restore build artifact
         uses: actions/download-artifact@v4
         with:
@@ -96,9 +101,9 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          body: ${{steps.github_release.outputs.changelog}}
-          name: ${{needs.tag-new-versions.outputs.tag}}
-          tag_name: ${{needs.tag-new-versions.outputs.tag}}
+          body: ${{ steps.github_release.outputs.changelog }}
+          name: ${{ needs.tag-new-versions.outputs.tag }}
+          tag_name: ${{ needs.tag-new-versions.outputs.tag }}
           files: |
             bin/flixpatrol-top10-linux
             bin/flixpatrol-top10-macos
@@ -142,7 +147,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ${{ needs.tag-new-versions.outputs.tag && format('${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:{0}', needs.tag-new-versions.outputs.tag) || '' }}
+            ${{ needs.tag-new-versions.outputs.tag && format(env.REGISTRY + '/' + env.IMAGE_REPOSITORY + ':{0}', needs.tag-new-versions.outputs.tag) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-dev:
