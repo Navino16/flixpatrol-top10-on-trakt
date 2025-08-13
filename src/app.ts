@@ -28,33 +28,77 @@ const trakt = new TraktAPI(traktOptions);
 trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
-    let listName: string;
+    let baseListName: string;
     if (top10.name && top10.normalizeName === false) {
-      listName = top10.name;
+      baseListName = top10.name;
     }
     else if (top10.name) {
-      listName = top10.name.toLowerCase().replace(/\s+/g, '-');
+      baseListName = top10.name.toLowerCase().replace(/\s+/g, '-');
     } else {
-      listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
+      baseListName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     }
 
-    const html = await flixpatrol.getFlixPatrolHTMLPage(`/top10/${top10.platform}/${top10.location}`);
+    if (top10.type === 'both') {
+      logger.info('==============================');
+      logger.info(`Getting movies, shows and overall (if present) for "${baseListName}"`);
+      const sections = await flixpatrol.getTop10Sections(top10, trakt);
+      const { movies, shows, overall, rawCounts } = sections;
 
-    if (top10.type === 'movies' || top10.type === 'both') {
+      if (movies.length === 0 && shows.length === 0 && overall.length > 0) {
+        if (rawCounts.overall > top10.limit) {
+          logger.warn(`Overall list has ${rawCounts.overall} items, limiting to ${top10.limit}`);
+        }
+        // Only overall available: push once using base list name (treat as mixed)
+        await trakt.pushToList(overall, baseListName, 'movie', top10.privacy); // attempt movie type first
+        logger.info(`List ${baseListName} updated with ${overall.length} overall items (no separate movies/shows sections found)`);
+      } else {
+        if (movies.length > 0) {
+          const moviesList = `${baseListName}-movies`;
+          await trakt.pushToList(movies, moviesList, 'movie', top10.privacy);
+          logger.info(`List ${moviesList} updated with ${movies.length} movies`);
+        }
+        if (shows.length > 0) {
+          const showsList = `${baseListName}-shows`;
+          await trakt.pushToList(shows, showsList, 'show', top10.privacy);
+          logger.info(`List ${showsList} updated with ${shows.length} shows`);
+        }
+        if (overall.length > 0) {
+          if (rawCounts.overall > top10.limit) {
+            logger.warn(`Overall list has ${rawCounts.overall} items, limiting to ${top10.limit}`);
+          }
+            const overallList = `${baseListName}-overall`;
+            await trakt.pushToList(overall, overallList, 'movie', top10.privacy); // treat as generic list (try movie search already executed inside)
+            logger.info(`List ${overallList} updated with ${overall.length} overall items`);
+        }
+      }
+    } else if (top10.type === 'movies') {
       logger.info('==============================');
-      logger.info(`Getting movies for "${listName}"`);
-      const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt, html);
-      logger.debug(`${top10.platform} movies: ${top10Movies}`);
-  await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
-  logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
-    }
-    if (top10.type === 'shows' || top10.type === 'both') {
+      logger.info(`Getting movies (with overall fallback) for "${baseListName}"`);
+      const sections = await flixpatrol.getTop10Sections({ ...top10, type: 'movies' }, trakt);
+      let list = sections.movies;
+      if (list.length === 0 && sections.overall.length > 0) {
+        if (sections.rawCounts.overall > top10.limit) {
+          logger.warn(`Overall list has ${sections.rawCounts.overall} items, limiting to ${top10.limit}`);
+        }
+        list = sections.overall;
+        logger.info('Movies section not found, using overall list');
+      }
+      await trakt.pushToList(list, baseListName, 'movie', top10.privacy);
+      logger.info(`List ${baseListName} updated with ${list.length} movies`);
+    } else if (top10.type === 'shows') {
       logger.info('==============================');
-      logger.info(`Getting shows for "${listName}"`);
-      const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt, html);
-      logger.debug(`${top10.platform} shows: ${top10Shows}`);
-  await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
-  logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
+      logger.info(`Getting shows (with overall fallback) for "${baseListName}"`);
+      const sections = await flixpatrol.getTop10Sections({ ...top10, type: 'shows' }, trakt);
+      let list = sections.shows;
+      if (list.length === 0 && sections.overall.length > 0) {
+        if (sections.rawCounts.overall > top10.limit) {
+          logger.warn(`Overall list has ${sections.rawCounts.overall} items, limiting to ${top10.limit}`);
+        }
+        list = sections.overall;
+        logger.info('Shows section not found, using overall list');
+      }
+      await trakt.pushToList(list, baseListName, 'show', top10.privacy);
+      logger.info(`List ${baseListName} updated with ${list.length} shows`);
     }
   }
 
