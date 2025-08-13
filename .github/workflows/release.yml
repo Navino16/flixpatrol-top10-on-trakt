@@ -99,9 +99,10 @@ jobs:
           name: ${{needs.tag-new-versions.outputs.tag}}
           tag_name: ${{needs.tag-new-versions.outputs.tag}}
           files: |
-            bin/flixpatrol-top10-linux
-            bin/flixpatrol-top10-macos
-            bin/flixpatrol-top10-win.exe
+            bin/flixpatrol-top10-linux-arm64
+            bin/flixpatrol-top10-linux-x64
+            bin/flixpatrol-top10-macos-x64
+            bin/flixpatrol-top10-win-x64.exe
 
   docker-main:
     runs-on: ubuntu-latest
