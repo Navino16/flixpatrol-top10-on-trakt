@@ -23,6 +23,7 @@ That search is sort by relevance by Trakt. We then get the first item on the lis
 that the wanted movie/show (it should be the first item it the list). If none is found we take the first one on the list. 
 It can cause some bad matching but there is nothing we can do about that.⚠️
 
+
 ## Table of Content
 <!-- TOC -->
 * [Flixpatrol Top 10 on Trakt](#flixpatrol-top-10-on-trakt)

@@ -1,9 +1,9 @@
-name: Build, Package & Release
+name: Package
 
 on:
   workflow_dispatch:
-  #push:
-  #  branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
 
 env:
   REGISTRY: ghcr.io
@@ -27,12 +27,15 @@ jobs:
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - name: Install project dependencies
         run: |
-          set -e
+          set +e
           echo "Eseguo npm ci (build)";
-          if ! npm ci; then
-            echo "npm ci fallita (probabile disallineamento lock). Fallback a npm install";
-            npm install;
+          npm ci
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "npm ci fallita (lock fuori sync). Fallback a npm install";
+            npm install
           fi
+          set -e
       - name: Build project
         run: npm run build
       - name: Upload build result
@@ -62,15 +65,20 @@ jobs:
         with:
           name: build
           path: build/
-      - name: Ensure deps (package stage)
+      - name: Ensure deps (package)
         run: |
-          set -e
           if [ ! -d node_modules ]; then
-            echo "node_modules cache mancante, provo npm ci";
-            if ! npm ci; then
-              echo "npm ci fallita (disallineamento). Fallback a npm install";
-              npm install;
+            echo "node_modules mancante: provo npm ci";
+            set +e
+            npm ci
+            STATUS=$?
+            if [ $STATUS -ne 0 ]; then
+              echo "npm ci fallita (lock fuori sync). Fallback a npm install";
+              npm install
             fi
+            set -e
+          else
+            echo "node_modules presente (cache)"
           fi
       - run: npm run package
       - name: Upload packages artifact
@@ -116,22 +124,21 @@ jobs:
           name: ${{needs.tag-new-versions.outputs.tag}}
           tag_name: ${{needs.tag-new-versions.outputs.tag}}
           files: |
-            bin/flixpatrol-top10-linux-x64
-            bin/flixpatrol-top10-linux-arm64
-            bin/flixpatrol-top10-macos-x64
-            bin/flixpatrol-top10-win-x64.exe
+            bin/flixpatrol-top10-linux
+            bin/flixpatrol-top10-macos
+            bin/flixpatrol-top10-win.exe
 
   docker-main:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    needs: [tag-new-versions, package]
+    needs: tag-new-versions
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Restore binaries artifact
+      - name: Restore build artifact
         uses: actions/download-artifact@v4
         with:
           name: flixpatrol
@@ -140,7 +147,7 @@ jobs:
         run: ls -l bin/
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v3
-      - name: Set up Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -149,7 +156,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare repository name
-        run: echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
+        run: |
+          echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -157,27 +165,28 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{needs.tag-new-versions.outputs.tag}}
-      - name: Build and push multi-arch image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ needs.tag-new-versions.outputs.tag && format('${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:{0}', needs.tag-new-versions.outputs.tag) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-dev:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
-    needs: [package]
+    needs: package
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Restore binaries artifact
+      - name: Restore build artifact
         uses: actions/download-artifact@v4
         with:
           name: flixpatrol
@@ -186,7 +195,7 @@ jobs:
         run: ls -l bin/
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v3
-      - name: Set up Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -201,7 +210,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=develop
-      - name: Build and push multi-arch image (develop)
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
