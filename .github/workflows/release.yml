@@ -100,9 +100,10 @@ jobs:
           name: ${{needs.tag-new-versions.outputs.tag}}
           tag_name: ${{needs.tag-new-versions.outputs.tag}}
           files: |
-            bin/flixpatrol-top10-linux
-            bin/flixpatrol-top10-macos
-            bin/flixpatrol-top10-win.exe
+            bin/flixpatrol-top10-linux-x64
+            bin/flixpatrol-top10-linux-arm64
+            bin/flixpatrol-top10-macos-x64
+            bin/flixpatrol-top10-win-x64.exe
 
   docker-main:
     runs-on: ubuntu-latest
@@ -119,31 +120,33 @@ jobs:
         with:
           name: flixpatrol
           path: bin/
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: PrepareReg Names
-        run: |
-          echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
+      - name: Prepare repository name
+        run: echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}
           tags: |
-            # set latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build and push Docker image
+            type=raw,value=${{needs.tag-new-versions.outputs.tag}}
+      - name: Build and push multi-arch image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:${{needs.tag-new-versions.outputs.tag}}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
   docker-dev:
@@ -161,6 +164,10 @@ jobs:
         with:
           name: flixpatrol
           path: bin/
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -172,10 +179,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      - name: Build and push Docker image
+          tags: |
+            type=raw,value=develop
+      - name: Build and push multi-arch image (develop)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }},
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
