@@ -26,7 +26,16 @@ jobs:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - name: Install project dependencies
-        run: npm ci
+        run: |
+          set +e
+          echo "Eseguo npm ci (build)";
+          npm ci
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "npm ci fallita (lock fuori sync). Fallback a npm install";
+            npm install
+          fi
+          set -e
       - name: Build project
         run: npm run build
       - name: Upload build result
@@ -56,6 +65,21 @@ jobs:
         with:
           name: build
           path: build/
+      - name: Ensure deps (package)
+        run: |
+          if [ ! -d node_modules ]; then
+            echo "node_modules mancante: provo npm ci";
+            set +e
+            npm ci
+            STATUS=$?
+            if [ $STATUS -ne 0 ]; then
+              echo "npm ci fallita (lock fuori sync). Fallback a npm install";
+              npm install
+            fi
+            set -e
+          else
+            echo "node_modules presente (cache)"
+          fi
       - run: npm run package
       - name: Upload packages artifact
         uses: actions/upload-artifact@v4
