@@ -124,18 +124,20 @@ jobs:
   docker-main:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    needs: tag-new-versions
+    needs: [tag-new-versions, package]
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Restore build artifact
+      - name: Restore binaries artifact
         uses: actions/download-artifact@v4
         with:
           name: flixpatrol
           path: bin/
+      - name: List binaries
+        run: ls -l bin/
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
@@ -168,18 +170,20 @@ jobs:
   docker-dev:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
-    needs: package
+    needs: [package]
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Restore build artifact
+      - name: Restore binaries artifact
         uses: actions/download-artifact@v4
         with:
           name: flixpatrol
           path: bin/
+      - name: List binaries
+        run: ls -l bin/
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
