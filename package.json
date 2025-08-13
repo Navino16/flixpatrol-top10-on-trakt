@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "npm run build && rm -rf bin/ &&  npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node22-linux-x64,node22-macos-x64,node22-win-x64 --public -o bin/flixpatrol-top10"
+  "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node22-linux-x64 --public -o bin/flixpatrol-top10-linux-x64 && npx pkg build/tmp/index.js --targets=node22-linux-arm64 --public -o bin/flixpatrol-top10-linux-arm64 && npx pkg build/tmp/index.js --targets=node22-macos-x64 --public -o bin/flixpatrol-top10-macos-x64 && npx pkg build/tmp/index.js --targets=node22-win-x64 --public -o bin/flixpatrol-top10-win-x64"
   },
   "keywords": [
     "Flixpatrol",
@@ -23,7 +23,7 @@
     "@eslint/js": "^9.31.0",
     "@types/config": "^3.3.5",
     "@types/jsdom": "^21.1.7",
-    "@types/node": "^24.0.13",
+    "@types/node": "^24.2.1",
     "@vercel/ncc": "^0.38.3",
     "@yao-pkg/pkg": "^6.5.1",
     "eslint": "^9.31.0",
