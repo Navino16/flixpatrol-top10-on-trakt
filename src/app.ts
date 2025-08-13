@@ -28,33 +28,37 @@ const trakt = new TraktAPI(traktOptions);
 trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
-    let listName: string;
+    let baseListName: string;
     if (top10.name && top10.normalizeName === false) {
-      listName = top10.name;
+      baseListName = top10.name;
     }
     else if (top10.name) {
-      listName = top10.name.toLowerCase().replace(/\s+/g, '-');
+      baseListName = top10.name.toLowerCase().replace(/\s+/g, '-');
     } else {
-      listName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
+      baseListName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     }
 
-    const html = await flixpatrol.getFlixPatrolHTMLPage(`/top10/${top10.platform}/${top10.location}`);
+    const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
 
-    if (top10.type === 'movies' || top10.type === 'both') {
+    if (movies.length > 0) {
       logger.info('==============================');
-      logger.info(`Getting movies for "${listName}"`);
-      const top10Movies = await flixpatrol.getTop10('Movies', top10, trakt, html);
-      logger.debug(`${top10.platform} movies: ${top10Movies}`);
-      await trakt.pushToList(top10Movies, listName, 'movie', top10.privacy);
-      logger.info(`List ${listName} updated with ${top10Movies.length} new movies`);
+      if (rawCounts.movies > movies.length) {
+        logger.warn("Flixpatrol have more movies than wanted, list have been reduced");
+      }
+      logger.info(`Saving movies for "${baseListName}"`);
+      logger.debug(`${top10.platform} movies: ${movies}`);
+      await trakt.pushToList(movies, baseListName, 'movie', top10.privacy);
+      logger.info(`List ${baseListName} updated with ${movies.length} new movies`);
     }
-    if (top10.type === 'shows' || top10.type === 'both') {
+    if (shows.length > 0) {
       logger.info('==============================');
-      logger.info(`Getting shows for "${listName}"`);
-      const top10Shows = await flixpatrol.getTop10('TV Shows', top10, trakt, html);
-      logger.debug(`${top10.platform} shows: ${top10Shows}`);
-      await trakt.pushToList(top10Shows, listName, 'show', top10.privacy);
-      logger.info(`List ${listName} updated with ${top10Shows.length} new shows`);
+      if (rawCounts.shows > shows.length) {
+        logger.warn("Flixpatrol have more shows than wanted, list have been reduced");
+      }
+      logger.info(`Saving shows for "${baseListName}"`);
+      logger.debug(`${top10.platform} shows: ${shows}`);
+      await trakt.pushToList(shows, baseListName, 'show', top10.privacy);
+      logger.info(`List ${baseListName} updated with ${shows.length} new shows`);
     }
   }
 

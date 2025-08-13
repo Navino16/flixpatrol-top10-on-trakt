@@ -5,7 +5,7 @@ WORKDIR /app
 
 RUN mkdir -p "/app/config"
 
-COPY ./bin/flixpatrol-top10-linux /app/flixpatrol-top10
+COPY ./bin/flixpatrol-top10-linux-x64 /app/flixpatrol-top10
 
 VOLUME /app/config
 
