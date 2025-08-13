@@ -43,7 +43,8 @@ const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', '
   'thailand', 'togo', 'tonga', 'trinidad-and-tobago', 'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda',
   'ukraine', 'united-arab-emirates', 'united-kingdom', 'united-states', 'uruguay', 'uzbekistan', 'vanuatu',
   'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia', 'zimbabwe'];
-export type FlixPatrolTop10Location = (typeof flixpatrolTop10Platform)[number];
+// Correct alias: location should derive from flixpatrolTop10Location array
+export type FlixPatrolTop10Location = (typeof flixpatrolTop10Location)[number];
 
 const flixpatrolTop10Platform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
   'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus', 'francetv',
@@ -69,6 +70,9 @@ export class FlixPatrol {
   private readonly tvCache: FileSystemCache | null = null;
 
   private readonly movieCache: FileSystemCache | null = null;
+
+  // Track if we already consumed an "overall" list for a given platform/location to avoid duplicate list writes
+  private overallConsumed: Set<string> = new Set();
 
   constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
@@ -133,20 +137,60 @@ export class FlixPatrol {
     platform: FlixPatrolTop10Platform,
     html: string,
   ): FlixPatrolMatchResult[] {
-    let expression;
-    if (location !== 'world') {
-      expression = `//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
-    } else {
+    const expressions: string[] = [];
+    if (location === 'world') {
       const id = type === 'Movies' ? 'movies' : 'tv-shows';
-      expression = `//div[@id="toc-${platform}-${id}"]//table//a[contains(@class, "hover:underline")]/@href`;
+      expressions.push(`//div[@id="toc-${platform}-${id}"]//table//a[contains(@class,'hover:underline')]/@href`);
+    } else {
+      // Original strict
+      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`);
+      // More tolerant headline match
+      expressions.push(`//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`);
+      // Generic first tables fallback
+      expressions.push(`((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href`);
     }
+    for (const expr of expressions) {
+      const res = FlixPatrol.parsePage(expr, html, 'top10');
+      if (res.length > 0) return res;
+    }
+    return [];
+  }
 
-    const results =  FlixPatrol.parsePage(expression, html, 'top10');
-    if (results.length === 0) {
-      expression = `//div[h3[text() = "TOP 10 Overall"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`;
-      return FlixPatrol.parsePage(expression, html, 'top10');
+  private static parseOverallPage(
+    location: FlixPatrolTop10Location,
+    platform: FlixPatrolTop10Platform,
+    html: string,
+  ): FlixPatrolMatchResult[] {
+    // Overall section detection (order of fallbacks)
+    const expressions = [
+      `//div[h3[text() = "TOP 10 Overall"]]/parent::div/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+      `//h3[contains(.,"TOP 10 Overall")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+      `//h3[contains(translate(.,'overall','OVERALL'),'OVERALL')]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+      `(//h3[contains(.,'Overall')]/following::table)[1]//a[contains(@class,'hover:underline')]/@href`,
+    ];
+    for (const expr of expressions) {
+      const res = FlixPatrol.parsePage(expr, html, 'top10');
+      if (res.length > 0) return res;
     }
-    return results;
+    return [];
+  }
+
+  public async getTop10Sections(
+    config: FlixPatrolTop10,
+    trakt: TraktAPI,
+  ): Promise<{ movies: TraktTVIds; shows: TraktTVIds; overall: TraktTVIds; rawCounts: { movies: number; shows: number; overall: number } }> {
+    const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+    if (html === null) {
+      logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
+      process.exit(1);
+    }
+    const moviesRaw = FlixPatrol.parseTop10Page('Movies', config.location, config.platform, html);
+    const showsRaw = FlixPatrol.parseTop10Page('TV Shows', config.location, config.platform, html);
+    const overallRaw = FlixPatrol.parseOverallPage(config.location, config.platform, html);
+    const movies = await this.convertResultsToIds(moviesRaw.slice(0, config.limit), 'Movies', trakt);
+    const shows = await this.convertResultsToIds(showsRaw.slice(0, config.limit), 'TV Shows', trakt);
+    const overall = await this.convertResultsToIds(overallRaw.slice(0, config.limit), movies.length === 0 && shows.length === 0 ? (config.type === 'movies' ? 'Movies' : 'TV Shows') : 'Movies', trakt);
+    return { movies, shows, overall, rawCounts: { movies: moviesRaw.length, shows: showsRaw.length, overall: overallRaw.length } };
   }
 
   private static parsePopularPage(
@@ -171,7 +215,7 @@ export class FlixPatrol {
 
   private static parsePage(expression: string, html: string, pageName: string): FlixPatrolMatchResult[] {
     const dom = new JSDOM(html);
-    logger.silly(`Xpath expression for ${pageName} page: ${expression}`)
+  // keep minimal logging (removed verbose expression log)
     const match = dom.window.document.evaluate(
       expression,
       dom.window.document,
@@ -186,7 +230,7 @@ export class FlixPatrol {
       results.push(p.textContent as string);
       p = match.iterateNext();
     }
-    logger.silly(`Xpath matches: ${results}`);
+  // removed verbose match list log
     return results;
   }
 
@@ -206,58 +250,71 @@ export class FlixPatrol {
     }
 
     const dom = new JSDOM(html);
-    const titleExpression = '//div[@class="mb-6"]//h1[@class="mb-4"]/text()';
-    logger.silly(`Xpath expression for getting release title: ${titleExpression}`)
-    const title = dom.window.document.evaluate(
-      titleExpression,
+    // Title with fallback (kept)
+    let title = dom.window.document.evaluate(
+      '//div[contains(@class,"mb-6")]//h1[contains(@class,"mb-4")]/text()',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
-    ).stringValue;
-    logger.silly(`Release title: ${title}`);
-
-    const yearExpression = '//div[@class="mb-6"]//span[5]/span/text()';
-    logger.silly(`Xpath expression for getting release year: ${yearExpression}`)
-    const year = dom.window.document.evaluate(
-      yearExpression,
-      dom.window.document,
-      null,
-      dom.window.XPathResult.STRING_TYPE,
-      null,
-    ).stringValue;
-    logger.silly(`Release year: ${year}`);
-
-    const typeExpression = '//div[@class="mb-6"]/div/div/span[1]/text()';
-    logger.silly(`Xpath expression for getting flixpatrol type: ${typeExpression}`)
-    const flixType = dom.window.document.evaluate(
-      typeExpression,
-      dom.window.document,
-      null,
-      dom.window.XPathResult.STRING_TYPE,
-      null,
-    ).stringValue;
-    logger.silly(`Release type: ${flixType}`);
-
-    let item = null;
-    let id = null;
-    if (type === 'Movies' && flixType === 'Movie') {
-      item = await trakt.getFirstItemByQuery('movie', title, parseInt(year, 10));
-      id = item && item.movie && item.movie.ids.trakt ? item.movie.ids.trakt : null;
-    } else if (type === 'TV Shows' && flixType === 'TV Show') {
-      item = await trakt.getFirstItemByQuery('show', title, parseInt(year, 10));
-      id = item && item.show && item.show.ids.trakt ? item.show.ids.trakt : null;
+    ).stringValue.trim();
+    if (!title) {
+      title = dom.window.document.evaluate(
+        '//h1/text()',
+        dom.window.document,
+        null,
+        dom.window.XPathResult.STRING_TYPE,
+        null,
+      ).stringValue.trim();
     }
 
-    if (id !== null) {
-      logger.silly(`Matched item: ${JSON.stringify(item)}`);
-      logger.silly(`Trakt id: ${id}`);
+    // Flexible type detection
+    let flixType = dom.window.document.evaluate(
+      '//div[contains(@class,"mb-6")]//span[contains(. ,"Movie") or contains(. ,"TV Show")][1]/text()',
+      dom.window.document,
+      null,
+      dom.window.XPathResult.STRING_TYPE,
+      null,
+    ).stringValue.trim();
+    if (!flixType) {
+      const headerText = dom.window.document.querySelector('div.mb-6')?.textContent || '';
+      if (/Movie/i.test(headerText)) flixType = 'Movie';
+      else if (/TV Show/i.test(headerText)) flixType = 'TV Show';
+    }
+
+    // Year with regex fallback
+    let yearStr = dom.window.document.evaluate(
+      '//div[@class="mb-6"]//span[5]/span/text()',
+      dom.window.document,
+      null,
+      dom.window.XPathResult.STRING_TYPE,
+      null,
+    ).stringValue.trim();
+    if (!/^(19|20)\d{2}$/.test(yearStr)) {
+      const headerBlock = dom.window.document.querySelector('div.mb-6')?.textContent || '';
+      const match = headerBlock.match(/(19|20)\d{2}/);
+      if (match) yearStr = match[0];
+    }
+    const year = parseInt(yearStr, 10);
+
+    const tryLookup = async (searchType: 'movie' | 'show'): Promise<TraktTVId> => {
+      const looked = await trakt.getFirstItemByQuery(searchType, title, Number.isNaN(year) ? 0 : year);
+      if (!looked) return null;
+      return searchType === 'movie' ? looked.movie?.ids.trakt ?? null : looked.show?.ids.trakt ?? null;
+    };
+
+    let id: TraktTVId = null;
+    if (type === 'Movies') {
+      if (flixType === 'Movie' || !flixType) id = await tryLookup('movie');
+      if (id === null && flixType === 'TV Show') id = await tryLookup('movie'); // fallback
+    } else {
+      if (flixType === 'TV Show' || !flixType) id = await tryLookup('show');
+      if (id === null && flixType === 'Movie') id = await tryLookup('show'); // fallback
     }
 
     if (id && this.tvCache !== null && this.movieCache !== null) {
-      logger.debug(`New item added in ${type} cache`);
-      const cacheInfo = type === 'Movies' ? await this.movieCache.set(result, id) : await this.tvCache.set(result, id);
-      logger.debug(`Cache: ${cacheInfo.path}`);
+      if (type === 'Movies') await this.movieCache.set(result, id);
+      else await this.tvCache.set(result, id);
     }
     return id;
   }
@@ -266,10 +323,11 @@ export class FlixPatrol {
     const traktTVIds: TraktTVIds = [];
 
     for (const result of results) {
+  // removed per-item detail URL log
       const id = await this.getTraktTVId(result, type, trakt);
       if (id) {
         traktTVIds.push(id);
-      }
+  }
     }
     return traktTVIds;
   }
@@ -288,7 +346,33 @@ export class FlixPatrol {
       logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
       process.exit(1);
     }
-    let results = FlixPatrol.parseTop10Page(type, config.location, config.platform, html);
+  // html è stato validato sopra (exit se null)
+  let results = FlixPatrol.parseTop10Page(type, config.location, config.platform, html!);
+
+    // If no results for this specific type, attempt a single overall fallback (only once across both types)
+    if (results.length === 0) {
+      const overallKey = `${config.platform}::${config.location}`;
+      if (!this.overallConsumed.has(overallKey)) {
+        const overallExprs = [
+          `//div[h3[contains(.,"TOP 10 Overall")]]/parent::div/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+          // More tolerant: any h3 with 'Overall' then nearest following table links
+          `//h3[contains(translate(.,'overall','OVERALL'), 'OVERALL')]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+          // Fallback: first table
+          `(//table)[1]//a[contains(@class,'hover:underline')]/@href`,
+        ];
+        for (const expr of overallExprs) {
+          const ov = FlixPatrol.parsePage(expr, html!, 'top10');
+          if (ov.length > 0) {
+            results = ov;
+            this.overallConsumed.add(overallKey);
+            break;
+          }
+        }
+      } else {
+        // Overall already consumed by the other type call: leave results empty to avoid duplicate population
+        results = [];
+      }
+    }
     results = results.slice(0, config.limit);
 
     // Fallback to world if no match
@@ -312,7 +396,7 @@ export class FlixPatrol {
       logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
       process.exit(1);
     }
-    let results = FlixPatrol.parsePopularPage(html);
+  let results = FlixPatrol.parsePopularPage(html!);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
@@ -342,7 +426,7 @@ export class FlixPatrol {
       logger.error('FlixPatrol Error: unable to get FlixPatrol most-watched page');
       process.exit(1);
     }
-    let results = FlixPatrol.parseMostWatchedPage(html, config);
+  let results = FlixPatrol.parseMostWatchedPage(html!, config);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
