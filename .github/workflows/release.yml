@@ -2,8 +2,8 @@ name: Build, Package & Release
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, develop ]
+  #push:
+  #  branches: [ main, develop ]
 
 env:
   REGISTRY: ghcr.io
