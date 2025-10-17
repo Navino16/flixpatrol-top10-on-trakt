@@ -140,7 +140,7 @@ export class FlixPatrol {
       expressions.push(`//div[@id="toc-${platform}-${id}"]//table//a[contains(@class,'hover:underline')]/@href`);
     } else {
       // Original strict
-      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`);
+      expressions.push(`//div[h3[text() = "TOP 10 ${type === 'Movies' ? 'Movies' : 'TV Shows'}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
       // More tolerant headline match
       expressions.push(`//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`);
       // Generic first tables fallback
