@@ -43,7 +43,7 @@ trakt.connect().then(async () => {
     if (movies.length > 0) {
       logger.info('==============================');
       if (rawCounts.movies > movies.length) {
-        logger.warn("Flixpatrol have more movies than wanted, list have been reduced");
+        logger.warn(`Flixpatrol have more movies than wanted, list have been reduced from ${rawCounts.movies} to ${movies.length} movies`);
       }
       logger.info(`Saving movies for "${baseListName}"`);
       logger.debug(`${top10.platform} movies: ${movies}`);
@@ -53,7 +53,7 @@ trakt.connect().then(async () => {
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
-        logger.warn("Flixpatrol have more shows than wanted, list have been reduced");
+        logger.warn(`Flixpatrol have more shows than wanted, list have been reduced from ${rawCounts.shows} to ${shows.length} shows`);
       }
       logger.info(`Saving shows for "${baseListName}"`);
       logger.debug(`${top10.platform} shows: ${shows}`);
