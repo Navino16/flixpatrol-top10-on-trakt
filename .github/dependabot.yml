@@ -7,6 +7,12 @@ updates:
     schedule:
       interval: "weekly"
     target-branch: "main"
+    groups:
+      ci-dependencies: 
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   # Maintain dependencies for npm
   - package-ecosystem: "npm"
@@ -14,4 +20,10 @@ updates:
     schedule:
       interval: "weekly"
     target-branch: "develop"
+    groups:
+      code-dependencies: 
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
