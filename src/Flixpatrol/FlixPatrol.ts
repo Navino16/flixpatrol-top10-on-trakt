@@ -131,16 +131,14 @@ export class FlixPatrol {
   private static parseTop10Page(
     type: FlixPatrolType,
     location: FlixPatrolTop10Location,
-    platform: FlixPatrolTop10Platform,
     html: string,
   ): FlixPatrolMatchResult[] {
     const expressions: string[] = [];
     if (location === 'world') {
-      const id = type === 'Movies' ? 'movies' : 'tv-shows';
-      expressions.push(`//div[@id="toc-${platform}-${id}"]//table//a[contains(@class,'hover:underline')]/@href`);
+      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
     } else {
       // Original strict
-      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div/following-sibling::div[1]//a[@class="hover:underline"]/@href`);
+      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
       // More tolerant headline match
       expressions.push(`//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`);
       // Generic first tables fallback
@@ -173,14 +171,14 @@ export class FlixPatrol {
     let movies: TraktTVIds = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'movies' || config.type === 'both') {
-      moviesRaw = FlixPatrol.parseTop10Page('Movies', config.location, config.platform, html);
+      moviesRaw = FlixPatrol.parseTop10Page('Movies', config.location, html);
       movies = await this.convertResultsToIds(moviesRaw.slice(0, config.limit), 'Movies', trakt);
     }
 
     let shows: TraktTVIds = [];
     let showsRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'shows' || config.type === 'both') {
-      showsRaw = FlixPatrol.parseTop10Page('TV Shows', config.location, config.platform, html);
+      showsRaw = FlixPatrol.parseTop10Page('TV Shows', config.location, html);
       shows = await this.convertResultsToIds(showsRaw.slice(0, config.limit), 'TV Shows', trakt);
     }
 
