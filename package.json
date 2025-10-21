@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -26,7 +26,6 @@
     "@types/node": "^24.8.1",
     "@vercel/ncc": "^0.38.4",
     "@yao-pkg/pkg": "^6.9.0",
-    "esbuild": "^0.25.11",
     "eslint": "^9.38.0",
     "nodemon": "^3.1.10",
     "rimraf": "^6.0.1",
