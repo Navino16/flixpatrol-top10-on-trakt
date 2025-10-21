@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
     "test": "echo \"Error: no test specified\" && exit 1",
-  "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg build/tmp/index.js --targets=node22-linux-x64 --public -o bin/flixpatrol-top10-linux-x64 && npx pkg build/tmp/index.js --targets=node22-linux-arm64 --public -o bin/flixpatrol-top10-linux-arm64 && npx pkg build/tmp/index.js --targets=node22-macos-x64 --public -o bin/flixpatrol-top10-macos-x64 && npx pkg build/tmp/index.js --targets=node22-win-x64 --public -o bin/flixpatrol-top10-win-x64"
+    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js"
   },
   "keywords": [
     "Flixpatrol",
@@ -40,5 +40,15 @@
     "jsdom": "^27.0.1",
     "trakt.tv": "^8.2.0",
     "winston": "^3.18.3"
+  },
+  "pkg": {
+    "assets": "build/tmp/*.css",
+    "targets": [
+      "node22-linux-x64",
+      "node22-linux-arm64",
+      "node22-macos-x64",
+      "node22-win-x64"
+    ],
+    "outputPath": "bin"
   }
 }
