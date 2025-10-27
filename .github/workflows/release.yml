@@ -29,7 +29,7 @@ jobs:
       - name: Build project
         run: npm run build
       - name: Upload build result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build
           path: build/
@@ -57,7 +57,7 @@ jobs:
           path: build/
       - run: npm run package
       - name: Upload packages artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: flixpatrol
           path: bin/
