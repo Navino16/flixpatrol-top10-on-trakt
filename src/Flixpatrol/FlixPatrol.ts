@@ -46,7 +46,7 @@ const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', '
 // Correct alias: location should derive from flixpatrolTop10Location array
 export type FlixPatrolTop10Location = (typeof flixpatrolTop10Location)[number];
 
-const flixpatrolTop10Platform = ['netflix', 'hbo', 'disney', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
+const flixpatrolTop10Platform = ['netflix', 'hbo-max', 'disney', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
   'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus', 'francetv',
   'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema', 'lemino',
   'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv', 'raiplay',
@@ -135,7 +135,7 @@ export class FlixPatrol {
   ): FlixPatrolMatchResult[] {
     const expressions: string[] = [];
     if (location === 'world') {
-      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
+      expressions.push(`//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
     } else {
       // Original strict
       expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
