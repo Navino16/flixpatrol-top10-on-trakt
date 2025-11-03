@@ -29,7 +29,7 @@ jobs:
       - name: Build project
         run: npm run build
       - name: Upload build result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build
           path: build/
@@ -51,13 +51,13 @@ jobs:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - name: Restore build artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: build
           path: build/
       - run: npm run package
       - name: Upload packages artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: flixpatrol
           path: bin/
@@ -83,13 +83,13 @@ jobs:
     needs: tag-new-versions
     steps:
       - name: Restore build artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: flixpatrol
           path: bin/
       - name: Build Changelog
         id: github_release
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Release
@@ -115,7 +115,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
       - name: Restore build artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: flixpatrol
           path: bin/
@@ -157,7 +157,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
       - name: Restore build artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: flixpatrol
           path: bin/
