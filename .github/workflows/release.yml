@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -39,7 +39,7 @@ jobs:
     needs: build
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -68,7 +68,7 @@ jobs:
     needs: package
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
       - name: Create new tag
@@ -113,7 +113,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Restore build artifact
         uses: actions/download-artifact@v6
         with:
@@ -155,7 +155,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Restore build artifact
         uses: actions/download-artifact@v6
         with:
