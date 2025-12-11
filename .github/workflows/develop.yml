@@ -1,9 +1,8 @@
-name: Release
+name: Deploy Develop
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [develop]
 
 env:
   REGISTRY: ghcr.io
@@ -48,69 +47,6 @@ jobs:
       - name: Run tests
         run: npm run test
 
-  build:
-    name: Build Binaries
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build project
-        run: npm run build
-
-      - name: Package binaries
-        run: npm run package
-
-      - name: Upload binaries artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: binaries
-          path: bin/
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: binaries
-          path: bin/
-
-      - name: Build Changelog
-        id: changelog
-        uses: mikepenz/release-changelog-builder-action@v6
-        with:
-          configuration: ".github/changelog-config.json"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body: ${{ steps.changelog.outputs.changelog }}
-          files: |
-            bin/flixpatrol-top10-linux-arm64
-            bin/flixpatrol-top10-linux-x64
-            bin/flixpatrol-top10-macos-x64
-            bin/flixpatrol-top10-win-x64.exe
-
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -138,11 +74,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=auto
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
