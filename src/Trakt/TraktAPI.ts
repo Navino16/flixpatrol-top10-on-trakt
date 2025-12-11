@@ -12,12 +12,7 @@ import type {
 import Trakt from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils } from '../Utils';
-
-export interface TraktAPIOptions {
-  saveFile: string;
-  clientId: string;
-  clientSecret: string;
-}
+import type { TraktAPIOptions } from '../Utils/GetAndValidateConfigs';
 
 export type TraktTVId = number | null;
 export type TraktTVIds = number[];

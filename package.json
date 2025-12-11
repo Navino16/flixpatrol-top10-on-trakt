@@ -39,7 +39,8 @@
     "file-system-cache": "^2.4.7",
     "jsdom": "^27.2.0",
     "trakt.tv": "^8.2.0",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "zod": "^4.1.13"
   },
   "pkg": {
     "assets": "build/tmp/*.css",

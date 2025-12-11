@@ -123,7 +123,7 @@ npm install --save-dev jest @types/jest ts-jest
 
 ### 8. Massive code duplication in config validation
 **File:** `src/Utils/GetAndValidateConfigs.ts`
-**Status:** TODO
+**Status:** DONE (PR #398) - Replaced with Zod schemas
 **Description:** The 3 validation methods repeat the same pattern ~20 times. Extract to helper functions.
 ```typescript
 // CREATE HELPER
@@ -285,7 +285,7 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 **Description:** Show progress when processing multiple lists (e.g., "Processing 3/10 lists...").
 
 ### 20. Add configuration schema validation
-**Status:** TODO
+**Status:** DONE (PR #398)
 **Description:** Use JSON Schema or Zod for declarative config validation instead of manual checks.
 
 ### 21. Add Docker Compose for development
@@ -340,15 +340,15 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ## Summary
 
-| Priority | Count | Done | Remaining |
-|----------|-------|------|-----------|
-| Critical | 3 | 3 | 0 |
-| High | 4 | 3 | 1 |
-| Medium | 5 | 0 | 5 |
-| Low | 5 | 0 | 5 |
-| Features | 5 | 0 | 5 |
-| GitHub Issues | 6 | 0 | 6 |
-| **Total** | **28** | **6** | **22** |
+| Priority      | Count  | Done  | Remaining |
+|---------------|--------|-------|-----------|
+| Critical      | 3      | 3     | 0         |
+| High          | 4      | 3     | 1         |
+| Medium        | 5      | 1     | 4         |
+| Low           | 5      | 0     | 5         |
+| Features      | 5      | 1     | 4         |
+| GitHub Issues | 6      | 0     | 6         |
+| **Total**     | **28** | **8** | **20**    |
 
 ## Recommended Order of Implementation
 
@@ -358,7 +358,8 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 4. ~~Add Axios timeout (#4)~~ DONE
 5. ~~Fix FlixPatrolPopular type (#5)~~ DONE
 6. ~~Add try-catch around JSON.parse (#6)~~ DONE
-7. Extract name normalization helper (#10)
-8. Add retry logic (#11)
-9. Refactor config validation (#8)
-10. Add test framework (#7)
+7. ~~Refactor config validation (#8)~~ DONE (Zod)
+8. ~~Add Zod schema validation (#20)~~ DONE
+9. Extract name normalization helper (#10)
+10. Add retry logic (#11)
+11. Add test framework (#7)
