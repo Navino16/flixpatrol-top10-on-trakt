@@ -9,7 +9,9 @@
     "start:dev": "nodemon",
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js"
   },
   "keywords": [
@@ -25,13 +27,15 @@
     "@types/jsdom": "^27.0.0",
     "@types/node": "^24.10.1",
     "@vercel/ncc": "^0.38.4",
+    "@vitest/coverage-v8": "^4.0.15",
     "@yao-pkg/pkg": "^6.10.1",
     "eslint": "^9.39.1",
     "nodemon": "^3.1.11",
     "rimraf": "^6.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.1"
+    "typescript-eslint": "^8.48.1",
+    "vitest": "^4.0.15"
   },
   "dependencies": {
     "axios": "^1.13.2",

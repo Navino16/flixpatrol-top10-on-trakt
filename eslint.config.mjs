@@ -8,6 +8,8 @@ export default tsEslint.config(
         ignores: [
             "node_modules/",
             "build/",
+            "tests/",
+            "vitest.config.ts",
         ],
     },
     eslint.configs.recommended,
