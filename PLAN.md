@@ -111,11 +111,8 @@ try {
 
 ### 7. No test coverage
 **File:** `package.json:12`
-**Status:** TODO
+**Status:** DONE (PR #399) - Added Vitest with tests for Errors and FlixPatrol
 **Description:** No tests exist. Add Jest and write unit/integration tests.
-```bash
-npm install --save-dev jest @types/jest ts-jest
-```
 
 ---
 
@@ -250,7 +247,7 @@ private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPa
 
 ### 15. process.exit() calls throughout codebase
 **Files:** Multiple
-**Status:** TODO
+**Status:** DONE (PR #399) - Replaced with custom error classes
 **Description:** Hard exits prevent proper testing and resource cleanup. Consider using custom Error classes and catching at top level.
 
 ### 16. Non-null assertions without checks
@@ -340,15 +337,15 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ## Summary
 
-| Priority      | Count  | Done  | Remaining |
-|---------------|--------|-------|-----------|
-| Critical      | 3      | 3     | 0         |
-| High          | 4      | 3     | 1         |
-| Medium        | 5      | 1     | 4         |
-| Low           | 5      | 0     | 5         |
-| Features      | 5      | 1     | 4         |
-| GitHub Issues | 6      | 0     | 6         |
-| **Total**     | **28** | **8** | **20**    |
+| Priority      | Count  | Done   | Remaining |
+|---------------|--------|--------|-----------|
+| Critical      | 3      | 3      | 0         |
+| High          | 4      | 4      | 0         |
+| Medium        | 5      | 1      | 4         |
+| Low           | 5      | 1      | 4         |
+| Features      | 5      | 1      | 4         |
+| GitHub Issues | 6      | 0      | 6         |
+| **Total**     | **28** | **10** | **18**    |
 
 ## Recommended Order of Implementation
 
@@ -360,6 +357,7 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 6. ~~Add try-catch around JSON.parse (#6)~~ DONE
 7. ~~Refactor config validation (#8)~~ DONE (Zod)
 8. ~~Add Zod schema validation (#20)~~ DONE
-9. Extract name normalization helper (#10)
-10. Add retry logic (#11)
-11. Add test framework (#7)
+9. ~~Add test framework (#7)~~ DONE (Vitest)
+10. ~~Replace process.exit() with errors (#15)~~ DONE
+11. Extract name normalization helper (#10)
+12. Add retry logic (#11)

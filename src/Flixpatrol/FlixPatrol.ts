@@ -2,33 +2,28 @@ import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
-import { logger } from '../Utils';
-import type { TraktTVId, TraktTVIds } from '../Trakt';
+import { logger, FlixPatrolError } from '../Utils';
+import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
-import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10, CacheOptions} from '../Utils/GetAndValidateConfigs';
+import type {
+  FlixPatrolMostWatched,
+  FlixPatrolPopular,
+  FlixPatrolTop10,
+  CacheOptions,
+  FlixPatrolOptions,
+  FlixPatrolTop10Location,
+  FlixPatrolTop10Platform,
+  FlixPatrolPopularPlatform,
+  FlixPatrolConfigType,
+  FlixPatrolType,
+} from '../types';
 import {
   flixpatrolTop10Location,
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
-} from '../Utils/GetAndValidateConfigs';
+  flixpatrolConfigType,
+} from '../types';
 
-export interface FlixPatrolOptions {
-  url?: string;
-  agent?: string;
-}
-
-// Re-export CacheOptions from GetAndValidateConfigs
-export type { CacheOptions } from '../Utils/GetAndValidateConfigs';
-
-// Types derived from the arrays
-export type FlixPatrolTop10Location = (typeof flixpatrolTop10Location)[number];
-export type FlixPatrolTop10Platform = (typeof flixpatrolTop10Platform)[number];
-export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[number];
-
-const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
-export type FlixPatrolConfigType = (typeof flixpatrolConfigType)[number];
-
-export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
 
 export class FlixPatrol {
@@ -133,8 +128,7 @@ export class FlixPatrol {
   }> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
     }
 
     let movies: TraktTVIds = [];
@@ -222,8 +216,7 @@ export class FlixPatrol {
     }
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
-      process.exit(1);
+      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
     }
 
     const dom = new JSDOM(html);
@@ -314,10 +307,9 @@ export class FlixPatrol {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol popular page');
     }
-  let results = FlixPatrol.parsePopularPage(html!);
+    let results = FlixPatrol.parsePopularPage(html);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
@@ -344,10 +336,9 @@ export class FlixPatrol {
 
     const html = await this.getFlixPatrolHTMLPage(url);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol most-watched page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
-  let results = FlixPatrol.parseMostWatchedPage(html!, config);
+    let results = FlixPatrol.parseMostWatchedPage(html, config);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
