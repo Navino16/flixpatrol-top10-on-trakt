@@ -1,174 +1,181 @@
-name: Release
+name: Build, Package & Release
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [ main, develop ]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run lint
-        run: npm run lint
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm run test
-
   build:
-    name: Build Binaries
     runs-on: ubuntu-latest
-    needs: [lint, test]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
+      - name: Checkout repository
+        uses: actions/checkout@v6
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
+      - name: Cache node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install project dependencies
         run: npm ci
-
       - name: Build project
         run: npm run build
-
-      - name: Package binaries
-        run: npm run package
-
-      - name: Upload binaries artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload build result
+        uses: actions/upload-artifact@v5
         with:
-          name: binaries
-          path: bin/
+          name: build
+          path: build/
 
-  release:
-    name: Create Release
+  package:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
         with:
-          name: binaries
+          node-version: 22
+      - name: Restore node_modules
+        id: cache-nodes-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Restore build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: build
+          path: build/
+      - run: npm run package
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: flixpatrol
           path: bin/
 
-      - name: Build Changelog
-        id: changelog
-        uses: mikepenz/release-changelog-builder-action@v6
+  tag-new-versions:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: package
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
         with:
-          configuration: ".github/changelog-config.json"
+          fetch-depth: 2
+      - name: Create new tag
+        id: new-tag
+        uses: salsify/action-detect-and-tag-new-version@v2
+    outputs:
+      tag: ${{ steps.new-tag.outputs.tag }}
+
+  release:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: tag-new-versions
+    steps:
+      - name: Restore build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Build Changelog
+        id: github_release
+        uses: mikepenz/release-changelog-builder-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          body: ${{ steps.changelog.outputs.changelog }}
+          body: ${{steps.github_release.outputs.changelog}}
+          name: ${{needs.tag-new-versions.outputs.tag}}
+          tag_name: ${{needs.tag-new-versions.outputs.tag}}
           files: |
             bin/flixpatrol-top10-linux-arm64
-            bin/flixpatrol-top10-linux-amd64
+            bin/flixpatrol-top10-linux-x64
             bin/flixpatrol-top10-macos-x64
             bin/flixpatrol-top10-win-x64.exe
 
-  docker:
-    name: Build Docker Image
+  docker-main:
     runs-on: ubuntu-latest
-    needs: build
+    if: github.ref == 'refs/heads/main'
+    needs: tag-new-versions
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Restore build artifact
+        uses: actions/download-artifact@v6
         with:
-          name: binaries
+          name: flixpatrol
           path: bin/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: buildx-${{ github.sha }}
-          restore-keys: |
-            buildx-
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Login to GitHub Container Registry
+      - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker build and push
+      - name: PrepareReg Names
+        run: |
+          echo IMAGE_REPOSITORY=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:${{needs.tag-new-versions.outputs.tag}}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new
 
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+  docker-dev:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    needs: package
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Restore build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: flixpatrol
+          path: bin/
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }},
+          labels: ${{ steps.meta.outputs.labels }}
