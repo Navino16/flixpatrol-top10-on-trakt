@@ -126,7 +126,7 @@ trakt.connect().then(async () => {
       }
     }
   }
-}).catch((err) => {
+}).catch((err: unknown) => {
   logger.error(`Fatal error: ${(err as Error).message}`);
   process.exit(1);
 });

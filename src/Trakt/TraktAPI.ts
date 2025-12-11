@@ -35,11 +35,19 @@ export class TraktAPI {
     this.traktSaveFile = options.saveFile;
   }
 
-  public async connect() {
+  public async connect(): Promise<void> {
     if (fs.existsSync(this.traktSaveFile)) {
       logger.info(`Loading trakt informations from file ${this.traktSaveFile}`);
-      const data = fs.readFileSync(this.traktSaveFile, 'utf8');
-      const token: TraktAccessExport = JSON.parse(data);
+      let token: TraktAccessExport;
+      try {
+        const data = fs.readFileSync(this.traktSaveFile, 'utf8');
+        token = JSON.parse(data);
+      } catch (err) {
+        logger.error(`Error reading Trakt token file: ${err}`);
+        logger.warn(`Deleting corrupted token file ${this.traktSaveFile} and reinitializing`);
+        fs.unlinkSync(this.traktSaveFile);
+        return this.connect();
+      }
       const newToken = await this.trakt.import_token(token);
       logger.debug(`Trakt informations from file ${this.traktSaveFile} loaded`);
       fs.writeFileSync(this.traktSaveFile, JSON.stringify(newToken));

@@ -6,7 +6,7 @@ This document tracks identified issues and improvements for the flixpatrol-top10
 
 ### 1. Logic bug in MostWatched list name construction
 **File:** `src/app.ts:98-109`
-**Status:** TODO
+**Status:** DONE (PR #396)
 **Description:** The second `if` should be `else if`. Currently, if `normalizeName === false`, the name still gets normalized because the second condition overwrites it.
 ```typescript
 // CURRENT (BUGGY)
@@ -29,7 +29,7 @@ if (mostWatched.name && mostWatched.normalizeName === false) {
 
 ### 2. Unhandled Promise rejection in main app
 **File:** `src/app.ts:28`
-**Status:** TODO
+**Status:** DONE (PR #396)
 **Description:** `trakt.connect().then()` has no `.catch()` handler. If the promise rejects, the application crashes silently.
 ```typescript
 // FIX
@@ -43,7 +43,7 @@ trakt.connect()
 
 ### 3. XPath parsing without error handling
 **File:** `src/Flixpatrol/FlixPatrol.ts:220-235`
-**Status:** TODO
+**Status:** DONE (PR #396)
 **Description:** `textContent` can be null, but it's cast to string without validation. `iterateNext()` can throw on malformed DOM.
 ```typescript
 // FIX
@@ -65,7 +65,7 @@ try {
 
 ### 4. No timeout on Axios requests
 **File:** `src/Flixpatrol/FlixPatrol.ts:112-119`
-**Status:** TODO
+**Status:** DONE (PR #397)
 **Description:** HTTP requests can hang indefinitely if FlixPatrol doesn't respond.
 ```typescript
 // FIX
@@ -77,7 +77,7 @@ const axiosConfig: AxiosRequestConfig = {
 
 ### 5. Wrong type for FlixPatrolPopular.platform
 **File:** `src/Utils/GetAndValidateConfigs.ts:20`
-**Status:** TODO
+**Status:** DONE (PR #397)
 **Description:** Uses `FlixPatrolTop10Platform` instead of `FlixPatrolPopularPlatform`, allowing invalid values.
 ```typescript
 // CURRENT
@@ -93,7 +93,7 @@ export interface FlixPatrolPopular {
 
 ### 6. JSON.parse without try-catch
 **File:** `src/Trakt/TraktAPI.ts:42`
-**Status:** TODO
+**Status:** DONE (PR #397)
 **Description:** Can throw if the token file is corrupted.
 ```typescript
 // FIX
@@ -340,24 +340,24 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ## Summary
 
-| Priority | Count | Status |
-|----------|-------|--------|
-| Critical | 3 | TODO |
-| High | 4 | TODO |
-| Medium | 5 | TODO |
-| Low | 5 | TODO |
-| Features | 5 | TODO |
-| GitHub Issues | 6 | TODO |
-| **Total** | **28** | - |
+| Priority | Count | Done | Remaining |
+|----------|-------|------|-----------|
+| Critical | 3 | 3 | 0 |
+| High | 4 | 3 | 1 |
+| Medium | 5 | 0 | 5 |
+| Low | 5 | 0 | 5 |
+| Features | 5 | 0 | 5 |
+| GitHub Issues | 6 | 0 | 6 |
+| **Total** | **28** | **6** | **22** |
 
 ## Recommended Order of Implementation
 
-1. Fix critical bug #1 (if/else if in app.ts)
-2. Add .catch() to trakt.connect() (#2)
-3. Add Axios timeout (#4)
-4. Fix FlixPatrolPopular type (#5)
-5. Add try-catch around JSON.parse (#6)
-6. Add XPath error handling (#3)
+1. ~~Fix critical bug #1 (if/else if in app.ts)~~ DONE
+2. ~~Add .catch() to trakt.connect() (#2)~~ DONE
+3. ~~Add XPath error handling (#3)~~ DONE
+4. ~~Add Axios timeout (#4)~~ DONE
+5. ~~Fix FlixPatrolPopular type (#5)~~ DONE
+6. ~~Add try-catch around JSON.parse (#6)~~ DONE
 7. Extract name normalization helper (#10)
 8. Add retry logic (#11)
 9. Refactor config validation (#8)

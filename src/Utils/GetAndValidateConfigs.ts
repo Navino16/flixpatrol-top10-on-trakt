@@ -1,6 +1,6 @@
 import config from 'config';
 import type { TraktPrivacy } from 'trakt.tv';
-import type { CacheOptions, FlixPatrolTop10Location, FlixPatrolTop10Platform } from '../Flixpatrol';
+import type { CacheOptions, FlixPatrolTop10Location, FlixPatrolTop10Platform, FlixPatrolPopularPlatform } from '../Flixpatrol';
 import { FlixPatrol } from '../Flixpatrol';
 import { logger } from './Logger';
 import type { TraktAPIOptions } from '../Trakt';
@@ -17,7 +17,7 @@ export interface FlixPatrolTop10 {
 }
 
 export interface FlixPatrolPopular {
-  platform: FlixPatrolTop10Platform;
+  platform: FlixPatrolPopularPlatform;
   privacy: TraktPrivacy;
   limit: number;
   type: string;

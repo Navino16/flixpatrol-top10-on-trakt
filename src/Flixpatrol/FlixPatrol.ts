@@ -113,6 +113,7 @@ export class FlixPatrol {
       headers: {
         'User-Agent': this.options.agent,
       },
+      timeout: 30000,
     };
 
     try {
