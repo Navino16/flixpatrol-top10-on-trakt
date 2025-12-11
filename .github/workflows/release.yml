@@ -107,20 +107,26 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           files: |
             bin/flixpatrol-top10-linux-arm64
-            bin/flixpatrol-top10-linux-x64
+            bin/flixpatrol-top10-linux-amd64
             bin/flixpatrol-top10-macos-x64
             bin/flixpatrol-top10-win-x64.exe
 
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: build
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

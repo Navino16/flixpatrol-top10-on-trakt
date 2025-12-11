@@ -47,16 +47,51 @@ jobs:
       - name: Run tests
         run: npm run test
 
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Package binaries
+        run: npm run package
+
+      - name: Upload binaries artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: build
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

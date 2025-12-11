@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js"
+    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js && mv bin/flixpatrol-top10-linux-x64 bin/flixpatrol-top10-linux-amd64"
   },
   "keywords": [
     "Flixpatrol",
