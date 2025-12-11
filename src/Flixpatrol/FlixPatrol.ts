@@ -227,10 +227,17 @@ export class FlixPatrol {
     );
     const results: string[] = [];
 
-    let p = match.iterateNext();
-    while (p !== null) {
-      results.push(p.textContent as string);
-      p = match.iterateNext();
+    try {
+      let p = match.iterateNext();
+      while (p !== null) {
+        if (p.textContent) {
+          results.push(p.textContent);
+        }
+        p = match.iterateNext();
+      }
+    } catch (err) {
+      logger.error(`Error parsing XPath: ${err}`);
+      return [];
     }
     return results;
   }

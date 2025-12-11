@@ -98,8 +98,7 @@ trakt.connect().then(async () => {
       let listName: string;
       if (mostWatched.name && mostWatched.normalizeName === false) {
         listName = mostWatched.name;
-      }
-      if (mostWatched.name) {
+      } else if (mostWatched.name) {
         listName = mostWatched.name.toLowerCase().replace(/\s+/g, '-');
       } else {
         listName = `most-watched-${mostWatched.year}-netflix`;
@@ -127,6 +126,9 @@ trakt.connect().then(async () => {
       }
     }
   }
+}).catch((err) => {
+  logger.error(`Fatal error: ${(err as Error).message}`);
+  process.exit(1);
 });
 
 process.on('SIGINT', () => {
