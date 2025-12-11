@@ -11,16 +11,8 @@ import type {
 } from 'trakt.tv';
 import Trakt from 'trakt.tv';
 import fs from 'fs';
-import { logger, Utils } from '../Utils';
-
-export interface TraktAPIOptions {
-  saveFile: string;
-  clientId: string;
-  clientSecret: string;
-}
-
-export type TraktTVId = number | null;
-export type TraktTVIds = number[];
+import { logger, Utils, TraktError } from '../Utils';
+import type { TraktAPIOptions, TraktTVIds } from '../types';
 
 export class TraktAPI {
   private trakt: Trakt;
@@ -35,11 +27,19 @@ export class TraktAPI {
     this.traktSaveFile = options.saveFile;
   }
 
-  public async connect() {
+  public async connect(): Promise<void> {
     if (fs.existsSync(this.traktSaveFile)) {
       logger.info(`Loading trakt informations from file ${this.traktSaveFile}`);
-      const data = fs.readFileSync(this.traktSaveFile, 'utf8');
-      const token: TraktAccessExport = JSON.parse(data);
+      let token: TraktAccessExport;
+      try {
+        const data = fs.readFileSync(this.traktSaveFile, 'utf8');
+        token = JSON.parse(data);
+      } catch (err) {
+        logger.error(`Error reading Trakt token file: ${err}`);
+        logger.warn(`Deleting corrupted token file ${this.traktSaveFile} and reinitializing`);
+        fs.unlinkSync(this.traktSaveFile);
+        return this.connect();
+      }
       const newToken = await this.trakt.import_token(token);
       logger.debug(`Trakt informations from file ${this.traktSaveFile} loaded`);
       fs.writeFileSync(this.traktSaveFile, JSON.stringify(newToken));
@@ -56,8 +56,7 @@ export class TraktAPI {
         fs.writeFileSync(this.traktSaveFile, JSON.stringify(token));
         logger.debug(`Trakt informations saved to file ${this.traktSaveFile}`);
       } catch (connectErr) {
-        logger.error(`Trakt Error (connect): ${(connectErr as Error).message}`);
-        process.exit(1);
+        throw new TraktError(`Connection failed: ${(connectErr as Error).message}`);
       }
     }
   }
@@ -75,12 +74,10 @@ export class TraktAPI {
           await Utils.sleep(1000);
           list = await this.trakt.users.lists.create({ username: 'me', name: listName, privacy });
         } catch (createErr) {
-          logger.error(`Trakt Error (createList): ${(createErr as Error).message}`);
-          process.exit(1);
+          throw new TraktError(`Failed to create list "${listName}": ${(createErr as Error).message}`);
         }
       } else {
-        logger.error(`Trakt Error (getList): ${(getErr as Error).message}`);
-        process.exit(1);
+        throw new TraktError(`Failed to get list "${listName}": ${(getErr as Error).message}`);
       }
     }
     logger.silly(`Trakt list: ${JSON.stringify(list)}`)
@@ -93,8 +90,7 @@ export class TraktAPI {
     try {
       items = await this.trakt.users.list.items.get({ username: 'me', id: `${list.ids.trakt}`, type });
     } catch (err) {
-      logger.error(`Trakt Error (listItems): ${(err as Error).message}`);
-      process.exit(1);
+      throw new TraktError(`Failed to get list items for "${list.name}": ${(err as Error).message}`);
     }
     logger.silly(`Trakt list items: ${JSON.stringify(items)}`)
     return items;
@@ -144,8 +140,7 @@ export class TraktAPI {
       await Utils.sleep(1000);
       await this.trakt.users.list.items.remove(body);
     } catch (err) {
-      logger.error(`Trakt Error (removeItems): ${(err as Error).message}`);
-      process.exit(1);
+      throw new TraktError(`Failed to remove items from list "${list.name}": ${(err as Error).message}`);
     }
   }
 
@@ -175,8 +170,7 @@ export class TraktAPI {
       await Utils.sleep(1000);
       await this.trakt.users.list.items.add(body);
     } catch (err) {
-      logger.error(`Trakt Error (addItems): ${(err as Error).message}`);
-      process.exit(1);
+      throw new TraktError(`Failed to add items to list "${list.name}": ${(err as Error).message}`);
     }
   }
 

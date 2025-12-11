@@ -1,20 +1,34 @@
-
-import type { CacheOptions } from './Flixpatrol';
 import { FlixPatrol } from './Flixpatrol';
-import { logger, Utils } from './Utils';
-import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from './Utils/GetAndValidateConfigs';
+import { logger, Utils, AppError } from './Utils';
+import type {
+  CacheOptions,
+  FlixPatrolMostWatched,
+  FlixPatrolPopular,
+  FlixPatrolTop10,
+  TraktAPIOptions,
+} from './types';
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
-import type { TraktAPIOptions } from './Trakt';
 import { TraktAPI } from './Trakt';
 
 Utils.ensureConfigExist();
 
-logger.info('Loading all configurations values');
-const cacheOptions: CacheOptions = GetAndValidateConfigs.getCacheOptions();
-const traktOptions: TraktAPIOptions = GetAndValidateConfigs.getTraktOptions();
-const flixPatrolTop10: FlixPatrolTop10[] = GetAndValidateConfigs.getFlixPatrolTop10();
-const flixPatrolPopulars: FlixPatrolPopular[] = GetAndValidateConfigs.getFlixPatrolPopular();
-const flixPatrolMostWatched: FlixPatrolMostWatched[] = GetAndValidateConfigs.getFlixPatrolMostWatched();
+let cacheOptions: CacheOptions;
+let traktOptions: TraktAPIOptions;
+let flixPatrolTop10: FlixPatrolTop10[];
+let flixPatrolPopulars: FlixPatrolPopular[];
+let flixPatrolMostWatched: FlixPatrolMostWatched[];
+
+try {
+  logger.info('Loading all configurations values');
+  cacheOptions = GetAndValidateConfigs.getCacheOptions();
+  traktOptions = GetAndValidateConfigs.getTraktOptions();
+  flixPatrolTop10 = GetAndValidateConfigs.getFlixPatrolTop10();
+  flixPatrolPopulars = GetAndValidateConfigs.getFlixPatrolPopular();
+  flixPatrolMostWatched = GetAndValidateConfigs.getFlixPatrolMostWatched();
+} catch (err) {
+  logger.error(`${(err as Error).name}: ${(err as Error).message}`);
+  process.exit(1);
+}
 
 logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
 logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
@@ -98,8 +112,7 @@ trakt.connect().then(async () => {
       let listName: string;
       if (mostWatched.name && mostWatched.normalizeName === false) {
         listName = mostWatched.name;
-      }
-      if (mostWatched.name) {
+      } else if (mostWatched.name) {
         listName = mostWatched.name.toLowerCase().replace(/\s+/g, '-');
       } else {
         listName = `most-watched-${mostWatched.year}-netflix`;
@@ -127,6 +140,13 @@ trakt.connect().then(async () => {
       }
     }
   }
+}).catch((err: unknown) => {
+  if (err instanceof AppError) {
+    logger.error(`${err.name}: ${err.message}`);
+  } else {
+    logger.error(`Unexpected error: ${(err as Error).message}`);
+  }
+  process.exit(1);
 });
 
 process.on('SIGINT', () => {

@@ -1,67 +1,29 @@
-
 import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
-import { logger } from '../Utils';
-import type { TraktTVId, TraktTVIds } from '../Trakt';
+import { logger, FlixPatrolError } from '../Utils';
+import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
-import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from '../Utils/GetAndValidateConfigs';
+import type {
+  FlixPatrolMostWatched,
+  FlixPatrolPopular,
+  FlixPatrolTop10,
+  CacheOptions,
+  FlixPatrolOptions,
+  FlixPatrolTop10Location,
+  FlixPatrolTop10Platform,
+  FlixPatrolPopularPlatform,
+  FlixPatrolConfigType,
+  FlixPatrolType,
+} from '../types';
+import {
+  flixpatrolTop10Location,
+  flixpatrolTop10Platform,
+  flixpatrolPopularPlatform,
+  flixpatrolConfigType,
+} from '../types';
 
-export interface FlixPatrolOptions {
-  url?: string;
-  agent?: string;
-}
-
-export interface CacheOptions {
-  enabled: boolean;
-  savePath: string;
-  ttl: number;
-}
-
-const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'antigua-and-barbuda',
-  'argentina', 'armenia', 'australia', 'austria', 'azerbaijan', 'bahamas', 'bahrain', 'bangladesh', 'barbados',
-  'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia', 'bosnia-and-herzegovina', 'botswana', 'brazil',
-  'brunei', 'bulgaria', 'burkina-faso', 'burundi', 'cambodia', 'cameroon', 'canada', 'cape-verde',
-  'central-african-republic', 'chad', 'chile', 'china', 'colombia', 'comoros', 'costa-rica', 'croatia', 'cyprus',
-  'czech-republic', 'democratic-republic-of-the-congo', 'denmark', 'djibouti', 'dominica', 'dominican-republic',
-  'east-timor', 'ecuador', 'egypt', 'equatorial-guinea', 'eritrea', 'estonia', 'ethiopia', 'fiji', 'finland',
-  'france', 'gabon', 'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada', 'guadeloupe', 'guatemala',
-  'guinea', 'guinea-bissau', 'guyana', 'haiti', 'honduras', 'hong-kong', 'hungary', 'iceland', 'india',
-  'indonesia', 'iraq', 'ireland', 'israel', 'italy', 'ivory-coast', 'jamaica', 'japan', 'jordan', 'kazakhstan',
-  'kenya', 'kiribati', 'kosovo', 'kuwait', 'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia',
-  'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar', 'malawi', 'malaysia', 'maldives', 'mali',
-  'malta', 'marshall-islands', 'martinique', 'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova',
-  'monaco', 'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia', 'nauru', 'nepal',
-  'netherlands', 'new-caledonia', 'new-zealand', 'nicaragua', 'niger', 'nigeria', 'north-macedonia', 'norway',
-  'oman', 'pakistan', 'palau', 'palestine', 'panama', 'papua-new-guinea', 'paraguay', 'peru', 'philippines',
-  'poland', 'portugal', 'qatar', 'republic-of-the-congo', 'reunion', 'romania', 'russia', 'rwanda',
-  'saint-kitts-and-nevis', 'saint-lucia', 'saint-vincent-and-the-grenadines', 'salvador', 'samoa', 'san-marino',
-  'sao-tome-and-principe', 'saudi-arabia', 'senegal', 'serbia', 'seychelles', 'sierra-leone', 'singapore',
-  'slovakia', 'slovenia', 'solomon-islands', 'somalia', 'south-africa', 'south-korea', 'south-sudan', 'spain',
-  'sri-lanka', 'sudan', 'suriname', 'swaziland', 'sweden', 'switzerland', 'taiwan', 'tajikistan', 'tanzania',
-  'thailand', 'togo', 'tonga', 'trinidad-and-tobago', 'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda',
-  'ukraine', 'united-arab-emirates', 'united-kingdom', 'united-states', 'uruguay', 'uzbekistan', 'vanuatu',
-  'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia', 'zimbabwe'];
-// Correct alias: location should derive from flixpatrolTop10Location array
-export type FlixPatrolTop10Location = (typeof flixpatrolTop10Location)[number];
-
-const flixpatrolTop10Platform = ['netflix', 'hbo-max', 'disney', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
-  'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus', 'francetv',
-  'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema', 'lemino',
-  'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv', 'raiplay',
-  'rakuten-tv', 'rtl-plus', 'shahid', 'starz', 'streamz', 'tf1', 'tod', 'tubi', 'u-next', 'viaplay', 'videoland',
-  'viki', 'vix', 'voyo', 'vudu', 'watchit', 'wavve', 'wow', 'zee5'];
-export type FlixPatrolTop10Platform = (typeof flixpatrolTop10Platform)[number];
-
-const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
-  'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends', 'reddit'];
-export type FlixPatrolPopularPlatform = (typeof flixpatrolPopularPlatform)[number];
-
-const flixpatrolConfigType = ['movies', 'shows', 'both'];
-export type FlixPatrolConfigType = (typeof flixpatrolConfigType)[number];
-
-export type FlixPatrolType = 'Movies' | 'TV Shows';
 type FlixPatrolMatchResult = string;
 
 export class FlixPatrol {
@@ -91,15 +53,16 @@ export class FlixPatrol {
   }
 
   // eslint-disable-next-line max-len
-  public static isFlixPatrolTop10Location = (x: string): x is FlixPatrolTop10Location => flixpatrolTop10Location.includes(x);
+  public static isFlixPatrolTop10Location = (x: string): x is FlixPatrolTop10Location => (flixpatrolTop10Location as readonly string[]).includes(x);
 
   // eslint-disable-next-line max-len
-  public static isFlixPatrolTop10Platform = (x: string): x is FlixPatrolTop10Platform => flixpatrolTop10Platform.includes(x);
+  public static isFlixPatrolTop10Platform = (x: string): x is FlixPatrolTop10Platform => (flixpatrolTop10Platform as readonly string[]).includes(x);
 
   // eslint-disable-next-line max-len
-  public static isFlixPatrolPopularPlatform = (x: string): x is FlixPatrolPopularPlatform => flixpatrolPopularPlatform.includes(x);
+  public static isFlixPatrolPopularPlatform = (x: string): x is FlixPatrolPopularPlatform => (flixpatrolPopularPlatform as readonly string[]).includes(x);
 
-  public static isFlixPatrolType = (x: string): x is FlixPatrolConfigType => flixpatrolConfigType.includes(x);
+  // eslint-disable-next-line max-len
+  public static isFlixPatrolType = (x: string): x is FlixPatrolConfigType => (flixpatrolConfigType as readonly string[]).includes(x);
 
   /**
    * Get one FlixPatrol HTML page and return it as a string
@@ -113,6 +76,7 @@ export class FlixPatrol {
       headers: {
         'User-Agent': this.options.agent,
       },
+      timeout: 30000,
     };
 
     try {
@@ -164,8 +128,7 @@ export class FlixPatrol {
   }> {
     const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol top10 page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
     }
 
     let movies: TraktTVIds = [];
@@ -227,10 +190,17 @@ export class FlixPatrol {
     );
     const results: string[] = [];
 
-    let p = match.iterateNext();
-    while (p !== null) {
-      results.push(p.textContent as string);
-      p = match.iterateNext();
+    try {
+      let p = match.iterateNext();
+      while (p !== null) {
+        if (p.textContent) {
+          results.push(p.textContent);
+        }
+        p = match.iterateNext();
+      }
+    } catch (err) {
+      logger.error(`Error parsing XPath: ${err}`);
+      return [];
     }
     return results;
   }
@@ -246,8 +216,7 @@ export class FlixPatrol {
     }
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol detail page');
-      process.exit(1);
+      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
     }
 
     const dom = new JSDOM(html);
@@ -338,10 +307,9 @@ export class FlixPatrol {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol popular page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol popular page');
     }
-  let results = FlixPatrol.parsePopularPage(html!);
+    let results = FlixPatrol.parsePopularPage(html);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }
@@ -368,10 +336,9 @@ export class FlixPatrol {
 
     const html = await this.getFlixPatrolHTMLPage(url);
     if (html === null) {
-      logger.error('FlixPatrol Error: unable to get FlixPatrol most-watched page');
-      process.exit(1);
+      throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
-  let results = FlixPatrol.parseMostWatchedPage(html!, config);
+    let results = FlixPatrol.parseMostWatchedPage(html, config);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }

@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.11.2",
+  "version": "2.12.0",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -9,8 +9,10 @@
     "start:dev": "nodemon",
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && npx pkg --config=package.json build/tmp/index.js && mv bin/flixpatrol-top10-linux-x64 bin/flixpatrol-top10-linux-amd64"
   },
   "keywords": [
     "Flixpatrol",
@@ -20,26 +22,29 @@
   "author": "Navino16",
   "license": "GPL-3.0",
   "devDependencies": {
-    "@eslint/js": "^9.39.0",
+    "@eslint/js": "^9.39.1",
     "@types/config": "^3.3.5",
     "@types/jsdom": "^27.0.0",
-    "@types/node": "^24.10.0",
+    "@types/node": "^24.10.1",
     "@vercel/ncc": "^0.38.4",
+    "@vitest/coverage-v8": "^4.0.15",
     "@yao-pkg/pkg": "^6.10.1",
-    "eslint": "^9.39.0",
-    "nodemon": "^3.1.10",
-    "rimraf": "^6.1.0",
+    "eslint": "^9.39.1",
+    "nodemon": "^3.1.11",
+    "rimraf": "^6.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.2"
+    "typescript-eslint": "^8.48.1",
+    "vitest": "^4.0.15"
   },
   "dependencies": {
-    "axios": "^1.13.1",
+    "axios": "^1.13.2",
     "config": "^4.1.1",
     "file-system-cache": "^2.4.7",
-    "jsdom": "^27.1.0",
+    "jsdom": "^27.2.0",
     "trakt.tv": "^8.2.0",
-    "winston": "^3.18.3"
+    "winston": "^3.19.0",
+    "zod": "^4.1.13"
   },
   "pkg": {
     "assets": "build/tmp/*.css",

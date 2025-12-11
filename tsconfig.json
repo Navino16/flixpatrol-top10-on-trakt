@@ -109,6 +109,8 @@
   "exclude": [
     "node_modules",
     "build",
-    "eslint.config.mjs"
+    "eslint.config.mjs",
+    "tests",
+    "vitest.config.ts"
   ],
 }
