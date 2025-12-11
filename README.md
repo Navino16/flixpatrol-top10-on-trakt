@@ -4,8 +4,8 @@
 [![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/issues)
 [![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/pulls)
 
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/navino16/flixpatrol-top10-on-trakt/release.yml?branch=main&style=flat-square&label=Build%20(main))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml?query=branch%3Amain++)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/navino16/flixpatrol-top10-on-trakt/release.yml?branch=develop&style=flat-square&label=Build%20(develop))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml?query=branch%3Adevelop++)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?style=flat-square&label=Build%20(main))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/develop.yml?style=flat-square&label=Build%20(develop))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/develop.yml)
 
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/navino16/flixpatrol-top10-on-trakt/total?style=flat-square)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
