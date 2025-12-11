@@ -1,438 +1,180 @@
 import config from 'config';
-import type { TraktPrivacy } from 'trakt.tv';
-import type { CacheOptions, FlixPatrolTop10Location, FlixPatrolTop10Platform, FlixPatrolPopularPlatform } from '../Flixpatrol';
-import { FlixPatrol } from '../Flixpatrol';
+import { z } from 'zod';
 import { logger } from './Logger';
-import type { TraktAPIOptions } from '../Trakt';
 
-export interface FlixPatrolTop10 {
-  platform: FlixPatrolTop10Platform;
-  location: FlixPatrolTop10Location;
-  fallback: FlixPatrolTop10Location | false;
-  privacy: TraktPrivacy;
-  limit: number;
-  type: string;
-  name?: string;
-  normalizeName?: boolean;
+// Re-export arrays for use in FlixPatrol.ts type guards
+export const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'algeria', 'andorra', 'angola',
+  'antigua-and-barbuda', 'argentina', 'armenia', 'australia', 'austria', 'azerbaijan', 'bahamas', 'bahrain',
+  'bangladesh', 'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia', 'bosnia-and-herzegovina',
+  'botswana', 'brazil', 'brunei', 'bulgaria', 'burkina-faso', 'burundi', 'cambodia', 'cameroon', 'canada',
+  'cape-verde', 'central-african-republic', 'chad', 'chile', 'china', 'colombia', 'comoros', 'costa-rica', 'croatia',
+  'cyprus', 'czech-republic', 'democratic-republic-of-the-congo', 'denmark', 'djibouti', 'dominica',
+  'dominican-republic', 'east-timor', 'ecuador', 'egypt', 'equatorial-guinea', 'eritrea', 'estonia', 'ethiopia',
+  'fiji', 'finland', 'france', 'gabon', 'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada', 'guadeloupe',
+  'guatemala', 'guinea', 'guinea-bissau', 'guyana', 'haiti', 'honduras', 'hong-kong', 'hungary', 'iceland', 'india',
+  'indonesia', 'iraq', 'ireland', 'israel', 'italy', 'ivory-coast', 'jamaica', 'japan', 'jordan', 'kazakhstan',
+  'kenya', 'kiribati', 'kosovo', 'kuwait', 'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia', 'libya',
+  'liechtenstein', 'lithuania', 'luxembourg', 'madagascar', 'malawi', 'malaysia', 'maldives', 'mali', 'malta',
+  'marshall-islands', 'martinique', 'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco',
+  'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia', 'nauru', 'nepal', 'netherlands',
+  'new-caledonia', 'new-zealand', 'nicaragua', 'niger', 'nigeria', 'north-macedonia', 'norway', 'oman', 'pakistan',
+  'palau', 'palestine', 'panama', 'papua-new-guinea', 'paraguay', 'peru', 'philippines', 'poland', 'portugal',
+  'qatar', 'republic-of-the-congo', 'reunion', 'romania', 'russia', 'rwanda', 'saint-kitts-and-nevis', 'saint-lucia',
+  'saint-vincent-and-the-grenadines', 'salvador', 'samoa', 'san-marino', 'sao-tome-and-principe', 'saudi-arabia',
+  'senegal', 'serbia', 'seychelles', 'sierra-leone', 'singapore', 'slovakia', 'slovenia', 'solomon-islands',
+  'somalia', 'south-africa', 'south-korea', 'south-sudan', 'spain', 'sri-lanka', 'sudan', 'suriname', 'swaziland',
+  'sweden', 'switzerland', 'taiwan', 'tajikistan', 'tanzania', 'thailand', 'togo', 'tonga', 'trinidad-and-tobago',
+  'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda', 'ukraine', 'united-arab-emirates', 'united-kingdom',
+  'united-states', 'uruguay', 'uzbekistan', 'vanuatu', 'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia',
+  'zimbabwe'] as const;
+
+export const flixpatrolTop10Platform = ['netflix', 'hbo-max', 'disney', 'amazon', 'amazon-channels', 'amazon-prime',
+  'amc-plus', 'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus',
+  'francetv', 'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema',
+  'lemino', 'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv',
+  'raiplay', 'rakuten-tv', 'rtl-plus', 'shahid', 'starz', 'streamz', 'tf1', 'tod', 'tubi', 'u-next', 'viaplay',
+  'videoland', 'viki', 'vix', 'voyo', 'vudu', 'watchit', 'wavve', 'wow', 'zee5'] as const;
+
+export const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
+  'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends',
+  'reddit'] as const;
+
+const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
+const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
+
+// Zod schemas
+const FlixPatrolTop10LocationSchema = z.enum(flixpatrolTop10Location);
+const FlixPatrolTop10PlatformSchema = z.enum(flixpatrolTop10Platform);
+const FlixPatrolPopularPlatformSchema = z.enum(flixpatrolPopularPlatform);
+const FlixPatrolConfigTypeSchema = z.enum(flixpatrolConfigType);
+const TraktPrivacySchema = z.enum(traktPrivacy);
+
+const FlixPatrolTop10Schema = z.object({
+  platform: FlixPatrolTop10PlatformSchema,
+  location: FlixPatrolTop10LocationSchema,
+  fallback: z.union([FlixPatrolTop10LocationSchema, z.literal(false)]),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1, 'limit must be >= 1'),
+  type: FlixPatrolConfigTypeSchema,
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
+const FlixPatrolPopularSchema = z.object({
+  platform: FlixPatrolPopularPlatformSchema,
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
+  type: FlixPatrolConfigTypeSchema,
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
+const currentYear = new Date().getFullYear();
+
+const FlixPatrolMostWatchedSchema = z.object({
+  enabled: z.boolean(),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(50, 'limit must be between 1 and 50'),
+  type: FlixPatrolConfigTypeSchema,
+  year: z.number().min(2023).max(currentYear, `year must be between 2023 and ${currentYear}`),
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+  premiere: z.number().min(1980).max(currentYear, `premiere must be between 1980 and ${currentYear}`).optional(),
+  country: FlixPatrolTop10LocationSchema.optional(),
+  original: z.boolean().optional(),
+  orderByViews: z.boolean().optional(),
+});
+
+const TraktOptionsSchema = z.object({
+  saveFile: z.string(),
+  clientId: z.string(),
+  clientSecret: z.string(),
+});
+
+const CacheOptionsSchema = z.object({
+  enabled: z.boolean(),
+  savePath: z.string(),
+  ttl: z.number(),
+});
+
+// Infer types from schemas
+export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
+export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
+export type FlixPatrolMostWatched = z.infer<typeof FlixPatrolMostWatchedSchema>;
+export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
+export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
+
+// Helper function to format Zod errors
+function formatZodError(error: z.ZodError, context: string): string {
+  return error.issues.map((issue) => {
+    const path = issue.path.join('.');
+    return `${context}${path ? `.${path}` : ''}: ${issue.message}`;
+  }).join('\n');
 }
 
-export interface FlixPatrolPopular {
-  platform: FlixPatrolPopularPlatform;
-  privacy: TraktPrivacy;
-  limit: number;
-  type: string;
-  name?: string;
-  normalizeName?: boolean;
-}
-
-export interface FlixPatrolMostWatched {
-  enabled: boolean;
-  privacy: TraktPrivacy;
-  type: string;
-  limit: number;
-  year: number;
-  name?: string;
-  normalizeName?: boolean;
-  premiere?: number;
-  country?: FlixPatrolTop10Location;
-  original?: boolean;
-  orderByViews?: boolean;
+// Validation helper
+function validateConfig<T>(schema: z.ZodSchema<T>, data: unknown, context: string): T {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    logger.error(`Configuration Error:\n${formatZodError(result.error, context)}`);
+    process.exit(1);
+  }
+  return result.data;
 }
 
 export class GetAndValidateConfigs {
-  private static traktPrivacy: string[] = ['private', 'link', 'friends', 'public'];
-
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
-    let flixPatrolTop10Configs: Partial<FlixPatrolTop10>[];
     try {
-      flixPatrolTop10Configs = config.get('FlixPatrolTop10');
-      flixPatrolTop10Configs.forEach((flixPatrolTop10Config, index) => {
-        // Check if platform property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'platform')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].platform" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.platform !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].platform" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolTop10Platform(flixPatrolTop10Config.platform)) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].platform" -> ${flixPatrolTop10Config.platform} is not a valid platform`);
-          process.exit(1);
-        }
-
-        // Check if location property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'location')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].location" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.location !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].location" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolTop10Location(flixPatrolTop10Config.location)) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].location" -> ${flixPatrolTop10Config.location} is not a valid location`);
-          process.exit(1);
-        }
-
-        // Check if fallback property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'fallback')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].fallback" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.fallback !== 'string' && flixPatrolTop10Config.fallback !== false) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].fallback" -> not a valid string or boolean`);
-          process.exit(1);
-        }
-        if (flixPatrolTop10Config.fallback !== false
-          && !FlixPatrol.isFlixPatrolTop10Location(flixPatrolTop10Config.fallback)) {
-          logger.error(`Configuration Error: "FlixPatrolTop10[${index}].location" -> ${flixPatrolTop10Config.fallback} is not a valid fallback`);
-          process.exit(1);
-        }
-
-        // Check if privacy property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'privacy')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].privacy" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.privacy !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].privacy" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolTop10Config.privacy)) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].privacy" -> ${flixPatrolTop10Config.privacy} is not a valid privacy`);
-          process.exit(1);
-        }
-
-        // Check if limit property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'limit')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.limit !== 'number') {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> not a valid number`);
-          process.exit(1);
-        }
-        if (flixPatrolTop10Config.limit < 1) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].limit" -> limit should be a value greeter or equal to 1`);
-          process.exit(1);
-        }
-
-        // Check if type property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolTop10Config, 'type')) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> type not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolTop10Config.type !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolType(flixPatrolTop10Config.type)) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].type" -> ${flixPatrolTop10Config.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
-          process.exit(1);
-        }
-
-        // Check if optional name property is valid
-        if (typeof flixPatrolTop10Config.name !== 'string' && flixPatrolTop10Config.name !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolTop10[${index}].name" -> not a valid string`);
-          process.exit(1);
-        }
-
-        // Check if optional normalizeName property is valid
-        if (typeof flixPatrolTop10Config.normalizeName !== 'boolean' && flixPatrolTop10Config.normalizeName !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
-          process.exit(1);
-        }
-      });
+      const data = config.get('FlixPatrolTop10');
+      return validateConfig(z.array(FlixPatrolTop10Schema), data, 'FlixPatrolTop10');
     } catch (err) {
+      if (err instanceof z.ZodError) throw err;
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
-    return flixPatrolTop10Configs as FlixPatrolTop10[];
   }
 
   public static getFlixPatrolPopular(): FlixPatrolPopular[] {
-    let flixPatrolPopularConfigs: Partial<FlixPatrolPopular>[];
     try {
-      flixPatrolPopularConfigs = config.get('FlixPatrolPopular');
-      flixPatrolPopularConfigs.forEach((flixPatrolPopularConfig, index) => {
-        // Check if platform property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'platform')) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].platform" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolPopularConfig.platform !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].platform" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolPopularPlatform(flixPatrolPopularConfig.platform)) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].platform" -> ${flixPatrolPopularConfig.platform} is not a valid platform`);
-          process.exit(1);
-        }
-
-        // Check if privacy property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'privacy')) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].privacy" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolPopularConfig.privacy !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].privacy" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolPopularConfig.privacy)) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].privacy" -> ${flixPatrolPopularConfig.privacy} is not a valid privacy`);
-          process.exit(1);
-        }
-
-        // Check if limit property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'limit')) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolPopularConfig.limit !== 'number') {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> not a valid number`);
-          process.exit(1);
-        }
-        if (flixPatrolPopularConfig.limit < 1 || flixPatrolPopularConfig.limit > 100) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].limit" -> limit should be a value between 1 and 100`);
-          process.exit(1);
-        }
-
-        // Check if type property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolPopularConfig, 'type')) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> type not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolPopularConfig.type !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolType(flixPatrolPopularConfig.type)) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].type" -> ${flixPatrolPopularConfig.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
-          process.exit(1);
-        }
-
-        // Check if optional name property is valid
-        if (typeof flixPatrolPopularConfig.name !== 'string' && flixPatrolPopularConfig.name !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].name" -> not a valid string`);
-          process.exit(1);
-        }
-
-        // Check if optional normalizeName property is valid
-        if (typeof flixPatrolPopularConfig.normalizeName !== 'boolean' && flixPatrolPopularConfig.normalizeName !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
-          process.exit(1);
-        }
-      });
+      const data = config.get('FlixPatrolPopular');
+      return validateConfig(z.array(FlixPatrolPopularSchema), data, 'FlixPatrolPopular');
     } catch (err) {
+      if (err instanceof z.ZodError) throw err;
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
-    return flixPatrolPopularConfigs as FlixPatrolPopular[];
   }
 
   public static getFlixPatrolMostWatched(): FlixPatrolMostWatched[] {
-    let flixPatrolMostWatchedConfigs: Partial<FlixPatrolMostWatched>[];
-
-    const currentYear = new Date().getFullYear();
-
     try {
-      flixPatrolMostWatchedConfigs = config.get('FlixPatrolMostWatched');
-
-      flixPatrolMostWatchedConfigs.forEach((flixPatrolMostWatchedConfig, index) => {
-        // Check if enabled property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'enabled')) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].enabled" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolMostWatchedConfig.enabled !== 'boolean') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].enabled" -> not a valid boolean`);
-          process.exit(1);
-        }
-
-        // Check if privacy property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'privacy')) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolMostWatchedConfig.privacy !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!GetAndValidateConfigs.traktPrivacy.includes(flixPatrolMostWatchedConfig.privacy)) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].privacy" -> ${flixPatrolMostWatchedConfig.privacy} is not a valid privacy`);
-          process.exit(1);
-        }
-
-        // Check if limit property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'limit')) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolMostWatchedConfig.limit !== 'number') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> not a valid number`);
-          process.exit(1);
-        }
-        if (flixPatrolMostWatchedConfig.limit < 1 || flixPatrolMostWatchedConfig.limit > 50) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].limit" -> limit should be a value between 1 and 50`);
-          process.exit(1);
-        }
-
-        // Check if year property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'year')) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> property not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolMostWatchedConfig.year !== 'number') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> not a valid number`);
-          process.exit(1);
-        }
-        if (flixPatrolMostWatchedConfig.year < 2023 || flixPatrolMostWatchedConfig.year > currentYear) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].year" -> year should be a value between 2023 and ${currentYear}`);
-          process.exit(1);
-        }
-
-        // Check if type property is valid
-        if (!Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'type')) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> type not found`);
-          process.exit(1);
-        }
-        if (typeof flixPatrolMostWatchedConfig.type !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> not a valid string`);
-          process.exit(1);
-        }
-        if (!FlixPatrol.isFlixPatrolType(flixPatrolMostWatchedConfig.type)) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].type" -> ${flixPatrolMostWatchedConfig.type} is not a valid type. Must be 'movies', 'shows' or 'both'`);
-          process.exit(1);
-        }
-
-        // Check if optional premiere property is valid
-        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'premiere') && typeof flixPatrolMostWatchedConfig.premiere !== 'number') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].premiere" -> not a valid number`);
-          process.exit(1);
-        }
-        if (flixPatrolMostWatchedConfig.premiere !== undefined
-          && (flixPatrolMostWatchedConfig.premiere < 1980 || flixPatrolMostWatchedConfig.premiere > currentYear)) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].premiere" -> limit should be a value between 1980 and ${currentYear}`);
-          process.exit(1);
-        }
-
-        // Check if optional country property is valid
-        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'country') && typeof flixPatrolMostWatchedConfig.country !== 'string') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].country" -> not a valid string`);
-          process.exit(1);
-        }
-        if (flixPatrolMostWatchedConfig.country !== undefined
-          && !FlixPatrol.isFlixPatrolTop10Location(flixPatrolMostWatchedConfig.country)) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].country" -> ${flixPatrolMostWatchedConfig.country} is not a valid location`);
-          process.exit(1);
-        }
-
-        // Check if optional original property is valid
-        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'original') && typeof flixPatrolMostWatchedConfig.original !== 'boolean') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].original" -> not a valid boolean`);
-          process.exit(1);
-        }
-
-        // Check if optional original property is valid
-        if (Object.prototype.hasOwnProperty.call(flixPatrolMostWatchedConfig, 'orderByViews') && typeof flixPatrolMostWatchedConfig.orderByViews !== 'boolean') {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].orderByViews" -> not a valid boolean`);
-          process.exit(1);
-        }
-
-        // Check if optional name property is valid
-        if (typeof flixPatrolMostWatchedConfig.name !== 'string' && flixPatrolMostWatchedConfig.name !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolMostWatched[${index}].name" -> not a valid string`);
-          process.exit(1);
-        }
-
-        // Check if optional normalizeName property is valid
-        if (typeof flixPatrolMostWatchedConfig.normalizeName !== 'boolean' && flixPatrolMostWatchedConfig.normalizeName !== undefined) {
-          logger.error(`Configuration Error: Property "FlixPatrolPopular[${index}].normalizeName" -> not a valid boolean`);
-          process.exit(1);
-        }
-      });
+      const data = config.get('FlixPatrolMostWatched');
+      return validateConfig(z.array(FlixPatrolMostWatchedSchema), data, 'FlixPatrolMostWatched');
     } catch (err) {
+      if (err instanceof z.ZodError) throw err;
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
-
-    return flixPatrolMostWatchedConfigs as FlixPatrolMostWatched[];
   }
 
   public static getTraktOptions(): TraktAPIOptions {
-    let traktConfig: Partial<TraktAPIOptions>;
     try {
-      traktConfig = config.get('Trakt');
-
-      if (!Object.prototype.hasOwnProperty.call(traktConfig, 'saveFile')) {
-        logger.error('Configuration Error: Property "Trakt.saveFile" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof traktConfig.saveFile !== 'string') {
-        logger.error('Configuration Error: Property "Trakt.saveFile" is not a valid string in configuration file');
-        process.exit(1);
-      }
-
-      if (!Object.prototype.hasOwnProperty.call(traktConfig, 'clientId')) {
-        logger.error('Configuration Error: Property "Trakt.clientId" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof traktConfig.clientId !== 'string') {
-        logger.error('Configuration Error: Property "Trakt.clientId" is not a valid string in configuration file');
-        process.exit(1);
-      }
-
-      if (!Object.prototype.hasOwnProperty.call(traktConfig, 'clientSecret')) {
-        logger.error('Configuration Error: Property "Trakt.clientSecret" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof traktConfig.clientSecret !== 'string') {
-        logger.error('Configuration Error: Property "Trakt.clientSecret" is not a valid string in configuration file');
-        process.exit(1);
-      }
+      const data = config.get('Trakt');
+      return validateConfig(TraktOptionsSchema, data, 'Trakt');
     } catch (err) {
+      if (err instanceof z.ZodError) throw err;
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
-    return traktConfig as TraktAPIOptions;
   }
 
   public static getCacheOptions(): CacheOptions {
-    let cacheConfig: Partial<CacheOptions>;
     try {
-      cacheConfig = config.get('Cache');
-
-      if (!Object.prototype.hasOwnProperty.call(cacheConfig, 'enabled')) {
-        logger.error('Configuration Error: Property "Cache.enabled" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof cacheConfig.enabled !== 'boolean') {
-        logger.error('Configuration Error: Property "Cache.enabled" is not a boolean in configuration file');
-        process.exit(1);
-      }
-
-      if (!Object.prototype.hasOwnProperty.call(cacheConfig, 'savePath')) {
-        logger.error('Configuration Error: Property "Cache.enabled" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof cacheConfig.savePath !== 'string') {
-        logger.error('Configuration Error: Property "Cache.savePath" is not a valid string in configuration file');
-        process.exit(1);
-      }
-
-      if (!Object.prototype.hasOwnProperty.call(cacheConfig, 'ttl')) {
-        logger.error('Configuration Error: Property "Cache.ttl" was not found in configuration file');
-        process.exit(1);
-      }
-      if (typeof cacheConfig.ttl !== 'number') {
-        logger.error('Configuration Error: Property "Cache.ttl" is not a valid number in configuration file');
-        process.exit(1);
-      }
+      const data = config.get('Cache');
+      return validateConfig(CacheOptionsSchema, data, 'Cache');
     } catch (err) {
+      if (err instanceof z.ZodError) throw err;
       logger.error(`Configuration Error: ${err}`);
       process.exit(1);
     }
-    return cacheConfig as CacheOptions;
   }
 }

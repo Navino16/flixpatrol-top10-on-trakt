@@ -1,10 +1,13 @@
-
 import type { CacheOptions } from './Flixpatrol';
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils } from './Utils';
-import type {FlixPatrolMostWatched, FlixPatrolPopular, FlixPatrolTop10} from './Utils/GetAndValidateConfigs';
+import type {
+  FlixPatrolMostWatched,
+  FlixPatrolPopular,
+  FlixPatrolTop10,
+  TraktAPIOptions,
+} from './Utils/GetAndValidateConfigs';
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
-import type { TraktAPIOptions } from './Trakt';
 import { TraktAPI } from './Trakt';
 
 Utils.ensureConfigExist();
