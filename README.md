@@ -26,8 +26,10 @@ It can cause some bad matching but there is nothing we can do about that.⚠️
 ## Features
 
 - Sync **Top 10 lists** from 54+ streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
+- Sync **Top 10 Kids lists** from Netflix (country-specific)
 - Sync **Popular lists** from 14 sources (IMDB, TMDB, Letterboxd, Rotten Tomatoes, etc.)
 - Sync **Netflix Most Watched** annual rankings
+- Sync **Netflix Most Hours** rankings (total, first week, first month)
 - Support for **200+ countries/regions**
 - Intelligent **caching** to reduce API calls (7-day TTL by default)
 - Automatic Trakt list management (create, update, sync)
@@ -130,6 +132,7 @@ If there is any configuration error, the tool will exit whit information about t
 | top10Config.type                    | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
 | top10Config.name                    | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | A generated name based on the top10 config   |
 | top10Config.normalizeName           | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
+| top10Config.kids                    | Get Kids Top 10 instead of regular Top 10. Only works with Netflix and requires a specific country (not worldwide)                     | No        | true, false                                                                                                                                     | false                                        |
 | FlixPatrolPopular                   | An array containing as much as you want popularConfig                                                                                  | Yes       |                                                                                                                                                 |                                              |
 | popularConfig.platform              | Which popular platform to get from Flixpatrol                                                                                          | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53))  |                                              |
 | popularConfig.privacy               | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
@@ -149,6 +152,15 @@ If there is any configuration error, the tool will exit whit information about t
 | flixPatrolMostWatched.country       | Release country of movie/show. It will only return most watched movies/shows of this country. If omitted, all movie/shows are returned | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          | All                                          |
 | flixPatrolMostWatched.original      | Return only movie/show created by Netflix. If omitted, all movie/shows are returned                                                    | No        | true, false                                                                                                                                     | false                                        |
 | flixPatrolMostWatched.orderByViews  | Order list by views. By default ordered by hours                                                                                       | No        | true, false                                                                                                                                     | false                                        |
+| FlixPatrolMostHours                 | An array containing as much as you want flixPatrolMostHours config. Netflix all-time most hours rankings.                              | No        |                                                                                                                                                 |                                              |
+| flixPatrolMostHours.enabled         | Do you want to get a most hours list ?                                                                                                 | Yes       | true, false                                                                                                                                     | true                                         |
+| flixPatrolMostHours.privacy         | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
+| flixPatrolMostHours.type            | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
+| flixPatrolMostHours.limit           | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number between 1 and 100 (included)                                                                                                             | 50                                           |
+| flixPatrolMostHours.period          | Which ranking period to get                                                                                                            | Yes       | total, first-week, first-month                                                                                                                  | total                                        |
+| flixPatrolMostHours.language        | Filter by language (only for first-week and first-month)                                                                               | No        | all, english, non-english                                                                                                                       | all                                          |
+| flixPatrolMostHours.name            | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | netflix-most-hours-{period}                  |
+| flixPatrolMostHours.normalizeName   | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
 | Trakt.saveFile                      | Where to save the Trakt session file                                                                                                   | Yes       | Any valid path                                                                                                                                  | ./config/.trakt                              |
 | Trakt.clientId                      | You clientId from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)                                             | Yes       | A valid traktId                                                                                                                                 |                                              |
 | Trakt.clientSecret                  | You clientSecret from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)                                         | Yes       | A valid clientSecret                                                                                                                            |                                              |
@@ -188,20 +200,14 @@ If there is any configuration error, the tool will exit whit information about t
       "type": "both"
     },
     {
-      "platform": "apple-tv",
-      "location": "world",
+      "platform": "netflix",
+      "location": "united-states",
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "type": "both"
-    },
-    {
-      "platform": "paramount-plus",
-      "location": "world",
-      "fallback": false,
-      "privacy": "private",
-      "limit": 10,
-      "type": "both"
+      "name": "Netflix Top 10 Kids",
+      "type": "both",
+      "kids": true
     }
   ],
   "FlixPatrolPopular": [
@@ -219,6 +225,30 @@ If there is any configuration error, the tool will exit whit information about t
       "year": 2023,
       "limit": 50,
       "type": "both"
+    }
+  ],
+  "FlixPatrolMostHours": [
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "both",
+      "period": "total"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "both",
+      "period": "first-week"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "movies",
+      "period": "first-month",
+      "language": "english"
     }
   ],
   "Trakt": {
