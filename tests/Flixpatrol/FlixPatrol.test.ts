@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
 import axios from 'axios';
-import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHoursTotal } from '../../src/types';
+import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHours } from '../../src/types';
 
 // Mock axios
 vi.mock('axios');
@@ -1435,7 +1435,7 @@ describe('FlixPatrol', () => {
     });
   });
 
-  describe('getMostHoursTotal', () => {
+  describe('getMostHours', () => {
     let flixpatrol: FlixPatrol;
     const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
@@ -1447,14 +1447,16 @@ describe('FlixPatrol', () => {
     it('should throw FlixPatrolError when page fetch fails', async () => {
       vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
 
-      const config: FlixPatrolMostHoursTotal = {
+      const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
         limit: 10,
         type: 'movies',
+        period: 'total',
+        language: 'all',
       };
 
-      await expect(flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
         .rejects.toThrow('Unable to get FlixPatrol most-hours-total page');
     });
 
@@ -1511,14 +1513,16 @@ describe('FlixPatrol', () => {
         movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
       });
 
-      const config: FlixPatrolMostHoursTotal = {
+      const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
         limit: 10,
         type: 'movies',
+        period: 'total',
+        language: 'all',
       };
 
-      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
 
       expect(Array.isArray(result)).toBe(true);
       expect(axios.get).toHaveBeenCalledWith(
@@ -1580,14 +1584,16 @@ describe('FlixPatrol', () => {
         show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
       });
 
-      const config: FlixPatrolMostHoursTotal = {
+      const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
         limit: 10,
         type: 'shows',
+        period: 'total',
+        language: 'all',
       };
 
-      const result = await flixpatrol.getMostHoursTotal('TV Shows', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('TV Shows', config, mockTrakt as never);
 
       expect(Array.isArray(result)).toBe(true);
     });
@@ -1631,14 +1637,16 @@ describe('FlixPatrol', () => {
         movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
       });
 
-      const config: FlixPatrolMostHoursTotal = {
+      const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
         limit: 2,
         type: 'movies',
+        period: 'total',
+        language: 'all',
       };
 
-      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
 
       expect(result.length).toBeLessThanOrEqual(2);
     });
@@ -1667,16 +1675,109 @@ describe('FlixPatrol', () => {
       vi.mocked(axios.get)
         .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml });
 
-      const config: FlixPatrolMostHoursTotal = {
+      const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
         limit: 10,
         type: 'movies',
+        period: 'total',
+        language: 'all',
       };
 
-      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
 
       expect(result).toEqual([]);
+    });
+
+    it('should use correct URL for first-week period', async () => {
+      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+
+      const config: FlixPatrolMostHours = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+        period: 'first-week',
+        language: 'all',
+      };
+
+      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
+        .rejects.toThrow('Unable to get FlixPatrol most-hours-first-week page');
+    });
+
+    it('should use correct URL for first-month period', async () => {
+      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+
+      const config: FlixPatrolMostHours = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+        period: 'first-month',
+        language: 'english',
+      };
+
+      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
+        .rejects.toThrow('Unable to get FlixPatrol most-hours-first-month page');
+    });
+
+    it('should parse language-specific table for first-week with english language', async () => {
+      const firstWeekHtml = `
+        <html>
+          <body>
+            <div id="toc-movies">
+              <table class="card-table" x-show="isCurrent('all-languages')">
+                <tr><td><a class="flex gap-2 group items-center" href="/title/all-1">All 1</a></td></tr>
+              </table>
+              <table class="card-table" x-show="isCurrent('english')">
+                <tr><td><a class="flex gap-2 group items-center" href="/title/eng-1">English 1</a></td></tr>
+              </table>
+              <table class="card-table" x-show="isCurrent('non-english')">
+                <tr><td><a class="flex gap-2 group items-center" href="/title/non-1">Non-English 1</a></td></tr>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">English Movie</h1>
+              <span>Movie</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: firstWeekHtml })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        movie: { title: 'English Movie', year: 2024, ids: { trakt: 789 } },
+      });
+
+      const config: FlixPatrolMostHours = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+        period: 'first-week',
+        language: 'english',
+      };
+
+      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(axios.get).toHaveBeenCalledWith(
+        expect.stringContaining('/streaming-services/most-hours-first-week/netflix/'),
+        expect.any(Object)
+      );
     });
   });
 });

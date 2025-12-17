@@ -7,7 +7,8 @@ import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
 import type {
   FlixPatrolMostWatched,
-  FlixPatrolMostHoursTotal,
+  FlixPatrolMostHours,
+  FlixPatrolMostHoursLanguage,
   FlixPatrolPopular,
   FlixPatrolTop10,
   CacheOptions,
@@ -347,26 +348,50 @@ export class FlixPatrol {
     return this.convertResultsToIds(results, type, trakt);
   }
 
-  private static parseMostHoursTotalPage(
+  private static parseMostHoursPage(
     type: FlixPatrolType,
+    language: FlixPatrolMostHoursLanguage,
     html: string,
   ): FlixPatrolMatchResult[] {
     const sectionId = type === 'Movies' ? 'toc-movies' : 'toc-tv-shows';
-    const expression = `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`;
+    const langMap: Record<FlixPatrolMostHoursLanguage, string> = {
+      'all': 'all-languages',
+      'english': 'english',
+      'non-english': 'non-english',
+    };
+    const langTab = langMap[language];
 
-    return FlixPatrol.parsePage(expression, html);
+    // For language-specific tables, we need to find the correct table within the section
+    // The tables use x-show="isCurrent('all-languages')" etc.
+    const expression = `//div[@id="${sectionId}"]//table[contains(@x-show, "'${langTab}'")]//a[@class="flex gap-2 group items-center"]/@href`;
+    let results = FlixPatrol.parsePage(expression, html);
+
+    // Fallback for 'total' period which doesn't have language tabs
+    if (results.length === 0) {
+      const fallbackExpr = `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`;
+      results = FlixPatrol.parsePage(fallbackExpr, html);
+    }
+
+    return results;
   }
 
-  public async getMostHoursTotal(
+  public async getMostHours(
     type: FlixPatrolType,
-    config: FlixPatrolMostHoursTotal,
+    config: FlixPatrolMostHours,
     trakt: TraktAPI,
   ): Promise<TraktTVIds> {
-    const html = await this.getFlixPatrolHTMLPage('/streaming-services/most-hours-total/netflix/');
+    const periodUrlMap: Record<string, string> = {
+      'total': '/streaming-services/most-hours-total/netflix/',
+      'first-week': '/streaming-services/most-hours-first-week/netflix/',
+      'first-month': '/streaming-services/most-hours-first-month/netflix/',
+    };
+    const url = periodUrlMap[config.period];
+
+    const html = await this.getFlixPatrolHTMLPage(url);
     if (html === null) {
-      throw new FlixPatrolError('Unable to get FlixPatrol most-hours-total page');
+      throw new FlixPatrolError(`Unable to get FlixPatrol most-hours-${config.period} page`);
     }
-    let results = FlixPatrol.parseMostHoursTotalPage(type, html);
+    let results = FlixPatrol.parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }

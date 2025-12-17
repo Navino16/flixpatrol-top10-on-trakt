@@ -83,11 +83,18 @@ export const FlixPatrolMostWatchedSchema = z.object({
   orderByViews: z.boolean().optional(),
 });
 
-export const FlixPatrolMostHoursTotalSchema = z.object({
+export const flixpatrolMostHoursPeriod = ['total', 'first-week', 'first-month'] as const;
+export const flixpatrolMostHoursLanguage = ['all', 'english', 'non-english'] as const;
+const FlixPatrolMostHoursPeriodSchema = z.enum(flixpatrolMostHoursPeriod);
+const FlixPatrolMostHoursLanguageSchema = z.enum(flixpatrolMostHoursLanguage);
+
+export const FlixPatrolMostHoursSchema = z.object({
   enabled: z.boolean(),
   privacy: TraktPrivacySchema,
   limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
   type: FlixPatrolConfigTypeSchema,
+  period: FlixPatrolMostHoursPeriodSchema,
+  language: FlixPatrolMostHoursLanguageSchema.optional().default('all'),
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
 });
@@ -108,6 +115,8 @@ export const CacheOptionsSchema = z.object({
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
 export type FlixPatrolMostWatched = z.infer<typeof FlixPatrolMostWatchedSchema>;
-export type FlixPatrolMostHoursTotal = z.infer<typeof FlixPatrolMostHoursTotalSchema>;
+export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
+export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
+export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
