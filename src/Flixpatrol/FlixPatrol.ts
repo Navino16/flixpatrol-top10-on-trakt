@@ -7,6 +7,7 @@ import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
 import type {
   FlixPatrolMostWatched,
+  FlixPatrolMostHoursTotal,
   FlixPatrolPopular,
   FlixPatrolTop10,
   CacheOptions,
@@ -342,6 +343,30 @@ export class FlixPatrol {
       throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
     let results = FlixPatrol.parseMostWatchedPage(html, config);
+    results = results.slice(0, config.limit);
+    return this.convertResultsToIds(results, type, trakt);
+  }
+
+  private static parseMostHoursTotalPage(
+    type: FlixPatrolType,
+    html: string,
+  ): FlixPatrolMatchResult[] {
+    const sectionId = type === 'Movies' ? 'toc-movies' : 'toc-tv-shows';
+    const expression = `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`;
+
+    return FlixPatrol.parsePage(expression, html);
+  }
+
+  public async getMostHoursTotal(
+    type: FlixPatrolType,
+    config: FlixPatrolMostHoursTotal,
+    trakt: TraktAPI,
+  ): Promise<TraktTVIds> {
+    const html = await this.getFlixPatrolHTMLPage('/streaming-services/most-hours-total/netflix/');
+    if (html === null) {
+      throw new FlixPatrolError('Unable to get FlixPatrol most-hours-total page');
+    }
+    let results = FlixPatrol.parseMostHoursTotalPage(type, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToIds(results, type, trakt);
   }

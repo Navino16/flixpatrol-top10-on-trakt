@@ -5,6 +5,7 @@ import {
   FlixPatrolTop10Schema,
   FlixPatrolPopularSchema,
   FlixPatrolMostWatchedSchema,
+  FlixPatrolMostHoursTotalSchema,
   TraktOptionsSchema,
   CacheOptionsSchema,
 } from '../types';
@@ -12,6 +13,7 @@ import type {
   FlixPatrolTop10,
   FlixPatrolPopular,
   FlixPatrolMostWatched,
+  FlixPatrolMostHoursTotal,
   TraktAPIOptions,
   CacheOptions,
 } from '../types';
@@ -66,6 +68,19 @@ export class GetAndValidateConfigs {
     try {
       const data = config.get('FlixPatrolMostWatched');
       return validateConfig(z.array(FlixPatrolMostWatchedSchema), data, 'FlixPatrolMostWatched');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getFlixPatrolMostHoursTotal(): FlixPatrolMostHoursTotal[] {
+    try {
+      if (!config.has('FlixPatrolMostHoursTotal')) {
+        return [];
+      }
+      const data = config.get('FlixPatrolMostHoursTotal');
+      return validateConfig(z.array(FlixPatrolMostHoursTotalSchema), data, 'FlixPatrolMostHoursTotal');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);

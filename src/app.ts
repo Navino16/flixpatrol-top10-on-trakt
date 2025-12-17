@@ -3,6 +3,7 @@ import { logger, Utils, AppError } from './Utils';
 import type {
   CacheOptions,
   FlixPatrolMostWatched,
+  FlixPatrolMostHoursTotal,
   FlixPatrolPopular,
   FlixPatrolTop10,
   TraktAPIOptions,
@@ -17,6 +18,7 @@ let traktOptions: TraktAPIOptions;
 let flixPatrolTop10: FlixPatrolTop10[];
 let flixPatrolPopulars: FlixPatrolPopular[];
 let flixPatrolMostWatched: FlixPatrolMostWatched[];
+let flixPatrolMostHoursTotal: FlixPatrolMostHoursTotal[];
 
 try {
   logger.info('Loading all configurations values');
@@ -25,6 +27,7 @@ try {
   flixPatrolTop10 = GetAndValidateConfigs.getFlixPatrolTop10();
   flixPatrolPopulars = GetAndValidateConfigs.getFlixPatrolPopular();
   flixPatrolMostWatched = GetAndValidateConfigs.getFlixPatrolMostWatched();
+  flixPatrolMostHoursTotal = GetAndValidateConfigs.getFlixPatrolMostHoursTotal();
 } catch (err) {
   logger.error(`${(err as Error).name}: ${(err as Error).message}`);
   process.exit(1);
@@ -35,6 +38,7 @@ logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACT
 logger.silly(`flixPatrolTop10: ${JSON.stringify(flixPatrolTop10)}`);
 logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
 logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
+logger.silly(`flixPatrolMostHoursTotal: ${JSON.stringify(flixPatrolMostHoursTotal)}`);
 
 const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI(traktOptions);
@@ -137,6 +141,37 @@ trakt.connect().then(async () => {
         logger.debug(`most-watched shows: ${mostWatchedShows}`);
         await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
         logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
+      }
+    }
+  }
+
+  for (const mostHoursTotal of flixPatrolMostHoursTotal) {
+    if (mostHoursTotal.enabled) {
+      let listName: string;
+      if (mostHoursTotal.name && mostHoursTotal.normalizeName === false) {
+        listName = mostHoursTotal.name;
+      } else if (mostHoursTotal.name) {
+        listName = mostHoursTotal.name.toLowerCase().replace(/\s+/g, '-');
+      } else {
+        listName = 'netflix-most-hours-total';
+      }
+
+      if (mostHoursTotal.type === 'movies' || mostHoursTotal.type === 'both') {
+        logger.info('==============================');
+        logger.info(`Getting movies for "${listName}"`);
+        const mostHoursTotalMovies = await flixpatrol.getMostHoursTotal('Movies', mostHoursTotal, trakt);
+        logger.debug(`most-hours-total movies: ${mostHoursTotalMovies}`);
+        await trakt.pushToList(mostHoursTotalMovies, listName, 'movie', mostHoursTotal.privacy);
+        logger.info(`List ${listName} updated with ${mostHoursTotalMovies.length} new movies`);
+      }
+
+      if (mostHoursTotal.type === 'shows' || mostHoursTotal.type === 'both') {
+        logger.info('==============================');
+        logger.info(`Getting shows for "${listName}"`);
+        const mostHoursTotalShows = await flixpatrol.getMostHoursTotal('TV Shows', mostHoursTotal, trakt);
+        logger.debug(`most-hours-total shows: ${mostHoursTotalShows}`);
+        await trakt.pushToList(mostHoursTotalShows, listName, 'show', mostHoursTotal.privacy);
+        logger.info(`List ${listName} updated with ${mostHoursTotalShows.length} new shows`);
       }
     }
   }
