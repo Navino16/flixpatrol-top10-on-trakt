@@ -1,35 +1,27 @@
 {
   "categories": [
     {
+      "title": "## ⚠️ Breaking Changes",
+      "labels": ["breaking change"]
+    },
+    {
       "title": "## 🚀 Features",
-      "labels": ["enhancement", "feature"]
+      "labels": ["enhancement"]
     },
     {
       "title": "## 🐛 Bug Fixes",
-      "labels": ["bug", "fix"]
+      "labels": ["bug"]
+    },
+    {
+      "title": "## 📚 Documentation",
+      "labels": ["documentation"]
     },
     {
       "title": "## 📦 Dependencies",
       "labels": ["dependencies"]
-    },
-    {
-      "title": "## 📝 Documentation",
-      "labels": ["documentation"]
-    },
-    {
-      "title": "## 🔧 Maintenance",
-      "labels": ["chore", "maintenance", "refactor"]
     }
   ],
   "ignore_labels": ["skip-changelog"],
-  "sort": {
-    "order": "ASC",
-    "on_property": "mergedAt"
-  },
-  "template": "#{{CHANGELOG}}\n\n#{{UNCATEGORIZED}}",
-  "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}",
-  "empty_template": "No changes",
-  "max_tags_to_fetch": 200,
-  "max_pull_requests": 200,
-  "max_back_track_time_days": 365
+  "base_branches": ["develop"],
+  "template": "#{{CHANGELOG}}\n\n**Full Changelog**: #{{RELEASE_DIFF}}"
 }

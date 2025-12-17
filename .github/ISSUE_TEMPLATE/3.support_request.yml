@@ -1,7 +1,7 @@
 name: Support request
 description: Please do not use support request for bug reports or feature requests.
 title: '[SUPPORT]: '
-labels: ['not-yet-viewed', 'support']
+labels: ['triage', 'support']
 assignees: 'Navino16'
 
 body:

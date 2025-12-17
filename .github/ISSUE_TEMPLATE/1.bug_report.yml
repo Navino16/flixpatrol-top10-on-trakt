@@ -1,7 +1,7 @@
 name: Bug Report
 description: Please do not use bug reports for support issues or feature requests.
 title: '[BUG]: '
-labels: ['not-yet-viewed', 'bug']
+labels: ['triage', 'bug']
 assignees: 'Navino16'
 
 body:

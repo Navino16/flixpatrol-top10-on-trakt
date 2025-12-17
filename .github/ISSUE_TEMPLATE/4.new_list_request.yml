@@ -1,7 +1,7 @@
 name: New public list
 description: Ask for a new public list
 title: '[LIST]: '
-labels: ['not-yet-viewed', 'new-list']
+labels: ['triage', 'new-list']
 assignees: 'Navino16'
 
 body:

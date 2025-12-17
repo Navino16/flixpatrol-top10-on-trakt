@@ -183,3 +183,22 @@ Package creates binaries for:
 - Max line length: 120 chars (ignores strings and template literals)
 - TypeScript strict mode enabled
 - Ignores: `node_modules/`, `build/`
+
+## Contributing
+
+### Pull Requests
+
+**Always use the PR template** located at `.github/PULL_REQUEST_TEMPLATE.md` when creating pull requests. The template includes:
+- Description section
+- Type of change checkboxes
+- Checklist for testing and quality
+- Related issues section
+
+**Always add appropriate labels** to pull requests:
+- `enhancement` - New features or plugins
+- `bug` - Bug fixes
+- `breaking change` - Breaking changes requiring user action
+- `documentation` - Documentation updates
+- `dependencies` - Dependency updates
+
+Use `gh pr edit <number> --add-label "label1,label2"` to add labels.

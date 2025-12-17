@@ -1,4 +1,4 @@
-FROM alpine:3.21
+FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.source="https://github.com/Navino16/flixpatrol-top10-on-trakt"
 LABEL org.opencontainers.image.description="Sync FlixPatrol Top 10 to Trakt lists"
@@ -7,8 +7,8 @@ LABEL org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 
 # Create non-root user
-RUN addgroup -g 1000 flixpatrol && \
-    adduser -u 1000 -G flixpatrol -s /bin/sh -D flixpatrol && \
+RUN groupadd -g 1000 flixpatrol && \
+    useradd -u 1000 -g flixpatrol -s /bin/sh -M flixpatrol && \
     mkdir -p /app/config && \
     chown -R flixpatrol:flixpatrol /app
 
