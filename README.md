@@ -25,9 +25,9 @@ It can cause some bad matching but there is nothing we can do about that.⚠️
 
 ## Features
 
-- Sync **Top 10 lists** from 54+ streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
+- Sync **Top 10 lists** from 72 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
 - Sync **Top 10 Kids lists** from Netflix (country-specific)
-- Sync **Popular lists** from 14 sources (IMDB, TMDB, Letterboxd, Rotten Tomatoes, etc.)
+- Sync **Popular lists** from 12 sources (IMDB, TMDB, Letterboxd, Rotten Tomatoes, etc.)
 - Sync **Netflix Most Watched** annual rankings
 - Sync **Netflix Most Hours** rankings (total, first week, first month)
 - Support for **200+ countries/regions**
@@ -284,19 +284,19 @@ Remove some platform from the config or take a VIP account on Trakt
 
 ## Supported Platforms
 
-### Top 10 Platforms (54+)
+### Top 10 Platforms (72)
 
-`netflix`, `hbo-max`, `disney`, `amazon-prime`, `apple-tv`, `paramount-plus`, `hulu`, `peacock`, `starz`, `max`, `amazon-freevee`, `rakuten-tv`, `google-play`, `itunes`, and many more...
+`9now`, `abema`, `amazon`, `amazon-channels`, `amazon-prime`, `amc-plus`, `antenna-tv`, `apple-tv`, `bbc`, `canal`, `catchplay`, `cda`, `chili`, `claro-video`, `coupang-play`, `crunchyroll`, `discovery-plus`, `disney`, `francetv`, `friday`, `globoplay`, `go3`, `google`, `hami-video`, `hayu`, `hbo-max`, `hrti`, `hulu`, `hulu-nippon`, `itunes`, `jiocinema`, `jiohotstar`, `joyn`, `lemino`, `m6plus`, `mgm-plus`, `myvideo`, `neon-tv`, `netflix`, `now`, `oneplay`, `osn`, `paramount-plus`, `peacock`, `player`, `pluto-tv`, `raiplay`, `rakuten-tv`, `rtl-plus`, `sbs`, `shahid`, `skyshowtime`, `stan`, `starz`, `streamz`, `telasa`, `tf1`, `tod`, `trueid`, `tubi`, `tv-2-norge`, `u-next`, `viaplay`, `videoland`, `vidio`, `viki`, `viu`, `vix`, `voyo`, `vudu`, `watchit`, `wavve`, `wow`, `zee5`
 
-### Popular Sources (14)
+### Popular Sources (12)
 
-`movie-db`, `imdb`, `letterboxd`, `trakt`, `rotten-tomatoes`, `metacritic`, `reddit`, `youtube`, `wikipedia-trends`, and more...
+`facebook`, `imdb`, `instagram`, `letterboxd`, `movie-db`, `reddit`, `rotten-tomatoes`, `tmdb`, `trakt`, `twitter`, `wikipedia`, `youtube`
 
-### Locations (200+)
+### Locations (199)
 
-`world`, `united-states`, `france`, `united-kingdom`, `germany`, `canada`, `australia`, `japan`, and many more...
+`world`, `united-states`, `france`, `united-kingdom`, `germany`, `canada`, `australia`, `japan`, and 191 more countries...
 
-For the complete list, see the source code: [FlixPatrol.ts](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts)
+For the complete list, see the source code: [Config.types.ts](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)
 
 ## Scheduling
 
