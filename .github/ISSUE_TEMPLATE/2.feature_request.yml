@@ -1,7 +1,7 @@
 name: Feature request
 description: Submit new feature requests.
 title: '[FEATURE]: '
-labels: ['not-yet-viewed', 'enhancement']
+labels: ['triage', 'enhancement']
 assignees: 'Navino16'
 
 body:
