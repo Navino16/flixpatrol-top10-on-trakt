@@ -3,6 +3,10 @@ name: Deploy Develop
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
 
 env:
   REGISTRY: ghcr.io
