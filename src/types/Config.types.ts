@@ -56,6 +56,7 @@ export const FlixPatrolTop10Schema = z.object({
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
+  kids: z.boolean().optional(),
 });
 
 export const FlixPatrolPopularSchema = z.object({

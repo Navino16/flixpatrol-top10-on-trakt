@@ -630,6 +630,183 @@ describe('FlixPatrol', () => {
 
       expect(result.rawCounts).toBeDefined();
     });
+
+    it('should parse kids movies from regional page', async () => {
+      const top10Html = `
+        <html>
+          <body>
+            <div>
+              <h3>TOP 10 Kids Movies</h3>
+            </div>
+            <table class="card-table">
+              <tr>
+                <td><a class="hover:underline" href="/title/kids-movie-1">Kids Movie 1</a></td>
+              </tr>
+              <tr>
+                <td><a class="hover:underline" href="/title/kids-movie-2">Kids Movie 2</a></td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">Kids Movie</h1>
+              <span>Movie</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: top10Html })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        movie: { title: 'Kids Movie', year: 2024, ids: { trakt: 1001 } },
+      });
+
+      const config: FlixPatrolTop10 = {
+        platform: 'netflix',
+        location: 'italy',
+        fallback: false,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+        kids: true,
+      };
+
+      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+
+      expect(result.rawCounts).toBeDefined();
+      expect(result.shows).toEqual([]);
+    });
+
+    it('should parse kids TV shows from regional page', async () => {
+      const top10Html = `
+        <html>
+          <body>
+            <div>
+              <h3>TOP 10 Kids TV Shows</h3>
+            </div>
+            <table class="card-table">
+              <tr>
+                <td><a class="hover:underline" href="/title/kids-show-1">Kids Show 1</a></td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">Kids Show</h1>
+              <span>TV Show</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: top10Html })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        show: { title: 'Kids Show', year: 2024, ids: { trakt: 1002 } },
+      });
+
+      const config: FlixPatrolTop10 = {
+        platform: 'netflix',
+        location: 'italy',
+        fallback: false,
+        privacy: 'private',
+        limit: 10,
+        type: 'shows',
+        kids: true,
+      };
+
+      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+
+      expect(result.rawCounts).toBeDefined();
+      expect(result.movies).toEqual([]);
+    });
+
+    it('should return empty results for kids with non-netflix platform', async () => {
+      const config: FlixPatrolTop10 = {
+        platform: 'disney',
+        location: 'italy',
+        fallback: false,
+        privacy: 'private',
+        limit: 10,
+        type: 'both',
+        kids: true,
+      };
+
+      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+
+      expect(result.movies).toEqual([]);
+      expect(result.shows).toEqual([]);
+      expect(result.rawCounts.movies).toBe(0);
+      expect(result.rawCounts.shows).toBe(0);
+      // Should not make any HTTP requests
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    it('should return empty results for kids with world location', async () => {
+      const config: FlixPatrolTop10 = {
+        platform: 'netflix',
+        location: 'world',
+        fallback: false,
+        privacy: 'private',
+        limit: 10,
+        type: 'both',
+        kids: true,
+      };
+
+      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+
+      expect(result.movies).toEqual([]);
+      expect(result.shows).toEqual([]);
+      expect(result.rawCounts.movies).toBe(0);
+      expect(result.rawCounts.shows).toBe(0);
+      // Should not make any HTTP requests
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    it('should not trigger fallback for kids when no results found', async () => {
+      const emptyHtml = '<html><body></body></html>';
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: emptyHtml });
+
+      const config: FlixPatrolTop10 = {
+        platform: 'netflix',
+        location: 'france',
+        fallback: 'world',
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+        kids: true,
+      };
+
+      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+
+      // Fallback should NOT be triggered for kids
+      expect(axios.get).toHaveBeenCalledTimes(1);
+      expect(result.movies).toEqual([]);
+      expect(result.shows).toEqual([]);
+    });
   });
 
   describe('getPopular', () => {

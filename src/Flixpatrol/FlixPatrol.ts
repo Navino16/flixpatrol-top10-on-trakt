@@ -120,6 +120,28 @@ export class FlixPatrol {
     return [];
   }
 
+  private static parseTop10KidsPage(
+    type: FlixPatrolType,
+    html: string,
+  ): FlixPatrolMatchResult[] {
+    const kidsType = type === 'Movies' ? 'Kids Movies' : 'Kids TV Shows';
+    const expressions: string[] = [
+      // Match h3 with "TOP 10 Kids Movies/TV Shows" followed by table
+      `//h3[text() = "TOP 10 ${kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
+      // Fallback with contains for more tolerance
+      `//h3[contains(., "TOP 10") and contains(., "${kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
+    ];
+
+    for (const expr of expressions) {
+      const res = FlixPatrol.parsePage(expr, html);
+      if (res.length > 0) {
+        logger.silly(`Found ${res.length} ${kidsType} in ${expr}`);
+        return res;
+      }
+    }
+    return [];
+  }
+
   public async getTop10Sections(
     config: FlixPatrolTop10,
     trakt: TraktAPI,
@@ -128,6 +150,18 @@ export class FlixPatrol {
     shows: TraktTVIds;
     rawCounts: { movies: number; shows: number; }
   }> {
+    // Validate kids configuration
+    if (config.kids) {
+      if (config.platform !== 'netflix') {
+        logger.warn(`Kids lists are only available on Netflix, but platform is "${config.platform}". Skipping.`);
+        return { movies: [], shows: [], rawCounts: { movies: 0, shows: 0 } };
+      }
+      if (config.location === 'world') {
+        logger.warn('Kids lists are not available for worldwide. Please specify a country. Skipping.');
+        return { movies: [], shows: [], rawCounts: { movies: 0, shows: 0 } };
+      }
+    }
+
     const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
@@ -136,19 +170,23 @@ export class FlixPatrol {
     let movies: TraktTVIds = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'movies' || config.type === 'both') {
-      moviesRaw = FlixPatrol.parseTop10Page('Movies', config.location, html);
+      moviesRaw = config.kids
+        ? FlixPatrol.parseTop10KidsPage('Movies', html)
+        : FlixPatrol.parseTop10Page('Movies', config.location, html);
       movies = await this.convertResultsToIds(moviesRaw.slice(0, config.limit), 'Movies', trakt);
     }
 
     let shows: TraktTVIds = [];
     let showsRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'shows' || config.type === 'both') {
-      showsRaw = FlixPatrol.parseTop10Page('TV Shows', config.location, html);
+      showsRaw = config.kids
+        ? FlixPatrol.parseTop10KidsPage('TV Shows', html)
+        : FlixPatrol.parseTop10Page('TV Shows', config.location, html);
       shows = await this.convertResultsToIds(showsRaw.slice(0, config.limit), 'TV Shows', trakt);
     }
 
-    if (movies.length === 0 && shows.length === 0 && config.fallback !== false) {
-      // Fallback to world if no match
+    if (movies.length === 0 && shows.length === 0 && config.fallback !== false && !config.kids) {
+      // Fallback to world if no match (not applicable for kids)
       logger.warn(`No items found for ${config.platform}, falling back to ${config.fallback} search`);
       const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
       return this.getTop10Sections(newConfig, trakt);
