@@ -26,12 +26,14 @@ export const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'alge
   'united-states', 'uruguay', 'uzbekistan', 'vanuatu', 'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia',
   'zimbabwe'] as const;
 
-export const flixpatrolTop10Platform = ['netflix', 'hbo-max', 'disney', 'amazon', 'amazon-channels', 'amazon-prime',
-  'amc-plus', 'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus',
-  'francetv', 'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema',
-  'lemino', 'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv',
-  'raiplay', 'rakuten-tv', 'rtl-plus', 'shahid', 'starz', 'streamz', 'tf1', 'tod', 'tubi', 'u-next', 'viaplay',
-  'videoland', 'viki', 'vix', 'voyo', 'vudu', 'watchit', 'wavve', 'wow', 'zee5'] as const;
+export const flixpatrolTop10Platform = ['9now', 'abema', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
+  'antenna-tv', 'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'coupang-play', 'crunchyroll',
+  'discovery-plus', 'disney', 'francetv', 'friday', 'globoplay', 'go3', 'google', 'hami-video', 'hayu', 'hbo-max',
+  'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema', 'jiohotstar', 'joyn', 'lemino', 'm6plus', 'mgm-plus', 'myvideo',
+  'neon-tv', 'netflix', 'now', 'oneplay', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv', 'raiplay',
+  'rakuten-tv', 'rtl-plus', 'sbs', 'shahid', 'skyshowtime', 'stan', 'starz', 'streamz', 'telasa', 'tf1', 'tod',
+  'trueid', 'tubi', 'tv-2-norge', 'u-next', 'viaplay', 'videoland', 'vidio', 'viki', 'viu', 'vix', 'voyo', 'vudu',
+  'watchit', 'wavve', 'wow', 'zee5'] as const;
 
 export const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
   'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends',
