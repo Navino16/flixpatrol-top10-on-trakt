@@ -46,15 +46,8 @@ const trakt = new TraktAPI(traktOptions);
 trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
-    let baseListName: string;
-    if (top10.name && top10.normalizeName === false) {
-      baseListName = top10.name;
-    }
-    else if (top10.name) {
-      baseListName = top10.name.toLowerCase().replace(/\s+/g, '-');
-    } else {
-      baseListName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
-    }
+    const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
+    const baseListName = Utils.getListName(top10, defaultName);
 
     const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
 
@@ -82,15 +75,7 @@ trakt.connect().then(async () => {
 
 
   for (const popular of flixPatrolPopulars) {
-    let listName: string;
-    if (popular.name && popular.normalizeName === false) {
-      listName = popular.name;
-    }
-    else if (popular.name) {
-      listName = popular.name.toLowerCase().replace(/\s+/g, '-');
-    } else {
-      listName = `${popular.platform}-popular`;
-    }
+    const listName = Utils.getListName(popular, `${popular.platform}-popular`);
 
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
@@ -113,17 +98,11 @@ trakt.connect().then(async () => {
 
   for (const mostWatched of flixPatrolMostWatched) {
     if (mostWatched.enabled) {
-      let listName: string;
-      if (mostWatched.name && mostWatched.normalizeName === false) {
-        listName = mostWatched.name;
-      } else if (mostWatched.name) {
-        listName = mostWatched.name.toLowerCase().replace(/\s+/g, '-');
-      } else {
-        listName = `most-watched-${mostWatched.year}-netflix`;
-        listName = mostWatched.original !== undefined ? `${listName}-original` : listName;
-        listName = mostWatched.premiere !== undefined ? `${listName}-${mostWatched.premiere}-premiere` : listName;
-        listName = mostWatched.country !== undefined ? `${listName}-from-${mostWatched.country}` : listName;
-      }
+      let defaultName = `most-watched-${mostWatched.year}-netflix`;
+      defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
+      defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
+      defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
+      const listName = Utils.getListName(mostWatched, defaultName);
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
@@ -147,17 +126,11 @@ trakt.connect().then(async () => {
 
   for (const mostHours of flixPatrolMostHours) {
     if (mostHours.enabled) {
-      let listName: string;
-      if (mostHours.name && mostHours.normalizeName === false) {
-        listName = mostHours.name;
-      } else if (mostHours.name) {
-        listName = mostHours.name.toLowerCase().replace(/\s+/g, '-');
-      } else {
-        listName = `netflix-most-hours-${mostHours.period}`;
-        if (mostHours.language !== 'all') {
-          listName += `-${mostHours.language}`;
-        }
+      let defaultName = `netflix-most-hours-${mostHours.period}`;
+      if (mostHours.language !== 'all') {
+        defaultName += `-${mostHours.language}`;
       }
+      const listName = Utils.getListName(mostHours, defaultName);
 
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');
