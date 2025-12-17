@@ -6,6 +6,19 @@ export class Utils {
     return new Promise((resolve) => { setTimeout(resolve, time); });
   }
 
+  public static getListName(
+    config: { name?: string; normalizeName?: boolean },
+    defaultName: string
+  ): string {
+    if (config.name && config.normalizeName === false) {
+      return config.name;
+    }
+    if (config.name) {
+      return config.name.toLowerCase().replace(/\s+/g, '-');
+    }
+    return defaultName;
+  }
+
   public static ensureConfigExist() {
     if (!fs.existsSync('./config/default.json')) {
       logger.warn('Default configuration file doesn\'t exist, creating it and exit. Please edit the config file');

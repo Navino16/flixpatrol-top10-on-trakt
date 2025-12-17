@@ -164,8 +164,8 @@ fs.writeFileSync('./config/default.json', JSON.stringify(defaultConfig, null, 2)
 
 ### 10. Duplicated name normalization logic
 **File:** `src/app.ts:31-39, 67-75, 98-109`
-**Status:** TODO
-**Description:** Same pattern repeated 3 times. Extract to utility function.
+**Status:** DONE
+**Description:** Same pattern repeated 4 times. Extracted to `Utils.getListName()` utility function.
 ```typescript
 // ADD TO Utils.ts
 function getListName(
@@ -339,11 +339,11 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 |---------------|--------|--------|-----------|
 | Critical      | 3      | 3      | 0         |
 | High          | 4      | 4      | 0         |
-| Medium        | 5      | 1      | 4         |
+| Medium        | 5      | 2      | 3         |
 | Low           | 5      | 1      | 4         |
 | Features      | 5      | 1      | 4         |
 | GitHub Issues | 6      | 6      | 0         |
-| **Total**     | **28** | **16** | **12**    |
+| **Total**     | **28** | **17** | **11**    |
 
 ## Recommended Order of Implementation
 
@@ -357,5 +357,5 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 8. ~~Add Zod schema validation (#20)~~ DONE
 9. ~~Add test framework (#7)~~ DONE (Vitest)
 10. ~~Replace process.exit() with errors (#15)~~ DONE
-11. Extract name normalization helper (#10)
+11. ~~Extract name normalization helper (#10)~~ DONE
 12. Add retry logic (#11)
