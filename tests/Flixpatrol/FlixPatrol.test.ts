@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
 import axios from 'axios';
-import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched } from '../../src/types';
+import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHoursTotal } from '../../src/types';
 
 // Mock axios
 vi.mock('axios');
@@ -1432,6 +1432,251 @@ describe('FlixPatrol', () => {
       await flixpatrol.getPopular('Movies', config, mockTrakt as never);
 
       expect(mockGetFirstItemByQuery).toHaveBeenCalledWith('movie', 'Fallback Title', 2024);
+    });
+  });
+
+  describe('getMostHoursTotal', () => {
+    let flixpatrol: FlixPatrol;
+    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
+
+    beforeEach(() => {
+      flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
+      vi.clearAllMocks();
+    });
+
+    it('should throw FlixPatrolError when page fetch fails', async () => {
+      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+
+      const config: FlixPatrolMostHoursTotal = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      };
+
+      await expect(flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never))
+        .rejects.toThrow('Unable to get FlixPatrol most-hours-total page');
+    });
+
+    it('should parse most hours total movies from toc-movies section', async () => {
+      const mostHoursTotalHtml = `
+        <html>
+          <body>
+            <div id="toc-movies">
+              <table class="card-table">
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/movie-1">Movie 1</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/movie-2">Movie 2</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div id="toc-tv-shows">
+              <table class="card-table">
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/show-1">Show 1</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">Test Movie</h1>
+              <span>Movie</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
+      });
+
+      const config: FlixPatrolMostHoursTotal = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      };
+
+      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(axios.get).toHaveBeenCalledWith(
+        expect.stringContaining('/streaming-services/most-hours-total/netflix/'),
+        expect.any(Object)
+      );
+    });
+
+    it('should parse most hours total TV shows from toc-tv-shows section', async () => {
+      const mostHoursTotalHtml = `
+        <html>
+          <body>
+            <div id="toc-movies">
+              <table class="card-table">
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/movie-1">Movie 1</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div id="toc-tv-shows">
+              <table class="card-table">
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/show-1">Show 1</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/show-2">Show 2</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">Test Show</h1>
+              <span>TV Show</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
+      });
+
+      const config: FlixPatrolMostHoursTotal = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'shows',
+      };
+
+      const result = await flixpatrol.getMostHoursTotal('TV Shows', config, mockTrakt as never);
+
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('should respect the limit configuration', async () => {
+      const mostHoursTotalHtml = `
+        <html>
+          <body>
+            <div id="toc-movies">
+              <table class="card-table">
+                <tr><td><a class="flex gap-2 group items-center" href="/title/m1">M1</a></td></tr>
+                <tr><td><a class="flex gap-2 group items-center" href="/title/m2">M2</a></td></tr>
+                <tr><td><a class="flex gap-2 group items-center" href="/title/m3">M3</a></td></tr>
+                <tr><td><a class="flex gap-2 group items-center" href="/title/m4">M4</a></td></tr>
+                <tr><td><a class="flex gap-2 group items-center" href="/title/m5">M5</a></td></tr>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="mb-6">
+              <h1 class="mb-4">Movie</h1>
+              <span>Movie</span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span><span>2024</span></span>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
+        .mockResolvedValue({ status: 200, data: detailHtml });
+
+      mockGetFirstItemByQuery.mockResolvedValue({
+        movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
+      });
+
+      const config: FlixPatrolMostHoursTotal = {
+        enabled: true,
+        privacy: 'private',
+        limit: 2,
+        type: 'movies',
+      };
+
+      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+
+      expect(result.length).toBeLessThanOrEqual(2);
+    });
+
+    it('should return empty array when section is empty', async () => {
+      const mostHoursTotalHtml = `
+        <html>
+          <body>
+            <div id="toc-movies">
+              <table class="card-table">
+              </table>
+            </div>
+            <div id="toc-tv-shows">
+              <table class="card-table">
+                <tr>
+                  <td>
+                    <a class="flex gap-2 group items-center" href="/title/show-1">Show 1</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+
+      vi.mocked(axios.get)
+        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml });
+
+      const config: FlixPatrolMostHoursTotal = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      };
+
+      const result = await flixpatrol.getMostHoursTotal('Movies', config, mockTrakt as never);
+
+      expect(result).toEqual([]);
     });
   });
 });
