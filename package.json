@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.12.2",
+  "version": "2.13.0",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "axios": "^1.13.2",
+    "axios-retry": "^4.5.0",
     "config": "^4.1.1",
     "file-system-cache": "^2.4.7",
     "jsdom": "^27.2.0",

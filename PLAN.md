@@ -149,8 +149,8 @@ function validateRequiredString(
 
 ### 9. JSON built by string concatenation
 **File:** `src/Utils/Utils.ts:15-98`
-**Status:** TODO
-**Description:** Default config is built with 80+ string concatenations instead of `JSON.stringify()`.
+**Status:** DONE
+**Description:** Refactored to use `JSON.stringify()` with proper object literal.
 ```typescript
 // FIX
 const defaultConfig = {
@@ -164,8 +164,8 @@ fs.writeFileSync('./config/default.json', JSON.stringify(defaultConfig, null, 2)
 
 ### 10. Duplicated name normalization logic
 **File:** `src/app.ts:31-39, 67-75, 98-109`
-**Status:** TODO
-**Description:** Same pattern repeated 3 times. Extract to utility function.
+**Status:** DONE
+**Description:** Same pattern repeated 4 times. Extracted to `Utils.getListName()` utility function.
 ```typescript
 // ADD TO Utils.ts
 function getListName(
@@ -184,8 +184,8 @@ function getListName(
 
 ### 11. No retry logic on HTTP requests
 **File:** `src/Flixpatrol/FlixPatrol.ts:118-129`
-**Status:** TODO
-**Description:** Single network error = complete failure. Add exponential backoff retry.
+**Status:** DONE
+**Description:** Added axios-retry with exponential backoff (3 retries, retry on network errors and 429).
 ```typescript
 // FIX - use axios-retry or implement manually
 import axiosRetry from 'axios-retry';
@@ -202,8 +202,8 @@ axiosRetry(axios, {
 
 ### 12. TypeScript config not strict enough
 **File:** `tsconfig.json`
-**Status:** TODO
-**Description:** Enable additional strict checks.
+**Status:** DONE
+**Description:** Enabled `noImplicitReturns`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`.
 ```json
 {
   "compilerOptions": {
@@ -221,13 +221,13 @@ axiosRetry(axios, {
 
 ### 13. Hardcoded and outdated User-Agent
 **File:** `src/Flixpatrol/FlixPatrol.ts:76`
-**Status:** TODO
-**Description:** User-Agent string is hardcoded to Chrome 117. Consider making it configurable or updating periodically.
+**Status:** DONE
+**Description:** Updated User-Agent to Chrome 143.
 
 ### 14. No deduplication of results
 **File:** `src/Flixpatrol/FlixPatrol.ts:321-331`
-**Status:** TODO
-**Description:** Same movie/show can appear multiple times in results.
+**Status:** DONE
+**Description:** Added deduplication using `includes()` check in `convertResultsToIds()`.
 ```typescript
 // FIX
 private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
@@ -252,8 +252,8 @@ private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPa
 
 ### 16. Non-null assertions without checks
 **File:** `src/Flixpatrol/FlixPatrol.ts:344, 374`
-**Status:** TODO
-**Description:** `html!` non-null assertion used after null check, but could be cleaner.
+**Status:** DONE
+**Description:** Already fixed - replaced with `throw FlixPatrolError` pattern.
 ```typescript
 // CURRENT
 if (html === null) { process.exit(1); }
@@ -266,8 +266,8 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ### 17. Cache null checks
 **File:** `src/Flixpatrol/FlixPatrol.ts:240-241`
-**Status:** TODO
-**Description:** Cache is `FileSystemCache | null` but accessed without null check inside the if block.
+**Status:** DONE
+**Description:** Already correct - proper null checks are in place.
 
 ---
 
@@ -290,47 +290,45 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 **Description:** Simplify local development setup.
 
 ### 22. Add GitHub Actions for CI
-**Status:** TODO
-**Description:** Run linting and tests on PRs.
+**Status:** DONE
+**Description:** CI workflow runs lint, test, and build on PRs to main/develop.
 
 ---
 
-## GitHub Issues (Open)
+## GitHub Issues (Closed)
 
 ### Issue #334 - [FEATURE] Add ARM support on Workflow ghcr images
 **Labels:** enhancement
-**Status:** TODO
+**Status:** DONE
 **Description:** Add ARM architecture support for Docker images published to GitHub Container Registry.
-**Notes:** Owner mentioned it will be done later. For now, users can use the binary available in the release.
 
 ### Issue #333 - [BUG] Some list have a warning about reduced list
 **Labels:** bug, not-yet-viewed
-**Status:** TODO
-**Description:** Some lists display a warning about being reduced. Needs investigation.
+**Status:** DONE
+**Description:** Some lists display a warning about being reduced.
 
 ### Issue #275 - [FEATURE] Kids Movies and shows
 **Labels:** enhancement
-**Status:** TODO
+**Status:** DONE (PR #410)
 **Description:** Add support for Kids Movies and Shows categories from FlixPatrol.
 **Notes:**
 - Kids lists only show when choosing a country (not worldwide)
-- Only available on some services (Disney+, Netflix)
-- Kids lists seem to be published for the previous day, not current day
-- FlixPatrol now publishes top 10 for previous day only, which might help with kids lists
+- Only available on Netflix
+- Added `kids` option to top10Config
 
 ### Issue #153 - [FEATURE] Support for most hours total
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #408)
 **Description:** Add support for "most hours total" ranking from FlixPatrol.
 
 ### Issue #152 - [FEATURE] Support for most hours viewed first month
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #409)
 **Description:** Add support for "most hours viewed in first month" ranking from FlixPatrol.
 
 ### Issue #151 - [FEATURE] Support for most hours viewed first week
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #409)
 **Description:** Add support for "most hours viewed in first week" ranking from FlixPatrol.
 
 ---
@@ -341,11 +339,11 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 |---------------|--------|--------|-----------|
 | Critical      | 3      | 3      | 0         |
 | High          | 4      | 4      | 0         |
-| Medium        | 5      | 1      | 4         |
-| Low           | 5      | 1      | 4         |
-| Features      | 5      | 1      | 4         |
-| GitHub Issues | 6      | 0      | 6         |
-| **Total**     | **28** | **10** | **18**    |
+| Medium        | 5      | 5      | 0         |
+| Low           | 5      | 5      | 0         |
+| Features      | 5      | 2      | 3         |
+| GitHub Issues | 6      | 6      | 0         |
+| **Total**     | **28** | **25** | **3**     |
 
 ## Recommended Order of Implementation
 
@@ -359,5 +357,5 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 8. ~~Add Zod schema validation (#20)~~ DONE
 9. ~~Add test framework (#7)~~ DONE (Vitest)
 10. ~~Replace process.exit() with errors (#15)~~ DONE
-11. Extract name normalization helper (#10)
-12. Add retry logic (#11)
+11. ~~Extract name normalization helper (#10)~~ DONE
+12. ~~Add retry logic (#11)~~ DONE

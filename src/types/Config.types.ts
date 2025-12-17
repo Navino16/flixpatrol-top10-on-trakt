@@ -26,16 +26,17 @@ export const flixpatrolTop10Location = ['world', 'afghanistan', 'albania', 'alge
   'united-states', 'uruguay', 'uzbekistan', 'vanuatu', 'vatican-city', 'venezuela', 'vietnam', 'yemen', 'zambia',
   'zimbabwe'] as const;
 
-export const flixpatrolTop10Platform = ['netflix', 'hbo-max', 'disney', 'amazon', 'amazon-channels', 'amazon-prime',
-  'amc-plus', 'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'crunchyroll', 'discovery-plus',
-  'francetv', 'freevee', 'globoplay', 'go3', 'google', 'hotstar', 'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema',
-  'lemino', 'm6plus', 'mgm-plus', 'myvideo', 'now', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv',
-  'raiplay', 'rakuten-tv', 'rtl-plus', 'shahid', 'starz', 'streamz', 'tf1', 'tod', 'tubi', 'u-next', 'viaplay',
-  'videoland', 'viki', 'vix', 'voyo', 'vudu', 'watchit', 'wavve', 'wow', 'zee5'] as const;
+export const flixpatrolTop10Platform = ['9now', 'abema', 'amazon', 'amazon-channels', 'amazon-prime', 'amc-plus',
+  'antenna-tv', 'apple-tv', 'bbc', 'canal', 'catchplay', 'cda', 'chili', 'claro-video', 'coupang-play', 'crunchyroll',
+  'discovery-plus', 'disney', 'francetv', 'friday', 'globoplay', 'go3', 'google', 'hami-video', 'hayu', 'hbo-max',
+  'hrti', 'hulu', 'hulu-nippon', 'itunes', 'jiocinema', 'jiohotstar', 'joyn', 'lemino', 'm6plus', 'mgm-plus', 'myvideo',
+  'neon-tv', 'netflix', 'now', 'oneplay', 'osn', 'paramount-plus', 'peacock', 'player', 'pluto-tv', 'raiplay',
+  'rakuten-tv', 'rtl-plus', 'sbs', 'shahid', 'skyshowtime', 'stan', 'starz', 'streamz', 'telasa', 'tf1', 'tod',
+  'trueid', 'tubi', 'tv-2-norge', 'u-next', 'viaplay', 'videoland', 'vidio', 'viki', 'viu', 'vix', 'voyo', 'vudu',
+  'watchit', 'wavve', 'wow', 'zee5'] as const;
 
-export const flixpatrolPopularPlatform = ['movie-db', 'facebook', 'twitter', 'twitter-trends', 'instagram',
-  'instagram-trends', 'youtube', 'imdb', 'letterboxd', 'rotten-tomatoes', 'tmdb', 'trakt', 'wikipedia-trends',
-  'reddit'] as const;
+export const flixpatrolPopularPlatform = ['facebook', 'imdb', 'instagram', 'letterboxd', 'movie-db', 'reddit',
+  'rotten-tomatoes', 'tmdb', 'trakt', 'twitter', 'wikipedia', 'youtube'] as const;
 
 export const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
 const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
@@ -56,6 +57,7 @@ export const FlixPatrolTop10Schema = z.object({
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
+  kids: z.boolean().optional(),
 });
 
 export const FlixPatrolPopularSchema = z.object({
@@ -83,6 +85,22 @@ export const FlixPatrolMostWatchedSchema = z.object({
   orderByViews: z.boolean().optional(),
 });
 
+export const flixpatrolMostHoursPeriod = ['total', 'first-week', 'first-month'] as const;
+export const flixpatrolMostHoursLanguage = ['all', 'english', 'non-english'] as const;
+const FlixPatrolMostHoursPeriodSchema = z.enum(flixpatrolMostHoursPeriod);
+const FlixPatrolMostHoursLanguageSchema = z.enum(flixpatrolMostHoursLanguage);
+
+export const FlixPatrolMostHoursSchema = z.object({
+  enabled: z.boolean(),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
+  type: FlixPatrolConfigTypeSchema,
+  period: FlixPatrolMostHoursPeriodSchema,
+  language: FlixPatrolMostHoursLanguageSchema.optional().default('all'),
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
 export const TraktOptionsSchema = z.object({
   saveFile: z.string(),
   clientId: z.string(),
@@ -99,5 +117,8 @@ export const CacheOptionsSchema = z.object({
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
 export type FlixPatrolMostWatched = z.infer<typeof FlixPatrolMostWatchedSchema>;
+export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
+export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
+export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;

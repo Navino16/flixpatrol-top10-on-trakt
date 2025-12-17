@@ -67,6 +67,50 @@ describe('Utils', () => {
     });
   });
 
+  describe('getListName', () => {
+    it('should return custom name as-is when normalizeName is false', () => {
+      const config = { name: 'My Custom List', normalizeName: false };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('My Custom List');
+    });
+
+    it('should normalize custom name when normalizeName is not false', () => {
+      const config = { name: 'My Custom List' };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('my-custom-list');
+    });
+
+    it('should normalize custom name when normalizeName is true', () => {
+      const config = { name: 'My Custom List', normalizeName: true };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('my-custom-list');
+    });
+
+    it('should return default name when no custom name is provided', () => {
+      const config = {};
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('default-name');
+    });
+
+    it('should return default name when name is undefined', () => {
+      const config = { name: undefined };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('default-name');
+    });
+
+    it('should handle multiple spaces in name', () => {
+      const config = { name: 'My   Custom   List' };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('my-custom-list');
+    });
+
+    it('should handle leading and trailing spaces', () => {
+      const config = { name: '  My List  ' };
+      const result = Utils.getListName(config, 'default-name');
+      expect(result).toBe('-my-list-');
+    });
+  });
+
   describe('ensureConfigExist', () => {
     it('should do nothing if config file exists', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
