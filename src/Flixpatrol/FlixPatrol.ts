@@ -51,7 +51,7 @@ export class FlixPatrol {
 
   constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
-    this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
+    this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
     if (cacheOptions.enabled) {
       this.tvCache = Cache({
         basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
@@ -349,9 +349,9 @@ export class FlixPatrol {
 
     for (const result of results) {
       const id = await this.getTraktTVId(result, type, trakt);
-      if (id) {
+      if (id && !traktTVIds.includes(id)) {
         traktTVIds.push(id);
-  }
+      }
     }
     return traktTVIds;
   }
