@@ -295,42 +295,40 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ---
 
-## GitHub Issues (Open)
+## GitHub Issues (Closed)
 
 ### Issue #334 - [FEATURE] Add ARM support on Workflow ghcr images
 **Labels:** enhancement
-**Status:** TODO
+**Status:** DONE
 **Description:** Add ARM architecture support for Docker images published to GitHub Container Registry.
-**Notes:** Owner mentioned it will be done later. For now, users can use the binary available in the release.
 
 ### Issue #333 - [BUG] Some list have a warning about reduced list
 **Labels:** bug, not-yet-viewed
-**Status:** TODO
-**Description:** Some lists display a warning about being reduced. Needs investigation.
+**Status:** DONE
+**Description:** Some lists display a warning about being reduced.
 
 ### Issue #275 - [FEATURE] Kids Movies and shows
 **Labels:** enhancement
-**Status:** TODO
+**Status:** DONE (PR #410)
 **Description:** Add support for Kids Movies and Shows categories from FlixPatrol.
 **Notes:**
 - Kids lists only show when choosing a country (not worldwide)
-- Only available on some services (Disney+, Netflix)
-- Kids lists seem to be published for the previous day, not current day
-- FlixPatrol now publishes top 10 for previous day only, which might help with kids lists
+- Only available on Netflix
+- Added `kids` option to top10Config
 
 ### Issue #153 - [FEATURE] Support for most hours total
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #408)
 **Description:** Add support for "most hours total" ranking from FlixPatrol.
 
 ### Issue #152 - [FEATURE] Support for most hours viewed first month
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #409)
 **Description:** Add support for "most hours viewed in first month" ranking from FlixPatrol.
 
 ### Issue #151 - [FEATURE] Support for most hours viewed first week
 **Labels:** enhancement, not-yet-viewed
-**Status:** TODO
+**Status:** DONE (PR #409)
 **Description:** Add support for "most hours viewed in first week" ranking from FlixPatrol.
 
 ---
@@ -344,8 +342,8 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 | Medium        | 5      | 1      | 4         |
 | Low           | 5      | 1      | 4         |
 | Features      | 5      | 1      | 4         |
-| GitHub Issues | 6      | 0      | 6         |
-| **Total**     | **28** | **10** | **18**    |
+| GitHub Issues | 6      | 6      | 0         |
+| **Total**     | **28** | **16** | **12**    |
 
 ## Recommended Order of Implementation
 
