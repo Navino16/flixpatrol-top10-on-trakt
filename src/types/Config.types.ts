@@ -83,6 +83,15 @@ export const FlixPatrolMostWatchedSchema = z.object({
   orderByViews: z.boolean().optional(),
 });
 
+export const FlixPatrolMostHoursTotalSchema = z.object({
+  enabled: z.boolean(),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
+  type: FlixPatrolConfigTypeSchema,
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
 export const TraktOptionsSchema = z.object({
   saveFile: z.string(),
   clientId: z.string(),
@@ -99,5 +108,6 @@ export const CacheOptionsSchema = z.object({
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
 export type FlixPatrolMostWatched = z.infer<typeof FlixPatrolMostWatchedSchema>;
+export type FlixPatrolMostHoursTotal = z.infer<typeof FlixPatrolMostHoursTotalSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
