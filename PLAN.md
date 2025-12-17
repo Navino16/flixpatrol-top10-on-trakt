@@ -184,8 +184,8 @@ function getListName(
 
 ### 11. No retry logic on HTTP requests
 **File:** `src/Flixpatrol/FlixPatrol.ts:118-129`
-**Status:** TODO
-**Description:** Single network error = complete failure. Add exponential backoff retry.
+**Status:** DONE
+**Description:** Added axios-retry with exponential backoff (3 retries, retry on network errors and 429).
 ```typescript
 // FIX - use axios-retry or implement manually
 import axiosRetry from 'axios-retry';
@@ -339,11 +339,11 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 |---------------|--------|--------|-----------|
 | Critical      | 3      | 3      | 0         |
 | High          | 4      | 4      | 0         |
-| Medium        | 5      | 2      | 3         |
+| Medium        | 5      | 3      | 2         |
 | Low           | 5      | 1      | 4         |
 | Features      | 5      | 1      | 4         |
 | GitHub Issues | 6      | 6      | 0         |
-| **Total**     | **28** | **17** | **11**    |
+| **Total**     | **28** | **18** | **10**    |
 
 ## Recommended Order of Implementation
 
@@ -358,4 +358,4 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 9. ~~Add test framework (#7)~~ DONE (Vitest)
 10. ~~Replace process.exit() with errors (#15)~~ DONE
 11. ~~Extract name normalization helper (#10)~~ DONE
-12. Add retry logic (#11)
+12. ~~Add retry logic (#11)~~ DONE

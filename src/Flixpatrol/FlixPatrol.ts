@@ -1,5 +1,6 @@
 import type {AxiosRequestConfig} from 'axios';
 import axios from 'axios';
+import axiosRetry from 'axios-retry';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { logger, FlixPatrolError } from '../Utils';
@@ -25,6 +26,19 @@ import {
   flixpatrolPopularPlatform,
   flixpatrolConfigType,
 } from '../types';
+
+// Configure axios-retry with exponential backoff
+axiosRetry(axios, {
+  retries: 3,
+  retryDelay: axiosRetry.exponentialDelay,
+  retryCondition: (error) => {
+    return axiosRetry.isNetworkOrIdempotentRequestError(error)
+      || error.response?.status === 429;
+  },
+  onRetry: (retryCount, error) => {
+    logger.warn(`Retry attempt ${retryCount} for ${error.config?.url}: ${error.message}`);
+  },
+});
 
 type FlixPatrolMatchResult = string;
 
