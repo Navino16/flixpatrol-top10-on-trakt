@@ -155,7 +155,10 @@ export class FlixPatrol {
     return {
       movies,
       shows,
-      rawCounts: { movies: moviesRaw.length, shows: showsRaw.length, }
+      rawCounts: {
+        movies: Math.min(moviesRaw.length, config.limit),
+        shows: Math.min(showsRaw.length, config.limit),
+      }
     };
   }
 
