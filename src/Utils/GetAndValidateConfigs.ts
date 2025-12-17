@@ -76,6 +76,9 @@ export class GetAndValidateConfigs {
 
   public static getFlixPatrolMostHoursTotal(): FlixPatrolMostHoursTotal[] {
     try {
+      if (!config.has('FlixPatrolMostHoursTotal')) {
+        return [];
+      }
       const data = config.get('FlixPatrolMostHoursTotal');
       return validateConfig(z.array(FlixPatrolMostHoursTotalSchema), data, 'FlixPatrolMostHoursTotal');
     } catch (err) {
