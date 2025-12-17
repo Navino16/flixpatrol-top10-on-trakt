@@ -290,8 +290,8 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 **Description:** Simplify local development setup.
 
 ### 22. Add GitHub Actions for CI
-**Status:** TODO
-**Description:** Run linting and tests on PRs.
+**Status:** DONE
+**Description:** CI workflow runs lint, test, and build on PRs to main/develop.
 
 ---
 
@@ -341,9 +341,9 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 | High          | 4      | 4      | 0         |
 | Medium        | 5      | 5      | 0         |
 | Low           | 5      | 5      | 0         |
-| Features      | 5      | 1      | 4         |
+| Features      | 5      | 2      | 3         |
 | GitHub Issues | 6      | 6      | 0         |
-| **Total**     | **28** | **24** | **4**     |
+| **Total**     | **28** | **25** | **3**     |
 
 ## Recommended Order of Implementation
 
