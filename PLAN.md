@@ -149,8 +149,8 @@ function validateRequiredString(
 
 ### 9. JSON built by string concatenation
 **File:** `src/Utils/Utils.ts:15-98`
-**Status:** TODO
-**Description:** Default config is built with 80+ string concatenations instead of `JSON.stringify()`.
+**Status:** DONE
+**Description:** Refactored to use `JSON.stringify()` with proper object literal.
 ```typescript
 // FIX
 const defaultConfig = {
@@ -202,8 +202,8 @@ axiosRetry(axios, {
 
 ### 12. TypeScript config not strict enough
 **File:** `tsconfig.json`
-**Status:** TODO
-**Description:** Enable additional strict checks.
+**Status:** DONE
+**Description:** Enabled `noImplicitReturns`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`.
 ```json
 {
   "compilerOptions": {
@@ -221,13 +221,13 @@ axiosRetry(axios, {
 
 ### 13. Hardcoded and outdated User-Agent
 **File:** `src/Flixpatrol/FlixPatrol.ts:76`
-**Status:** TODO
-**Description:** User-Agent string is hardcoded to Chrome 117. Consider making it configurable or updating periodically.
+**Status:** DONE
+**Description:** Updated User-Agent to Chrome 143.
 
 ### 14. No deduplication of results
 **File:** `src/Flixpatrol/FlixPatrol.ts:321-331`
-**Status:** TODO
-**Description:** Same movie/show can appear multiple times in results.
+**Status:** DONE
+**Description:** Added deduplication using `includes()` check in `convertResultsToIds()`.
 ```typescript
 // FIX
 private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
@@ -252,8 +252,8 @@ private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPa
 
 ### 16. Non-null assertions without checks
 **File:** `src/Flixpatrol/FlixPatrol.ts:344, 374`
-**Status:** TODO
-**Description:** `html!` non-null assertion used after null check, but could be cleaner.
+**Status:** DONE
+**Description:** Already fixed - replaced with `throw FlixPatrolError` pattern.
 ```typescript
 // CURRENT
 if (html === null) { process.exit(1); }
@@ -266,8 +266,8 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 
 ### 17. Cache null checks
 **File:** `src/Flixpatrol/FlixPatrol.ts:240-241`
-**Status:** TODO
-**Description:** Cache is `FileSystemCache | null` but accessed without null check inside the if block.
+**Status:** DONE
+**Description:** Already correct - proper null checks are in place.
 
 ---
 
@@ -339,11 +339,11 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 |---------------|--------|--------|-----------|
 | Critical      | 3      | 3      | 0         |
 | High          | 4      | 4      | 0         |
-| Medium        | 5      | 3      | 2         |
-| Low           | 5      | 1      | 4         |
+| Medium        | 5      | 5      | 0         |
+| Low           | 5      | 5      | 0         |
 | Features      | 5      | 1      | 4         |
 | GitHub Issues | 6      | 6      | 0         |
-| **Total**     | **28** | **18** | **10**    |
+| **Total**     | **28** | **24** | **4**     |
 
 ## Recommended Order of Implementation
 
