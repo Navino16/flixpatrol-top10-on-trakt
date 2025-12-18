@@ -16,12 +16,12 @@
 
 This tool gets TODAY's top 10 from FlixPatrol and pushes the results to Trakt lists (useful for syncing with Kometa)
 
-⚠️ Running on your own risk of being IP banned from FlixPatrol
-
-⚠️ Due to some limitation of Flixpatrol, we have to make a search of the movie/show title on trakt.
-That search is sort by relevance by Trakt. We then get the first item on the list that have the same release year
-that the wanted movie/show (it should be the first item it the list). If none is found we take the first one on the list.
-It can cause some bad matching but there is nothing we can do about that.⚠️
+>⚠️ Running on your own risk of being IP banned from FlixPatrol
+>
+>⚠️ Due to some limitation of Flixpatrol, we have to make a search of the movie/show title on trakt.
+> That search is sort by relevance by Trakt. We then get the first item on the list that have the same release year
+> that the wanted movie/show (it should be the first item it the list). If none is found we take the first one on the list.
+> It can cause some bad matching but there is nothing we can do about that.⚠️
 
 ## Features
 
@@ -268,7 +268,7 @@ If there is any configuration error, the tool will exit whit information about t
 
 To run this application you need to have a Trakt account and a Client ID / Client Secret.
 
-⚠️ Trakt is limited to 5 list on free account, if you specified more than 5 platform on config the script will fail.
+>⚠️ Trakt is limited to 5 list on free account, if you specified more than 5 platform on config the script will fail.
 Remove some platform from the config or take a VIP account on Trakt
 
 1. Go [here to create a new one](https://trakt.tv/auth/join) or [here to login](https://trakt.tv/login).
@@ -333,6 +333,7 @@ For the complete list, see the source code: [Config.types.ts](https://github.com
 | "No items found"        | Verify the platform/location combination exists on [FlixPatrol](https://flixpatrol.com). |
 | "Bad matching"          | This is a FlixPatrol/Trakt limitation. Titles are matched by name and year.              |
 | "Authentication failed" | Delete `./config/.trakt` and re-authenticate.                                            |
+| "Permission denied" on config folder (Docker) | The Docker image runs as a non-root user (`flixpatrol`, UID 1000). Fix permissions with: `sudo chown -R 1000:1000 /path/to/config` |
 
 ## Development
 
