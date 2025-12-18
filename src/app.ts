@@ -11,6 +11,15 @@ import type {
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import { TraktAPI } from './Trakt';
 
+const dryRun = process.env.DRY_RUN === 'true';
+
+if (dryRun) {
+  logger.info('========================================');
+  logger.info('DRY-RUN MODE ENABLED');
+  logger.info('No changes will be made to Trakt lists.');
+  logger.info('========================================');
+}
+
 Utils.ensureConfigExist();
 
 let cacheOptions: CacheOptions;
@@ -41,7 +50,7 @@ logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
 logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
 
 const flixpatrol = new FlixPatrol(cacheOptions);
-const trakt = new TraktAPI(traktOptions);
+const trakt = new TraktAPI({ ...traktOptions, dryRun });
 
 trakt.connect().then(async () => {
 
@@ -54,7 +63,7 @@ trakt.connect().then(async () => {
     if (movies.length > 0) {
       logger.info('==============================');
       if (rawCounts.movies > movies.length) {
-        logger.warn(`Flixpatrol have more movies than wanted, list have been reduced from ${rawCounts.movies} to ${movies.length} movies`);
+        logger.warn(`Some movies from FlixPatrol could not be matched on Trakt (${rawCounts.movies} found, ${movies.length} matched)`);
       }
       logger.info(`Saving movies for "${baseListName}"`);
       logger.debug(`${top10.platform} movies: ${movies}`);
@@ -64,7 +73,7 @@ trakt.connect().then(async () => {
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
-        logger.warn(`Flixpatrol have more shows than wanted, list have been reduced from ${rawCounts.shows} to ${shows.length} shows`);
+        logger.warn(`Some shows from FlixPatrol could not be matched on Trakt (${rawCounts.shows} found, ${shows.length} matched)`);
       }
       logger.info(`Saving shows for "${baseListName}"`);
       logger.debug(`${top10.platform} shows: ${shows}`);

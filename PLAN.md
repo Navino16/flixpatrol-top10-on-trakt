@@ -274,8 +274,9 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 ## Feature Requests
 
 ### 18. Add dry-run mode
-**Status:** TODO
+**Status:** DONE
 **Description:** Allow running without actually updating Trakt lists, just logging what would be done.
+**Implementation:** Environment variable `DRY_RUN=true`. Modified `TraktAPI.ts` to skip write operations and log `[DRY-RUN]` messages instead.
 
 ### 19. Add progress indicators
 **Status:** TODO
@@ -341,9 +342,9 @@ let results = FlixPatrol.parsePopularPage(html);  // Remove !
 | High          | 4      | 4      | 0         |
 | Medium        | 5      | 5      | 0         |
 | Low           | 5      | 5      | 0         |
-| Features      | 5      | 2      | 3         |
+| Features      | 5      | 3      | 2         |
 | GitHub Issues | 6      | 6      | 0         |
-| **Total**     | **28** | **25** | **3**     |
+| **Total**     | **28** | **26** | **2**     |
 
 ## Recommended Order of Implementation
 
