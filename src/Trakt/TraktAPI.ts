@@ -121,15 +121,15 @@ export class TraktAPI {
   private static getItemTraktId(item: TraktItem): number | undefined {
     switch (item.type) {
       case 'movie':
-        return item.movie?.ids.trakt;
+        return item.movie?.ids.trakt as number | undefined;
       case 'show':
-        return item.show?.ids.trakt;
+        return item.show?.ids.trakt as number | undefined;
       case 'season':
-        return item.season?.ids.trakt;
+        return item.season?.ids.trakt as number | undefined;
       case 'episode':
-        return item.episode?.ids.trakt;
+        return item.episode?.ids.trakt as number | undefined;
       case 'person':
-        return item.person?.ids.trakt;
+        return item.person?.ids.trakt as number | undefined;
       default:
         return undefined;
     }
