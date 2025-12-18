@@ -52,11 +52,21 @@ logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
 const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI({ ...traktOptions, dryRun });
 
+// Calculate total number of lists for progress indicator
+const totalLists = flixPatrolTop10.length
+  + flixPatrolPopulars.length
+  + flixPatrolMostWatched.filter((m) => m.enabled).length
+  + flixPatrolMostHours.filter((m) => m.enabled).length;
+let currentList = 0;
+
 trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
+    currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     const baseListName = Utils.getListName(top10, defaultName);
+    logger.info('==============================');
+    logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
 
     const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
 
@@ -84,7 +94,9 @@ trakt.connect().then(async () => {
 
 
   for (const popular of flixPatrolPopulars) {
+    currentList++;
     const listName = Utils.getListName(popular, `${popular.platform}-popular`);
+    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
@@ -107,11 +119,13 @@ trakt.connect().then(async () => {
 
   for (const mostWatched of flixPatrolMostWatched) {
     if (mostWatched.enabled) {
+      currentList++;
       let defaultName = `most-watched-${mostWatched.year}-netflix`;
       defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
       defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
       const listName = Utils.getListName(mostWatched, defaultName);
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
@@ -135,11 +149,13 @@ trakt.connect().then(async () => {
 
   for (const mostHours of flixPatrolMostHours) {
     if (mostHours.enabled) {
+      currentList++;
       let defaultName = `netflix-most-hours-${mostHours.period}`;
       if (mostHours.language !== 'all') {
         defaultName += `-${mostHours.language}`;
       }
       const listName = Utils.getListName(mostHours, defaultName);
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');
