@@ -109,9 +109,28 @@ To get started with Flixpatrol Top 10 on Trakt for Docker, follow these simple s
 ### Environment variable
 You can pass some environment variables to the tool:
 
-| Name      | Description                 | Values                          | Default |
-|-----------|-----------------------------|---------------------------------|---------|
-| LOG_LEVEL | How verbose the log will be | error, warn, info, debug, silly | info    |
+| Name      | Description                              | Values                          | Default |
+|-----------|------------------------------------------|---------------------------------|---------|
+| LOG_LEVEL | How verbose the log will be              | error, warn, info, debug, silly | info    |
+| DRY_RUN   | Run without making changes to Trakt      | true, false                     | false   |
+
+#### Dry-Run Mode
+
+Run the tool without modifying Trakt lists. Useful for testing your configuration:
+
+```bash
+# Linux/macOS
+DRY_RUN=true ./flixpatrol-top10-linux-x64
+
+# Docker
+docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+```
+
+In dry-run mode:
+- FlixPatrol scraping runs normally
+- Trakt search for ID conversion runs normally
+- OAuth authentication runs normally
+- List creation, item addition/removal, and updates are **logged but not executed**
 
 ### Configuration file
 The configuration file should be stored in a directory named `config` next to the binary.
