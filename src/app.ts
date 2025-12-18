@@ -11,6 +11,15 @@ import type {
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import { TraktAPI } from './Trakt';
 
+const dryRun = process.env.DRY_RUN === 'true';
+
+if (dryRun) {
+  logger.info('========================================');
+  logger.info('DRY-RUN MODE ENABLED');
+  logger.info('No changes will be made to Trakt lists.');
+  logger.info('========================================');
+}
+
 Utils.ensureConfigExist();
 
 let cacheOptions: CacheOptions;
@@ -41,20 +50,30 @@ logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
 logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
 
 const flixpatrol = new FlixPatrol(cacheOptions);
-const trakt = new TraktAPI(traktOptions);
+const trakt = new TraktAPI({ ...traktOptions, dryRun });
+
+// Calculate total number of lists for progress indicator
+const totalLists = flixPatrolTop10.length
+  + flixPatrolPopulars.length
+  + flixPatrolMostWatched.filter((m) => m.enabled).length
+  + flixPatrolMostHours.filter((m) => m.enabled).length;
+let currentList = 0;
 
 trakt.connect().then(async () => {
 
   for (const top10 of flixPatrolTop10) {
+    currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     const baseListName = Utils.getListName(top10, defaultName);
+    logger.info('==============================');
+    logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
 
     const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
 
     if (movies.length > 0) {
       logger.info('==============================');
       if (rawCounts.movies > movies.length) {
-        logger.warn(`Flixpatrol have more movies than wanted, list have been reduced from ${rawCounts.movies} to ${movies.length} movies`);
+        logger.warn(`Some movies from FlixPatrol could not be matched on Trakt (${rawCounts.movies} found, ${movies.length} matched)`);
       }
       logger.info(`Saving movies for "${baseListName}"`);
       logger.debug(`${top10.platform} movies: ${movies}`);
@@ -64,7 +83,7 @@ trakt.connect().then(async () => {
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
-        logger.warn(`Flixpatrol have more shows than wanted, list have been reduced from ${rawCounts.shows} to ${shows.length} shows`);
+        logger.warn(`Some shows from FlixPatrol could not be matched on Trakt (${rawCounts.shows} found, ${shows.length} matched)`);
       }
       logger.info(`Saving shows for "${baseListName}"`);
       logger.debug(`${top10.platform} shows: ${shows}`);
@@ -75,7 +94,9 @@ trakt.connect().then(async () => {
 
 
   for (const popular of flixPatrolPopulars) {
+    currentList++;
     const listName = Utils.getListName(popular, `${popular.platform}-popular`);
+    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
@@ -98,11 +119,13 @@ trakt.connect().then(async () => {
 
   for (const mostWatched of flixPatrolMostWatched) {
     if (mostWatched.enabled) {
+      currentList++;
       let defaultName = `most-watched-${mostWatched.year}-netflix`;
       defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
       defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
       const listName = Utils.getListName(mostWatched, defaultName);
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
@@ -126,11 +149,13 @@ trakt.connect().then(async () => {
 
   for (const mostHours of flixPatrolMostHours) {
     if (mostHours.enabled) {
+      currentList++;
       let defaultName = `netflix-most-hours-${mostHours.period}`;
       if (mostHours.language !== 'all') {
         defaultName += `-${mostHours.language}`;
       }
       const listName = Utils.getListName(mostHours, defaultName);
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');

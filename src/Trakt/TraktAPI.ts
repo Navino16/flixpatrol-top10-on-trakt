@@ -14,17 +14,24 @@ import fs from 'fs';
 import { logger, Utils, TraktError } from '../Utils';
 import type { TraktAPIOptions, TraktTVIds } from '../types';
 
+interface TraktAPIRuntimeOptions extends TraktAPIOptions {
+  dryRun?: boolean;
+}
+
 export class TraktAPI {
   private trakt: Trakt;
 
   private readonly traktSaveFile: string;
 
-  constructor(options: TraktAPIOptions) {
+  private readonly dryRun: boolean;
+
+  constructor(options: TraktAPIRuntimeOptions) {
     this.trakt = new Trakt({
       client_id: options.clientId,
       client_secret: options.clientSecret,
     });
     this.traktSaveFile = options.saveFile;
+    this.dryRun = options.dryRun ?? false;
   }
 
   public async connect(): Promise<void> {
@@ -63,11 +70,21 @@ export class TraktAPI {
 
   private async getList(listName: string, privacy: TraktPrivacy): Promise<TraktList> {
     let list: TraktList;
+    const slug = listName.toLowerCase().replace(/\s+/g, '-');
     try {
       logger.info(`Getting list "${listName}" from trakt`);
-      list = await this.trakt.users.list.get({ username: 'me', id: listName.toLowerCase().replace(/\s+/g, '-') });
+      list = await this.trakt.users.list.get({ username: 'me', id: slug });
     } catch (getErr) {
       if ((getErr as Error).message.includes('404 (Not Found)')) {
+        if (this.dryRun) {
+          logger.info(`[DRY-RUN] Would create list "${listName}" with privacy "${privacy}"`);
+          // Return a mock list object for dry-run mode
+          return {
+            name: listName,
+            privacy,
+            ids: { trakt: 0, slug },
+          } as TraktList;
+        }
         logger.warn(`List "${listName}" was not found on trakt, creating it`);
         try {
           // Avoid Trakt rate limit
@@ -85,6 +102,11 @@ export class TraktAPI {
   }
 
   private async getListItems(list: TraktList, type: TraktType): Promise<TraktItem[]> {
+    // In dry-run mode with mock list (id=0), return empty array
+    if (this.dryRun && list.ids.trakt === 0) {
+      logger.info(`[DRY-RUN] List "${list.name}" is new, no existing items to fetch`);
+      return [];
+    }
     logger.info(`Getting items from trakt list "${list.name}"`);
     let items: TraktItem[];
     try {
@@ -99,21 +121,25 @@ export class TraktAPI {
   private static getItemTraktId(item: TraktItem): number | undefined {
     switch (item.type) {
       case 'movie':
-        return item.movie?.ids.trakt;
+        return item.movie?.ids.trakt as number | undefined;
       case 'show':
-        return item.show?.ids.trakt;
+        return item.show?.ids.trakt as number | undefined;
       case 'season':
-        return item.season?.ids.trakt;
+        return item.season?.ids.trakt as number | undefined;
       case 'episode':
-        return item.episode?.ids.trakt;
+        return item.episode?.ids.trakt as number | undefined;
       case 'person':
-        return item.person?.ids.trakt;
+        return item.person?.ids.trakt as number | undefined;
       default:
         return undefined;
     }
   }
 
   private async removeListItems(list: TraktList, items: TraktItem[], type: TraktType): Promise<void> {
+    if (this.dryRun) {
+      logger.info(`[DRY-RUN] Would remove ${items.length} ${type}(s) from list "${list.name}"`);
+      return;
+    }
     logger.info(`Trakt list "${list.name}" contain ${items.length} ${type}, removing them`);
     const toRemove: { ids: TraktIds }[] = [];
     items.forEach((item) => {
@@ -145,6 +171,10 @@ export class TraktAPI {
   }
 
   private async addItemsToList(list: TraktList, traktTVIDs: TraktTVIds, type: TraktType) {
+    if (this.dryRun) {
+      logger.info(`[DRY-RUN] Would add ${traktTVIDs.length} ${type}(s) to list "${list.name}"`);
+      return;
+    }
     logger.info(`Adding ${traktTVIDs.length} ${type} into Trakt list "${list.name}"`);
     const toAdd: { ids: TraktIds }[] = [];
     traktTVIDs.forEach((traktTVID) => {
@@ -177,10 +207,14 @@ export class TraktAPI {
   public async pushToList(traktTVIDs: TraktTVIds, listName: string, type: TraktType, privacy: TraktPrivacy) {
     let list = await this.getList(listName, privacy);
     if (list.privacy !== privacy) {
-      logger.warn(`Trakt list "${list.name}" privacy (${list.privacy}) doesn't match the wanted privacy (${privacy}), updating list privacy`);
-      // Avoid Trakt rate limit
-      await Utils.sleep(1000);
-      list = await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, privacy });
+      if (this.dryRun) {
+        logger.info(`[DRY-RUN] Would update list "${list.name}" privacy from "${list.privacy}" to "${privacy}"`);
+      } else {
+        logger.warn(`Trakt list "${list.name}" privacy (${list.privacy}) doesn't match the wanted privacy (${privacy}), updating list privacy`);
+        // Avoid Trakt rate limit
+        await Utils.sleep(1000);
+        list = await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, privacy });
+      }
     }
     const items = await this.getListItems(list, type);
     if (items.length > 0) {
@@ -188,14 +222,18 @@ export class TraktAPI {
     }
     if (traktTVIDs.length > 0) {
       await this.addItemsToList(list, traktTVIDs, type);
-      await Utils.sleep(1000);
       const dateOptions: Intl.DateTimeFormatOptions = {
         weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
       };
-      const currentDate = new Date().toLocaleString(undefined, dateOptions); // Get the current date and time
-      const updatedString = `Last Updated: ${currentDate}`; // Concatenate the string with the current date and time
-      logger.info(`Updating list description: "${updatedString}"`);
-      await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+      const currentDate = new Date().toLocaleString(undefined, dateOptions);
+      const updatedString = `Last Updated: ${currentDate}`;
+      if (this.dryRun) {
+        logger.info(`[DRY-RUN] Would update list description to: "${updatedString}"`);
+      } else {
+        await Utils.sleep(1000);
+        logger.info(`Updating list description: "${updatedString}"`);
+        await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+      }
     }
   }
 
