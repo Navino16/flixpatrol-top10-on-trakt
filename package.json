@@ -34,7 +34,7 @@
     "rimraf": "^6.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.50.0",
+    "typescript-eslint": "^8.51.0",
     "vitest": "^4.0.15"
   },
   "dependencies": {
@@ -42,10 +42,10 @@
     "axios-retry": "^4.5.0",
     "config": "^4.1.1",
     "file-system-cache": "^2.4.7",
-    "jsdom": "^27.2.0",
+    "jsdom": "^27.4.0",
     "trakt.tv": "^8.2.0",
     "winston": "^3.19.0",
-    "zod": "^4.2.1"
+    "zod": "^4.3.5"
   },
   "pkg": {
     "assets": "build/tmp/*.css",
