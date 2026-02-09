@@ -25,7 +25,7 @@
     "@eslint/js": "^9.39.2",
     "@types/config": "^3.3.5",
     "@types/jsdom": "^27.0.0",
-    "@types/node": "^25.2.0",
+    "@types/node": "^25.2.2",
     "@vercel/ncc": "^0.38.4",
     "@vitest/coverage-v8": "^4.0.18",
     "@yao-pkg/pkg": "^6.12.0",
@@ -38,7 +38,7 @@
     "vitest": "^4.0.15"
   },
   "dependencies": {
-    "axios": "^1.13.4",
+    "axios": "^1.13.5",
     "axios-retry": "^4.5.0",
     "config": "^4.2.0",
     "file-system-cache": "^2.4.7",
