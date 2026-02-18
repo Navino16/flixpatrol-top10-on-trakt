@@ -42,7 +42,7 @@
     "axios-retry": "^4.5.0",
     "config": "^4.3.0",
     "file-system-cache": "^2.4.7",
-    "jsdom": "^27.4.0",
+    "jsdom": "^28.1.0",
     "trakt.tv": "^8.2.0",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
