@@ -75,7 +75,7 @@ jobs:
         run: npm run package
 
       - name: Upload binaries artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: binaries
           path: bin/
