@@ -2,6 +2,7 @@
 node_modules/
 build/
 bin/
+browser/
 config/local.json
 .trakt
 .cache/
