@@ -68,3 +68,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Package binaries
+        run: npm run package
+
+      - name: Smoke test binary
+        run: |
+          cd $(mktemp -d)
+          "$GITHUB_WORKSPACE/bin/flixpatrol-top10-linux-amd64"
