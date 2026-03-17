@@ -1,27 +1,50 @@
-# Flixpatrol Top 10 on Trakt
-[![GitHub License](https://img.shields.io/github/license/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/LICENSE)
-[![Develop GitHub commits since latest release](https://img.shields.io/github/commits-since/navino16/flixpatrol-top10-on-trakt/latest/develop?label=Commits%20in%20Develop&style=flat-square)](https://github.com/navino16/flixpatrol-top10-on-trakt/tree/develop)
-[![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/issues)
-[![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/pulls)
+<p align="center">
+  <h1 align="center">Flixpatrol Top 10 on Trakt</h1>
+</p>
 
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?style=flat-square&label=Build%20(main))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/develop.yml?style=flat-square&label=Build%20(develop))](https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/develop.yml)
+<p align="center">
+  Scrape today's top 10 from FlixPatrol and sync them to Trakt.tv lists.<br/>
+  Supports 72+ streaming platforms, 200+ countries, and is compatible with <a href="https://kometa.wiki/">Kometa</a>.
+</p>
 
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/navino16/flixpatrol-top10-on-trakt/total?style=flat-square)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/navino16/flixpatrol-top10-on-trakt?style=flat-square)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
-[![Static Badge](https://img.shields.io/badge/Docker-blue?style=flat-square&logo=docker&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/pkgs/container/flixpatrol-top10-on-trakt)
-[![Static Badge](https://img.shields.io/badge/Windows-blue?style=flat-square&logo=windows&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
-[![Static Badge](https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
-[![Static Badge](https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black)](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases)
+<p align="center">
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?label=Build%20(main)&style=flat-square" alt="Build (main)"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/develop.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/develop.yml?label=Build%20(develop)&style=flat-square" alt="Build (develop)"></a>
+</p>
 
-This tool gets TODAY's top 10 from FlixPatrol and pushes the results to Trakt lists (useful for syncing with Kometa)
+<p align="center">
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/pkgs/container/flixpatrol-top10-on-trakt"><img src="https://img.shields.io/badge/Docker-blue?style=flat-square&logo=docker&logoColor=black" alt="Docker"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/Windows-blue?style=flat-square&logo=windows&logoColor=black" alt="Windows"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black" alt="Linux"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black" alt="macOS"></a>
+  <a href="https://discord.gg/XgCBF3sMSh"><img src="https://img.shields.io/discord/1483405134003175607?style=flat-square&logo=discord&label=Discord" alt="Discord"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/stargazers"><img src="https://img.shields.io/github/stars/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/LICENSE"><img src="https://img.shields.io/github/license/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="License"></a>
+</p>
 
->⚠️ Running on your own risk of being IP banned from FlixPatrol
+<p align="center">
+  <img src="https://img.shields.io/github/downloads/navino16/flixpatrol-top10-on-trakt/total?style=flat-square" alt="Downloads">
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/github/v/release/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Release"></a>
+  <a href="https://github.com/navino16/flixpatrol-top10-on-trakt/tree/develop"><img src="https://img.shields.io/github/commits-since/navino16/flixpatrol-top10-on-trakt/latest/develop?label=Commits%20in%20Develop&style=flat-square" alt="Commits in Develop"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/issues"><img src="https://img.shields.io/github/issues/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/pulls"><img src="https://img.shields.io/github/issues-pr/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Pull Requests"></a>
+</p>
+
+<p align="center">
+  <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="#supported-platforms">Supported Platforms</a> &bull;
+  <a href="#scheduling">Scheduling</a> &bull;
+  <a href="#troubleshooting">Troubleshooting</a> &bull;
+  <a href="#development">Development</a>
+</p>
+
+---
+
+> **Warning**
+> Running at your own risk of being IP banned from FlixPatrol.
 >
->⚠️ Due to some limitation of Flixpatrol, we have to make a search of the movie/show title on trakt.
-> That search is sort by relevance by Trakt. We then get the first item on the list that have the same release year
-> that the wanted movie/show (it should be the first item it the list). If none is found we take the first one on the list.
-> It can cause some bad matching but there is nothing we can do about that.⚠️
+> Due to FlixPatrol limitations, titles are matched on Trakt by name and release year. This may occasionally cause bad matching.
 
 ## Features
 
@@ -33,81 +56,38 @@ This tool gets TODAY's top 10 from FlixPatrol and pushes the results to Trakt li
 - Support for **200+ countries/regions**
 - Intelligent **caching** to reduce API calls (7-day TTL by default)
 - Automatic Trakt list management (create, update, sync)
+- **Dry-run mode** for safe testing
 - Compatible with [Kometa](https://kometa.wiki/) (formerly Plex Meta Manager)
 
-## Table of Contents
-<!-- TOC -->
-* [Features](#features)
-* [Getting Started](#1-getting-started)
-  * [Linux / macOS](#linux--macos)
-  * [Windows](#windows)
-  * [Docker](#docker)
-* [Configuration](#2-configuration)
-  * [Environment Variables](#environment-variable)
-  * [Configuration File](#configuration-file)
-  * [Trakt Setup](#trakt)
-* [Supported Platforms](#supported-platforms)
-* [Scheduling](#scheduling)
-* [Troubleshooting](#troubleshooting)
-* [Development](#development)
-<!-- TOC -->
-
-## 1. Getting Started
-
-### Linux / macOS
-
-Note: I don't have any macOS device but the step should be the same as Linux.
-
-To get started with Flixpatrol Top 10 on Trakt for Linux / macOS, follow these simple steps:
-
-1. Create a directory where you want the tool and config file be stored and go in it
-    ````shell
-   mkdir flixpatrolTop10
-   cd flixpatrolTop10
-   ````
-2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
-    ````shell
-    wget https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest/download/flixpatrol-top10-linux-x64
-    ````
-3. Make the downloaded binary executable
-    ````shell
-    chmod +x flixpatrol-top10-linux-x64
-    ````
-4. Run the binary (it will create a directory with config file at first run next to the binary)
-    ````shell
-    ./flixpatrol-top10-linux-x64
-    ````
-5. Edit the config file as you want. It's located in `./config/default.json`
-6. You can now run the tool periodically with tool like cron
-
-### Windows
-
-To get started with Flixpatrol Top 10 on Trakt for Windows, follow these simple steps:
-
-1. Create a directory where you want the tool and config file be stored and go in it
-2. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) corresponding to the platform where your want to run this tool
-3. Run the binary (it will create a directory with config file at first run next to the binary)
-   1. If you just double-click the executable the window will automatically close.
-   To avoid this you can launch the executable with command line
-4. Edit the config file as you want. It's located in `./config/default.json`
-5. You can now run the tool periodically with tool like Task Scheduler
+## Getting Started
 
 ### Docker
 
-To get started with Flixpatrol Top 10 on Trakt for Docker, follow these simple steps:
+```bash
+docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+```
 
-1. Create a directory where you want the config files to be stored in
-2. Run docker (it will create the config file inside your directory)
-    ````shell
-   docker run --rm -v "/some/path/flixpatrol-top10/config/:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
-   ````
-3. Edit the config file as you want
-4. You can now run the tool periodically with tool like cron
+Edit `./config/default.json`, then schedule periodic runs with cron.
 
-## 2. Configuration
+### Linux / macOS
 
-### Environment variable
-You can pass some environment variables to the tool:
+1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for your platform
+2. Make the binary executable and run it:
+    ```bash
+    chmod +x flixpatrol-top10-linux-x64
+    ./flixpatrol-top10-linux-x64
+    ```
+3. Edit `./config/default.json` and run again
+
+### Windows
+
+1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for Windows
+2. Run the binary from the command line (double-clicking will close the window automatically)
+3. Edit `./config/default.json` and run again
+
+## Configuration
+
+### Environment Variables
 
 | Name      | Description                              | Values                          | Default |
 |-----------|------------------------------------------|---------------------------------|---------|
@@ -132,63 +112,96 @@ In dry-run mode:
 - OAuth authentication runs normally
 - List creation, item addition/removal, and updates are **logged but not executed**
 
-### Configuration file
-The configuration file should be stored in a directory named `config` next to the binary.
-It should be named `default.json`.
+### Configuration File
 
-At first run a default configuration file will be generated with some top10 preconfigured, so you can see the file format. Feel free to edit it.
+The configuration file is stored at `./config/default.json` (auto-generated on first run).
 
-If there is any configuration error, the tool will exit whit information about the error.
+If there is any configuration error, the tool will exit with information about the error.
 
-| Name                                | Descriptions                                                                                                                           | Mandatory | Values                                                                                                                                          | Default                                      |
-|-------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| FlixPatrolTop10                     | An array containing as much as you want top10Config                                                                                    | Yes       |                                                                                                                                                 |                                              |
-| top10Config.platform                | Which platform to get from Flixpatrol                                                                                                  | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                                              |
-| top10Config.location                | Which location to get from Flixpatrol                                                                                                  | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                                              |
-| top10Config.fallback                | If there is no show/movie found, should we fallback to another location?                                                               | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false                                        |
-| top10Config.privacy                 | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
-| top10Config.limit                   | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number greeter or equal to 1                                                                                                                    | 10                                           |
-| top10Config.type                    | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
-| top10Config.name                    | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | A generated name based on the top10 config   |
-| top10Config.normalizeName           | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
-| top10Config.kids                    | Get Kids Top 10 instead of regular Top 10. Only works with Netflix and requires a specific country (not worldwide)                     | No        | true, false                                                                                                                                     | false                                        |
-| FlixPatrolPopular                   | An array containing as much as you want popularConfig                                                                                  | Yes       |                                                                                                                                                 |                                              |
-| popularConfig.platform              | Which popular platform to get from Flixpatrol                                                                                          | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53))  |                                              |
-| popularConfig.privacy               | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
-| popularConfig.limit                 | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number between 1 and 100 (included)                                                                                                             | 100                                          |
-| popularConfig.type                  | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
-| popularConfig.name                  | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | A generated name based on the popular config |
-| popularConfig.normalizeName         | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
-| FlixPatrolMostWatched               | An array containing as much as you want flixPatrolMostWatched                                                                          | Yes       |                                                                                                                                                 |                                              |
-| flixPatrolMostWatched.enabled       | Do you want to get a most watched list ?                                                                                               | Yes       | true, false                                                                                                                                     | true                                         |
-| flixPatrolMostWatched.privacy       | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
-| flixPatrolMostWatched.type          | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
-| flixPatrolMostWatched.limit         | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number between 1 and 50 (included)                                                                                                              | 50                                           |
-| flixPatrolMostWatched.year          | Year of the most watched list. Check https://flixpatrol.com/most-watched/ to see available list.                                       | Yes       | Number between 2023 and current year (included)                                                                                                 | current year                                 |
-| flixPatrolMostWatched.name          | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | most-watched                                 |
-| flixPatrolMostWatched.normalizeName | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
-| flixPatrolMostWatched.premiere      | Year of movie/show release. It will only return most watched movies/shows of this year. If omitted, all movie/shows are returned       | No        | Year between 1980 and current year (included)                                                                                                   | All                                          |
-| flixPatrolMostWatched.country       | Release country of movie/show. It will only return most watched movies/shows of this country. If omitted, all movie/shows are returned | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          | All                                          |
-| flixPatrolMostWatched.original      | Return only movie/show created by Netflix. If omitted, all movie/shows are returned                                                    | No        | true, false                                                                                                                                     | false                                        |
-| flixPatrolMostWatched.orderByViews  | Order list by views. By default ordered by hours                                                                                       | No        | true, false                                                                                                                                     | false                                        |
-| FlixPatrolMostHours                 | An array containing as much as you want flixPatrolMostHours config. Netflix all-time most hours rankings.                              | No        |                                                                                                                                                 |                                              |
-| flixPatrolMostHours.enabled         | Do you want to get a most hours list ?                                                                                                 | Yes       | true, false                                                                                                                                     | true                                         |
-| flixPatrolMostHours.privacy         | The privacy of the generated Trakt list                                                                                                | Yes       | private, link, friends, public                                                                                                                  | private                                      |
-| flixPatrolMostHours.type            | Do you want movies, shows or both ?                                                                                                    | Yes       | movies, shows, both                                                                                                                             | both                                         |
-| flixPatrolMostHours.limit           | How many movie/show we should get from Flixpatrol                                                                                      | Yes       | Number between 1 and 100 (included)                                                                                                             | 50                                           |
-| flixPatrolMostHours.period          | Which ranking period to get                                                                                                            | Yes       | total, first-week, first-month                                                                                                                  | total                                        |
-| flixPatrolMostHours.language        | Filter by language (only for first-week and first-month)                                                                               | No        | all, english, non-english                                                                                                                       | all                                          |
-| flixPatrolMostHours.name            | Optional name of the list                                                                                                              | No        | Any valid string                                                                                                                                | netflix-most-hours-{period}                  |
-| flixPatrolMostHours.normalizeName   | Should the list name be normalized?                                                                                                    | No        | Any valid boolean                                                                                                                               | true                                         |
-| Trakt.saveFile                      | Where to save the Trakt session file                                                                                                   | Yes       | Any valid path                                                                                                                                  | ./config/.trakt                              |
-| Trakt.clientId                      | You clientId from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)                                             | Yes       | A valid traktId                                                                                                                                 |                                              |
-| Trakt.clientSecret                  | You clientSecret from Trakt ([here](https://trakt.tv/oauth/applications/new) to get a new one)                                         | Yes       | A valid clientSecret                                                                                                                            |                                              |
-| Cache.enabled                       | Do you want to use cache? (You should)                                                                                                 | Yes       | true, false                                                                                                                                     | true                                         |
-| Cache.savePath                      | Where to save the caches files                                                                                                         | Yes       | Any valid path                                                                                                                                  | ./config/.cache                              |
-| Cache.ttl                           | How long the cache will be valid in seconds                                                                                            | Yes       | Any number greater than 0                                                                                                                       | 604800                                       |
+<details>
+<summary><strong>FlixPatrolTop10</strong> — Top 10 list configuration</summary>
 
-#### Example file
-````json
+| Name            | Description                                                                                | Mandatory | Values                                                                                                                                          | Default                                    |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
+| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                                            |
+| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                                            |
+| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false                                      |
+| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                  | private                                    |
+| limit           | How many movie/show to get                                                                 | Yes       | Number >= 1                                                                                                                                     | 10                                         |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                             | both                                       |
+| name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                                | A generated name based on the top10 config |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                                     | true                                       |
+| kids            | Get Kids Top 10 (Netflix only, requires specific country)                                  | No        | true, false                                                                                                                                     | false                                      |
+
+</details>
+
+<details>
+<summary><strong>FlixPatrolPopular</strong> — Popular list configuration</summary>
+
+| Name            | Description                                                                                | Mandatory | Values                                                                                                                                         | Default                                      |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
+| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53)) |                                              |
+| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                 | private                                      |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100                                                                                                                       | 100                                          |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                            | both                                         |
+| name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                               | A generated name based on the popular config |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                                    | true                                         |
+
+</details>
+
+<details>
+<summary><strong>FlixPatrolMostWatched</strong> — Netflix Most Watched configuration</summary>
+
+| Name            | Description                                                                                | Mandatory | Values                                                                                                                                 | Default      |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------|--------------|
+| enabled         | Enable this most watched list?                                                             | Yes       | true, false                                                                                                                            | true         |
+| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                         | private      |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                    | both         |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 50                                                                                                                | 50           |
+| year            | Year of the most watched list                                                              | Yes       | Number between 2023 and current year                                                                                                   | current year |
+| name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                       | most-watched |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                            | true         |
+| premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
+| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | All          |
+| original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
+| orderByViews    | Order by views instead of hours?                                                           | No        | true, false                                                                                                                            | false        |
+
+</details>
+
+<details>
+<summary><strong>FlixPatrolMostHours</strong> — Netflix Most Hours configuration</summary>
+
+| Name            | Description                                                                                | Mandatory | Values                          | Default                     |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|---------------------------------|-----------------------------|
+| enabled         | Enable this most hours list?                                                               | Yes       | true, false                     | true                        |
+| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public  | private                     |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both             | both                        |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100        | 50                          |
+| period          | Which ranking period                                                                       | Yes       | total, first-week, first-month  | total                       |
+| language        | Filter by language (first-week and first-month only)                                       | No        | all, english, non-english       | all                         |
+| name            | Optional custom list name                                                                  | No        | Any valid string                | netflix-most-hours-{period} |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                     | true                        |
+
+</details>
+
+<details>
+<summary><strong>Trakt & Cache</strong> — Authentication and caching</summary>
+
+| Name              | Description                                                                                          | Mandatory | Values         | Default          |
+|-------------------|------------------------------------------------------------------------------------------------------|-----------|----------------|------------------|
+| Trakt.saveFile    | Where to save the Trakt session file                                                                 | Yes       | Any valid path | ./config/.trakt  |
+| Trakt.clientId    | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))                   | Yes       | A valid string |                  |
+| Trakt.clientSecret| Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new))               | Yes       | A valid string |                  |
+| Cache.enabled     | Enable caching? (recommended)                                                                        | Yes       | true, false    | true             |
+| Cache.savePath    | Where to save the cache files                                                                        | Yes       | Any valid path | ./config/.cache  |
+| Cache.ttl         | Cache validity duration in seconds                                                                   | Yes       | Number > 0     | 604800 (7 days)  |
+
+</details>
+
+<details>
+<summary><strong>Example configuration</strong></summary>
+
+```json
 {
   "FlixPatrolTop10": [
     {
@@ -281,25 +294,23 @@ If there is any configuration error, the tool will exit whit information about t
     "ttl": 604800
   }
 }
-````
+```
 
-### Trakt
+</details>
 
-To run this application you need to have a Trakt account and a Client ID / Client Secret.
+### Trakt Setup
 
->⚠️ Trakt is limited to 5 list on free account, if you specified more than 5 platform on config the script will fail.
-Remove some platform from the config or take a VIP account on Trakt
+To run this application you need a Trakt account and a Client ID / Client Secret.
 
-1. Go [here to create a new one](https://trakt.tv/auth/join) or [here to login](https://trakt.tv/login).
-2. [Create a new application](https://trakt.tv/oauth/applications/new) on your Trakt account
-   1. Name: what ever you want
-   2. Icon: not needed
-   3. Description: not needed
-   4. Redirect uri: urn:ietf:wg:oauth:2.0:oob
-   5. Javascript (cors) origins: not needed
-   6. Permissions: none
-3. Set the given Client ID / Client Secret on the configuration file
-4. Run the app and follow the instructions
+> **Warning**
+> Trakt free accounts are limited to 5 lists. If you configure more, the tool will fail. Remove some or upgrade to Trakt VIP.
+
+1. [Create an account](https://trakt.tv/auth/join) or [login](https://trakt.tv/login)
+2. [Create a new application](https://trakt.tv/oauth/applications/new) with:
+   - **Redirect uri:** `urn:ietf:wg:oauth:2.0:oob`
+   - Other fields are optional
+3. Set the Client ID / Client Secret in `./config/default.json`
+4. Run the app and follow the on-screen instructions
 
 ## Supported Platforms
 
@@ -378,3 +389,7 @@ npm run lint-and-fix
 # Create cross-platform binaries
 npm run package
 ```
+
+## License
+
+[MIT License](LICENSE)

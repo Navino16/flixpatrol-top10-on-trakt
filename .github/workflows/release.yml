@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: navino16/flixpatrol-top10-on-trakt
 
 jobs:
   lint:
@@ -88,12 +88,127 @@ jobs:
           name: binaries
           path: bin/
 
+  docker:
+    name: Build Docker (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: [build]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            suffix: amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            suffix: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.suffix }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge Docker Manifests
+    runs-on: ubuntu-latest
+    needs: [docker]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
   release:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build
     permissions:
       contents: write
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -122,64 +237,22 @@ jobs:
             bin/flixpatrol-top10-macos-x64
             bin/flixpatrol-top10-win-x64.exe
 
-  docker:
-    name: Build Docker Image
+  notify-discord:
+    name: Discord Release Notification
     runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: read
-      packages: write
+    needs: [release]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Download binaries
-        uses: actions/download-artifact@v8
-        with:
-          name: binaries
-          path: bin/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Cache Docker layers
-        uses: actions/cache@v5
-        with:
-          path: /tmp/.buildx-cache
-          key: buildx-${{ github.sha }}
-          restore-keys: |
-            buildx-
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new
-
-      - name: Move cache
+      - name: Send Discord notification
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+          TAG: ${{ github.ref_name }}
+          CHANGELOG: ${{ needs.release.outputs.changelog }}
         run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          BODY=$(echo "$CHANGELOG" | head -c 1800)
+          PAYLOAD=$(jq -n \
+            --arg content "<@&${{ vars.DISCORD_RELEASE_ROLE_ID }}>" \
+            --arg title "FlixPatrol Top10 on Trakt ${TAG}" \
+            --arg url "https://github.com/${{ github.repository }}/releases/tag/${TAG}" \
+            --arg description "$BODY" \
+            '{content: $content, embeds: [{title: $title, url: $url, description: $description, color: 6500081}]}')
+          curl -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK_URL"
