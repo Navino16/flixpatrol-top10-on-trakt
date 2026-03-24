@@ -173,10 +173,10 @@ Sensitive data (OAuth tokens) redacted in logs.
 ### Build Targets
 
 Package creates binaries for:
-- `node22-linux-x64`
-- `node22-linux-arm64`
-- `node22-macos-x64`
-- `node22-win-x64`
+- `node24-linux-x64`
+- `node24-linux-arm64`
+- `node24-macos-x64`
+- `node24-win-x64`
 
 ### ESLint Rules
 
