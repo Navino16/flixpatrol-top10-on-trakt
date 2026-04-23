@@ -72,10 +72,8 @@ describe('GetAndValidateConfigs', () => {
 
     describe('flixpatrolPopularPlatform', () => {
       it('should contain popular rating platforms', () => {
-        expect(flixpatrolPopularPlatform).toContain('imdb');
-        expect(flixpatrolPopularPlatform).toContain('trakt');
-        expect(flixpatrolPopularPlatform).toContain('letterboxd');
-        expect(flixpatrolPopularPlatform).toContain('movie-db');
+        expect(flixpatrolPopularPlatform).toContain('wikipedia');
+        expect(flixpatrolPopularPlatform).toContain('youtube');
       });
 
       it('should not contain streaming platforms', () => {
@@ -174,7 +172,7 @@ describe('GetAndValidateConfigs', () => {
       it('should return valid FlixPatrolPopular config', () => {
         const validConfig = [
           {
-            platform: 'imdb',
+            platform: 'wikipedia',
             privacy: 'private',
             limit: 50,
             type: 'movies',
