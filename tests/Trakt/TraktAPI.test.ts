@@ -199,6 +199,16 @@ describe('TraktAPI', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should return null when Trakt search throws, without bubbling the error', async () => {
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: { search: { text: ReturnType<typeof vi.fn> } } }).trakt;
+      traktInstance.search.text.mockRejectedValue(new Error('Response code 500 (Internal Server Error)'));
+
+      const result = await trakt.getFirstItemByQuery('movie', 'Trolls', 2016);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('pushToList', () => {

@@ -35,8 +35,7 @@ export const flixpatrolTop10Platform = ['9now', 'abema', 'amazon', 'amazon-chann
   'trueid', 'tubi', 'tv-2-norge', 'u-next', 'viaplay', 'videoland', 'vidio', 'viki', 'viu', 'vix', 'voyo', 'vudu',
   'watchit', 'wavve', 'wow', 'zee5'] as const;
 
-export const flixpatrolPopularPlatform = ['facebook', 'imdb', 'instagram', 'letterboxd', 'movie-db', 'reddit',
-  'rotten-tomatoes', 'tmdb', 'trakt', 'twitter', 'wikipedia', 'youtube'] as const;
+export const flixpatrolPopularPlatform = ['wikipedia', 'youtube'] as const;
 
 export const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
 const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
