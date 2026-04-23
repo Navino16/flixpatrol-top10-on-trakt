@@ -47,17 +47,11 @@
   ],
   "FlixPatrolPopular": [
     {
-      "platform": "movie-db",
+      "platform": "wikipedia",
       "privacy": "private",
       "limit": 100,
       "type": "both",
-      "name": "Most popular titles in Movie DBs"
-    },
-    {
-      "platform": "imdb",
-      "privacy": "private",
-      "limit": 100,
-      "type": "both"
+      "name": "Most popular titles in Wikipedia"
     }
   ],
   "FlixPatrolMostWatched": [

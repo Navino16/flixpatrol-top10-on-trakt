@@ -50,7 +50,7 @@
 
 - Sync **Top 10 lists** from 72 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
 - Sync **Top 10 Kids lists** from Netflix (country-specific)
-- Sync **Popular lists** from 12 sources (IMDB, TMDB, Letterboxd, Rotten Tomatoes, etc.)
+- Sync **Popular lists** from 2 sources (Wikipedia and Youtube)
 - Sync **Netflix Most Watched** annual rankings
 - Sync **Netflix Most Hours** rankings (total, first week, first month)
 - Support for **200+ countries/regions**
@@ -244,7 +244,7 @@ If there is any configuration error, the tool will exit with information about t
   ],
   "FlixPatrolPopular": [
     {
-      "platform": "movie-db",
+      "platform": "wikipedia",
       "privacy": "private",
       "limit": 100,
       "type": "both"
@@ -320,7 +320,7 @@ To run this application you need a Trakt account and a Client ID / Client Secret
 
 ### Popular Sources (12)
 
-`facebook`, `imdb`, `instagram`, `letterboxd`, `movie-db`, `reddit`, `rotten-tomatoes`, `tmdb`, `trakt`, `twitter`, `wikipedia`, `youtube`
+`wikipedia`, `youtube`
 
 ### Locations (199)
 
