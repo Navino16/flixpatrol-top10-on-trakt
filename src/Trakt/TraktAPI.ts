@@ -239,11 +239,17 @@ export class TraktAPI {
 
   // eslint-disable-next-line max-len
   public async getFirstItemByQuery(searchType: TraktSearchType, title: string, year: number): Promise<TraktSearchItem | null> {
-    const items = await this.trakt.search.text({
-      type: searchType,
-      query: title,
-      fields: 'title',
-    });
+    let items: TraktSearchItem[];
+    try {
+      items = await this.trakt.search.text({
+        type: searchType,
+        query: title,
+        fields: 'title',
+      });
+    } catch (err) {
+      logger.warn(`Trakt search failed for ${searchType} "${title}" (${year}): ${(err as Error).message}. Skipping item.`);
+      return null;
+    }
 
     logger.silly(`Items found on Trakt: ${JSON.stringify(items)}`)
 

@@ -88,18 +88,12 @@ export class Utils {
         ],
         FlixPatrolPopular: [
           {
-            platform: 'movie-db',
-            name: 'Most popular titles in Movie DBs',
+            platform: 'wikipedia',
+            name: 'Most popular titles in Wikipedia',
             privacy: 'private',
             limit: 100,
             type: 'both',
-          },
-          {
-            platform: 'imdb',
-            privacy: 'private',
-            limit: 100,
-            type: 'both',
-          },
+          }
         ],
         FlixPatrolMostWatched: [
           {

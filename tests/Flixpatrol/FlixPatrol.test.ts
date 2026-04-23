@@ -59,10 +59,8 @@ describe('FlixPatrol', () => {
 
     describe('isFlixPatrolPopularPlatform', () => {
       it('should return true for valid popular platforms', () => {
-        expect(FlixPatrol.isFlixPatrolPopularPlatform('imdb')).toBe(true);
-        expect(FlixPatrol.isFlixPatrolPopularPlatform('trakt')).toBe(true);
-        expect(FlixPatrol.isFlixPatrolPopularPlatform('letterboxd')).toBe(true);
-        expect(FlixPatrol.isFlixPatrolPopularPlatform('movie-db')).toBe(true);
+        expect(FlixPatrol.isFlixPatrolPopularPlatform('wikipedia')).toBe(true);
+        expect(FlixPatrol.isFlixPatrolPopularPlatform('youtube')).toBe(true);
       });
 
       it('should return false for invalid popular platforms', () => {
