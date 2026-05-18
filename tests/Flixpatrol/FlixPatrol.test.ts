@@ -1,10 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
-import axios from 'axios';
 import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHours } from '../../src/types';
 
-// Mock axios
-vi.mock('axios');
+// Mock impit: single shared `mockFetch` is returned from every `new Impit(...)`,
+// mirroring the previous `vi.mock('axios')` behavior where all instances shared one mock.
+const mockFetch = vi.fn();
+vi.mock('impit', () => ({
+  // Use a regular `function` (not an arrow) so it can be invoked with `new`.
+  Impit: vi.fn(function MockImpit(this: { fetch: typeof mockFetch }) {
+    this.fetch = mockFetch;
+  }),
+}));
+
+// Helper to build an impit-style response from the legacy { status, data } shape used by the tests.
+const mockHtmlResponse = (input: { status: number; data: unknown }) => ({
+  status: input.status,
+  text: async () => (input.data as string) ?? '',
+});
 
 // Mock file-system-cache
 vi.mock('file-system-cache', () => ({
@@ -95,7 +107,7 @@ describe('FlixPatrol', () => {
     it('should create FlixPatrol instance with custom options', () => {
       const flixpatrol = new FlixPatrol(
         { enabled: false, savePath: '', ttl: 0 },
-        { url: 'https://custom.url', agent: 'CustomAgent/1.0' }
+        { url: 'https://custom.url' }
       );
       expect(flixpatrol).toBeInstanceOf(FlixPatrol);
     });
@@ -115,30 +127,22 @@ describe('FlixPatrol', () => {
 
     it('should return HTML content on successful request', async () => {
       const mockHtml = '<html><body>Test content</body></html>';
-      vi.mocked(axios.get).mockResolvedValue({
+      mockFetch.mockResolvedValue(mockHtmlResponse({
         status: 200,
         data: mockHtml,
-      });
+      }));
 
       const result = await flixpatrol.getFlixPatrolHTMLPage('/test-path');
 
       expect(result).toBe(mockHtml);
-      expect(axios.get).toHaveBeenCalledWith(
-        'https://flixpatrol.com/test-path',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'User-Agent': expect.any(String),
-          }),
-          timeout: 30000,
-        })
-      );
+      expect(mockFetch).toHaveBeenCalledWith('https://flixpatrol.com/test-path');
     });
 
     it('should return null on non-200 status', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
+      mockFetch.mockResolvedValue(mockHtmlResponse({
         status: 404,
         data: 'Not found',
-      });
+      }));
 
       const result = await flixpatrol.getFlixPatrolHTMLPage('/not-found');
 
@@ -146,7 +150,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should return null on network error', async () => {
-      vi.mocked(axios.get).mockRejectedValue(new Error('Network error'));
+      mockFetch.mockRejectedValue(new Error('Network error'));
 
       const result = await flixpatrol.getFlixPatrolHTMLPage('/error-path');
 
@@ -159,40 +163,14 @@ describe('FlixPatrol', () => {
         { url: 'https://custom.flixpatrol.com' }
       );
 
-      vi.mocked(axios.get).mockResolvedValue({
+      mockFetch.mockResolvedValue(mockHtmlResponse({
         status: 200,
         data: '<html></html>',
-      });
+      }));
 
       await customFlixpatrol.getFlixPatrolHTMLPage('/test');
 
-      expect(axios.get).toHaveBeenCalledWith(
-        'https://custom.flixpatrol.com/test',
-        expect.any(Object)
-      );
-    });
-
-    it('should use custom User-Agent when provided', async () => {
-      const customFlixpatrol = new FlixPatrol(
-        { enabled: false, savePath: '', ttl: 0 },
-        { agent: 'MyCustomAgent/1.0' }
-      );
-
-      vi.mocked(axios.get).mockResolvedValue({
-        status: 200,
-        data: '<html></html>',
-      });
-
-      await customFlixpatrol.getFlixPatrolHTMLPage('/test');
-
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'User-Agent': 'MyCustomAgent/1.0',
-          }),
-        })
-      );
+      expect(mockFetch).toHaveBeenCalledWith('https://custom.flixpatrol.com/test');
     });
   });
 
@@ -223,10 +201,10 @@ describe('FlixPatrol', () => {
             </body>
           </html>
         `;
-        vi.mocked(axios.get).mockResolvedValue({
+        mockFetch.mockResolvedValue(mockHtmlResponse({
           status: 200,
           data: mockHtml,
-        });
+        }));
 
         // We can't directly test parseTop10Page since it's private
         // But we can verify getFlixPatrolHTMLPage returns the HTML
@@ -235,20 +213,20 @@ describe('FlixPatrol', () => {
       });
 
       it('should handle empty HTML gracefully', async () => {
-        vi.mocked(axios.get).mockResolvedValue({
+        mockFetch.mockResolvedValue(mockHtmlResponse({
           status: 200,
           data: '<html><body></body></html>',
-        });
+        }));
 
         const result = await flixpatrol.getFlixPatrolHTMLPage('/top10/netflix/world');
         expect(result).toBe('<html><body></body></html>');
       });
 
       it('should handle malformed HTML', async () => {
-        vi.mocked(axios.get).mockResolvedValue({
+        mockFetch.mockResolvedValue(mockHtmlResponse({
           status: 200,
           data: '<html><body><div>Not closed',
-        });
+        }));
 
         const result = await flixpatrol.getFlixPatrolHTMLPage('/top10/netflix/world');
         expect(result).toBe('<html><body><div>Not closed');
@@ -282,7 +260,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should throw FlixPatrolError when page fetch fails', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
@@ -328,9 +306,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
@@ -382,9 +360,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
@@ -443,9 +421,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
@@ -498,10 +476,10 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: emptyHtml })
-        .mockResolvedValueOnce({ status: 200, data: fallbackHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: emptyHtml }))
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: fallbackHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Fallback Movie', year: 2024, ids: { trakt: 789 } },
@@ -519,7 +497,7 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
 
       // Fallback should have been triggered
-      expect(axios.get).toHaveBeenCalledTimes(3); // Initial + fallback + detail
+      expect(mockFetch).toHaveBeenCalledTimes(3); // Initial + fallback + detail
     });
 
     it('should respect the limit configuration', async () => {
@@ -556,9 +534,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
@@ -607,9 +585,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Regional Movie', year: 2024, ids: { trakt: 999 } },
@@ -662,9 +640,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Kids Movie', year: 2024, ids: { trakt: 1001 } },
@@ -716,9 +694,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: top10Html })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Kids Show', year: 2024, ids: { trakt: 1002 } },
@@ -758,7 +736,7 @@ describe('FlixPatrol', () => {
       expect(result.rawCounts.movies).toBe(0);
       expect(result.rawCounts.shows).toBe(0);
       // Should not make any HTTP requests
-      expect(axios.get).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should return empty results for kids with world location', async () => {
@@ -779,14 +757,14 @@ describe('FlixPatrol', () => {
       expect(result.rawCounts.movies).toBe(0);
       expect(result.rawCounts.shows).toBe(0);
       // Should not make any HTTP requests
-      expect(axios.get).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should not trigger fallback for kids when no results found', async () => {
       const emptyHtml = '<html><body></body></html>';
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: emptyHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: emptyHtml }));
 
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
@@ -801,7 +779,7 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
 
       // Fallback should NOT be triggered for kids
-      expect(axios.get).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.movies).toEqual([]);
       expect(result.shows).toEqual([]);
     });
@@ -817,10 +795,10 @@ describe('FlixPatrol', () => {
     });
 
     it('should throw FlixPatrolError when page fetch fails', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 10,
         type: 'movies',
@@ -864,16 +842,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Popular Movie', year: 2024, ids: { trakt: 111 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 10,
         type: 'movies',
@@ -913,16 +891,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Popular Show', year: 2024, ids: { trakt: 222 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 10,
         type: 'shows',
@@ -962,16 +940,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 2,
         type: 'movies',
@@ -993,7 +971,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should throw FlixPatrolError when page fetch fails', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolMostWatched = {
         enabled: true,
@@ -1036,9 +1014,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Most Watched Movie', year: 2024, ids: { trakt: 333 } },
@@ -1086,9 +1064,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Most Watched Show', year: 2024, ids: { trakt: 444 } },
@@ -1106,10 +1084,7 @@ describe('FlixPatrol', () => {
 
       expect(Array.isArray(result)).toBe(true);
       // TV shows URL should include -grouped
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('-grouped'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-grouped'));
     });
 
     it('should include country in URL when specified', async () => {
@@ -1141,9 +1116,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Movie', year: 2024, ids: { trakt: 555 } },
@@ -1160,10 +1135,7 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
 
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('-from-france'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-from-france'));
     });
 
     it('should include premiere in URL when specified', async () => {
@@ -1195,9 +1167,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Movie', year: 2024, ids: { trakt: 666 } },
@@ -1214,10 +1186,7 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
 
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('-2023'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-2023'));
     });
 
     it('should include orderByViews in URL when specified', async () => {
@@ -1249,9 +1218,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Movie', year: 2024, ids: { trakt: 777 } },
@@ -1268,10 +1237,7 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
 
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/by-views'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/by-views'));
     });
 
     it('should filter Netflix originals when original is true', async () => {
@@ -1311,9 +1277,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostWatchedHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Original Movie', year: 2024, ids: { trakt: 888 } },
@@ -1372,16 +1338,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'The Matrix', year: 1999, ids: { trakt: 999 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'movies',
@@ -1417,16 +1383,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Unknown Movie', year: 0, ids: { trakt: 1000 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'movies',
@@ -1466,14 +1432,14 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue(null);
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'movies',
@@ -1500,12 +1466,12 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValueOnce({ status: 404, data: null });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'movies',
@@ -1544,16 +1510,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Breaking Bad', year: 2008, ids: { trakt: 1388 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'shows',
@@ -1589,16 +1555,16 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: popularHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Fallback Title', year: 2024, ids: { trakt: 2000 } },
       });
 
       const config: FlixPatrolPopular = {
-        platform: 'imdb',
+        platform: 'wikipedia',
         privacy: 'private',
         limit: 1,
         type: 'movies',
@@ -1620,7 +1586,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should throw FlixPatrolError when page fetch fails', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolMostHours = {
         enabled: true,
@@ -1680,9 +1646,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
@@ -1700,10 +1666,7 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
 
       expect(Array.isArray(result)).toBe(true);
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/streaming-services/most-hours-total/netflix/'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/streaming-services/most-hours-total/netflix/'));
     });
 
     it('should parse most hours total TV shows from toc-tv-shows section', async () => {
@@ -1751,9 +1714,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
@@ -1804,9 +1767,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
@@ -1847,8 +1810,8 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: mostHoursTotalHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }));
 
       const config: FlixPatrolMostHours = {
         enabled: true,
@@ -1865,7 +1828,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should use correct URL for first-week period', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolMostHours = {
         enabled: true,
@@ -1881,7 +1844,7 @@ describe('FlixPatrol', () => {
     });
 
     it('should use correct URL for first-month period', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ status: 404, data: null });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: null }));
 
       const config: FlixPatrolMostHours = {
         enabled: true,
@@ -1929,9 +1892,9 @@ describe('FlixPatrol', () => {
         </html>
       `;
 
-      vi.mocked(axios.get)
-        .mockResolvedValueOnce({ status: 200, data: firstWeekHtml })
-        .mockResolvedValue({ status: 200, data: detailHtml });
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: firstWeekHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
       mockGetFirstItemByQuery.mockResolvedValue({
         movie: { title: 'English Movie', year: 2024, ids: { trakt: 789 } },
@@ -1949,10 +1912,7 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
 
       expect(Array.isArray(result)).toBe(true);
-      expect(axios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/streaming-services/most-hours-first-week/netflix/'),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/streaming-services/most-hours-first-week/netflix/'));
     });
   });
 });

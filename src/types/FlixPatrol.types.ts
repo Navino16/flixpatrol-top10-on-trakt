@@ -7,7 +7,6 @@ import {
 
 export interface FlixPatrolOptions {
   url?: string;
-  agent?: string;
 }
 
 // Types derived from the arrays
