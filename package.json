@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && npx ncc build build/app.js -o build/tmp && bash scripts/patch-ncc-bundle.sh && npx pkg --no-bytecode --public --config=package.json build/tmp/index.js && mv bin/flixpatrol-top10-linux-x64 bin/flixpatrol-top10-linux-amd64"
+    "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && bash scripts/install-native-bindings.sh && npx ncc build build/app.js -o build/tmp && bash scripts/patch-ncc-bundle.sh && npx pkg --no-bytecode --public --config=package.json build/tmp/index.js && mv bin/flixpatrol-top10-linux-x64 bin/flixpatrol-top10-linux-amd64"
   },
   "keywords": [
     "Flixpatrol",
@@ -49,6 +49,7 @@
   "pkg": {
     "assets": [
       "build/tmp/*.css",
+      "build/tmp/*.node",
       "build/tmp/data/*.json",
       "build/tmp/node_modules/mdn-data/**/*.json"
     ],
