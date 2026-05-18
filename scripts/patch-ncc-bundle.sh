@@ -27,3 +27,10 @@ cp node_modules/mdn-data/css/at-rules.json build/tmp/node_modules/mdn-data/css/
 cp node_modules/mdn-data/css/properties.json build/tmp/node_modules/mdn-data/css/
 cp node_modules/mdn-data/css/syntaxes.json build/tmp/node_modules/mdn-data/css/
 cp node_modules/mdn-data/package.json build/tmp/node_modules/mdn-data/
+
+# Rewrite impit native-binding requires so pkg can statically detect them.
+# ncc emits `require(__nccwpck_require__.ab + "impit-node.X.node")` which pkg's
+# static analyzer cannot resolve, so the .node files are never extracted at runtime.
+# Replacing the dynamic concat with a string literal lets pkg detect the native module
+# and trigger its automatic extract-to-tmpdir flow.
+sed -i -E 's|require\(__nccwpck_require__\.ab \+ "(impit-node\.[a-zA-Z0-9_.-]+\.node)"\)|require("./\1")|g' "$BUNDLE"
