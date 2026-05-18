@@ -38,10 +38,9 @@
     "vitest": "^4.0.15"
   },
   "dependencies": {
-    "axios": "^1.16.1",
-    "axios-retry": "^4.5.0",
     "config": "^4.4.1",
     "file-system-cache": "^2.4.7",
+    "impit": "^0.14.0",
     "jsdom": "^29.1.1",
     "trakt.tv": "^8.2.0",
     "winston": "^3.19.0",

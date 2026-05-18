@@ -1,8 +1,6 @@
-import type {AxiosRequestConfig} from 'axios';
-import axios from 'axios';
-import axiosRetry from 'axios-retry';
 import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
+import { Impit } from 'impit';
 import { logger, FlixPatrolError } from '../Utils';
 import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
@@ -27,18 +25,8 @@ import {
   flixpatrolConfigType,
 } from '../types';
 
-// Configure axios-retry with exponential backoff
-axiosRetry(axios, {
-  retries: 3,
-  retryDelay: axiosRetry.exponentialDelay,
-  retryCondition: (error) => {
-    return axiosRetry.isNetworkOrIdempotentRequestError(error)
-      || error.response?.status === 429;
-  },
-  onRetry: (retryCount, error) => {
-    logger.warn(`Retry attempt ${retryCount} for ${error.config?.url}: ${error.message}`);
-  },
-});
+const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const MAX_RETRIES = 3;
 
 type FlixPatrolMatchResult = string;
 
@@ -49,9 +37,12 @@ export class FlixPatrol {
 
   private readonly movieCache: FileSystemCache | null = null;
 
+  private readonly impit: Impit;
+
   constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
     this.options.url = options.url || 'https://flixpatrol.com';
-    this.options.agent = options.agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
+    // Use Impit with Chrome browser impersonation to bypass Cloudflare's TLS fingerprint check.
+    this.impit = new Impit({ browser: 'chrome', timeout: 30000 });
     if (cacheOptions.enabled) {
       this.tvCache = Cache({
         basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
@@ -88,24 +79,30 @@ export class FlixPatrol {
   public async getFlixPatrolHTMLPage(path: string): Promise<string | null> {
     const url = `${this.options.url}${path}`;
     logger.silly(`Accessing URL: ${url}`);
-    const axiosConfig: AxiosRequestConfig = {
-      headers: {
-        'User-Agent': this.options.agent,
-      },
-      timeout: 30000,
-    };
 
-    try {
-      const res = await axios.get(url, axiosConfig);
-      logger.silly(`Status code: ${res.status}`);
-      if (res.status !== 200) {
-        return null;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      try {
+        const res = await this.impit.fetch(url);
+        logger.silly(`Status code: ${res.status}`);
+        if (res.status === 200) {
+          return await res.text();
+        }
+        if (!RETRY_STATUS_CODES.has(res.status) || attempt === MAX_RETRIES) {
+          return null;
+        }
+        logger.warn(`Retry attempt ${attempt} for ${url}: HTTP ${res.status}`);
+      } catch (error) {
+        if (attempt === MAX_RETRIES) {
+          logger.error(`Error getting flixPatrolHTMLPage: ${error}`);
+          return null;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Retry attempt ${attempt} for ${url}: ${message}`);
       }
-      return res.data;
-    } catch (error) {
-      logger.error(`Error getting flixPatrolHTMLPage: ${error}`);
-      return null;
+      // Exponential backoff: 1s, 2s, 4s
+      await new Promise((resolve) => { setTimeout(resolve, 2 ** (attempt - 1) * 1000); });
     }
+    return null;
   }
 
   private static parseTop10Page(
