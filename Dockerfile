@@ -6,11 +6,13 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-# Create non-root user
+# Create non-root user with a real home directory. pkg's native-module extractor
+# (used by `impit`) writes `.node` files under $HOME at runtime, so without an
+# existing home directory the binary aborts with "impit couldn't load native bindings".
 RUN groupadd -g 1000 flixpatrol && \
-    useradd -u 1000 -g flixpatrol -s /bin/sh -M flixpatrol && \
+    useradd -u 1000 -g flixpatrol -s /bin/sh -m -d /home/flixpatrol flixpatrol && \
     mkdir -p /app/config && \
-    chown -R flixpatrol:flixpatrol /app
+    chown -R flixpatrol:flixpatrol /app /home/flixpatrol
 
 # Copy binary based on architecture
 ARG TARGETARCH
