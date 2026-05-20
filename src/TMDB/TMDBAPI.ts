@@ -38,12 +38,18 @@ export class TMDBAPI {
     return res.json();
   }
 
-  public async pushToList(items: TmdbMediaItems, listId: number, updateBanner = true): Promise<void> {
+  public async pushToList(
+    items: TmdbMediaItems,
+    listId: number,
+    updateBanner = true,
+    isPublic?: boolean,
+  ): Promise<void> {
     if (this.dryRun) {
       logger.info(`[DRY-RUN] Would clear TMDB list ${listId}`);
       logger.info(`[DRY-RUN] Would add ${items.length} item(s) to TMDB list ${listId}`);
-      if (updateBanner) {
-        logger.info(`[DRY-RUN] Would update TMDB list ${listId} description and backdrop`);
+      if (updateBanner) logger.info(`[DRY-RUN] Would update TMDB list ${listId} description and backdrop`);
+      if (isPublic !== undefined) {
+        logger.info(`[DRY-RUN] Would set TMDB list ${listId} to ${isPublic ? 'public' : 'private'}`);
       }
       return;
     }
@@ -54,20 +60,35 @@ export class TMDBAPI {
     logger.info(`Adding ${items.length} item(s) to TMDB list ${listId}`);
     await this.request('POST', `/list/${listId}/items`, { items });
 
-    if (updateBanner) {
-      logger.info(`Fetching TMDB list ${listId} to get backdrop`);
+    if (updateBanner || isPublic !== undefined) {
+      logger.info(`Fetching TMDB list ${listId} metadata`);
       const listData = await this.request('GET', `/list/${listId}?language=en-US&page=1`) as {
+        public?: boolean;
         results?: { backdrop_path?: string }[];
       };
-      const backdropPath = listData.results?.[0]?.backdrop_path ?? '';
 
-      const dateOptions: Intl.DateTimeFormatOptions = {
-        weekday: 'short', year: 'numeric', day: 'numeric', month: 'long',
-        hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
-      };
-      const description = `Last Updated: ${new Date().toLocaleString(undefined, dateOptions)}`;
-      logger.info(`Updating TMDB list ${listId} description and backdrop`);
-      await this.request('PUT', `/list/${listId}`, { description, backdrop_path: backdropPath });
+      const needsPublicUpdate = isPublic !== undefined && listData.public !== isPublic;
+      if (updateBanner || needsPublicUpdate) {
+        const putBody: Record<string, unknown> = {};
+
+        if (updateBanner) {
+          const backdropPath = listData.results?.[0]?.backdrop_path ?? '';
+          const dateOptions: Intl.DateTimeFormatOptions = {
+            weekday: 'short', year: 'numeric', day: 'numeric', month: 'long',
+            hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
+          };
+          putBody.description = `Last Updated: ${new Date().toLocaleString(undefined, dateOptions)}`;
+          putBody.backdrop_path = backdropPath;
+        }
+
+        if (needsPublicUpdate) {
+          logger.info(`Updating TMDB list ${listId} privacy to ${isPublic ? 'public' : 'private'}`);
+          putBody.public = isPublic;
+        }
+
+        logger.info(`Updating TMDB list ${listId} metadata`);
+        await this.request('PUT', `/list/${listId}`, putBody);
+      }
     }
   }
 }

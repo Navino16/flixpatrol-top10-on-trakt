@@ -113,7 +113,7 @@ const run = async () => {
       if (allTmdb.length > 0) {
         logger.info('==============================');
         logger.info(`Syncing ${allTmdb.length} item(s) to TMDB list ${top10.tmdbListId}`);
-        await tmdb.pushToList(allTmdb, top10.tmdbListId, top10.tmdbUpdateBanner ?? true);
+        await tmdb.pushToList(allTmdb, top10.tmdbListId, top10.tmdbUpdateBanner ?? true, top10.privacy === 'public');
         logger.info(`TMDB list ${top10.tmdbListId} updated with ${allTmdb.length} item(s)`);
       }
     }
@@ -153,7 +153,7 @@ const run = async () => {
     if (tmdb && popular.tmdbListId && tmdbAllItems.length > 0) {
       logger.info('==============================');
       logger.info(`Syncing ${tmdbAllItems.length} item(s) to TMDB list ${popular.tmdbListId}`);
-      await tmdb.pushToList(tmdbAllItems, popular.tmdbListId, popular.tmdbUpdateBanner ?? true);
+      await tmdb.pushToList(tmdbAllItems, popular.tmdbListId, popular.tmdbUpdateBanner ?? true, popular.privacy === 'public');
       logger.info(`TMDB list ${popular.tmdbListId} updated with ${tmdbAllItems.length} item(s)`);
     }
   }
@@ -197,7 +197,7 @@ const run = async () => {
       if (tmdb && mostWatched.tmdbListId && tmdbAllItems.length > 0) {
         logger.info('==============================');
         logger.info(`Syncing ${tmdbAllItems.length} item(s) to TMDB list ${mostWatched.tmdbListId}`);
-        await tmdb.pushToList(tmdbAllItems, mostWatched.tmdbListId, mostWatched.tmdbUpdateBanner ?? true);
+        await tmdb.pushToList(tmdbAllItems, mostWatched.tmdbListId, mostWatched.tmdbUpdateBanner ?? true, mostWatched.privacy === 'public');
         logger.info(`TMDB list ${mostWatched.tmdbListId} updated with ${tmdbAllItems.length} item(s)`);
       }
     }
@@ -242,7 +242,7 @@ const run = async () => {
       if (tmdb && mostHours.tmdbListId && tmdbAllItems.length > 0) {
         logger.info('==============================');
         logger.info(`Syncing ${tmdbAllItems.length} item(s) to TMDB list ${mostHours.tmdbListId}`);
-        await tmdb.pushToList(tmdbAllItems, mostHours.tmdbListId, mostHours.tmdbUpdateBanner ?? true);
+        await tmdb.pushToList(tmdbAllItems, mostHours.tmdbListId, mostHours.tmdbUpdateBanner ?? true, mostHours.privacy === 'public');
         logger.info(`TMDB list ${mostHours.tmdbListId} updated with ${tmdbAllItems.length} item(s)`);
       }
     }
