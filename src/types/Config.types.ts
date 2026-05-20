@@ -57,7 +57,7 @@ export const FlixPatrolTop10Schema = z.object({
   traktListName: z.string().optional(),
   normalizeName: z.boolean().optional(),
   kids: z.boolean().optional(),
-  tmdbListId: z.number().int().positive().optional(),
+  tmdbListId: z.number().int().min(0).optional(),
   tmdbUpdateBanner: z.boolean().optional(),
 });
 
@@ -68,7 +68,7 @@ export const FlixPatrolPopularSchema = z.object({
   type: FlixPatrolConfigTypeSchema,
   traktListName: z.string().optional(),
   normalizeName: z.boolean().optional(),
-  tmdbListId: z.number().int().positive().optional(),
+  tmdbListId: z.number().int().min(0).optional(),
   tmdbUpdateBanner: z.boolean().optional(),
 });
 
@@ -86,7 +86,7 @@ export const FlixPatrolMostWatchedSchema = z.object({
   country: FlixPatrolTop10LocationSchema.optional(),
   original: z.boolean().optional(),
   orderByViews: z.boolean().optional(),
-  tmdbListId: z.number().int().positive().optional(),
+  tmdbListId: z.number().int().min(0).optional(),
   tmdbUpdateBanner: z.boolean().optional(),
 });
 
@@ -104,7 +104,7 @@ export const FlixPatrolMostHoursSchema = z.object({
   language: FlixPatrolMostHoursLanguageSchema.optional().default('all'),
   traktListName: z.string().optional(),
   normalizeName: z.boolean().optional(),
-  tmdbListId: z.number().int().positive().optional(),
+  tmdbListId: z.number().int().min(0).optional(),
   tmdbUpdateBanner: z.boolean().optional(),
 });
 

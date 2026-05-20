@@ -8,7 +8,9 @@
       "limit": 10,
       "traktListName": "Netflix Top 10 Movies",
       "type": "movies",
-      "normalizeName": false
+      "normalizeName": false,
+      "tmdbListId": 0,
+      "tmdbUpdateBanner": true
     },
     {
       "platform": "disney",
@@ -17,7 +19,9 @@
       "privacy": "private",
       "limit": 10,
       "traktListName": "Disney Plus Top 10 Shows",
-      "type": "shows"
+      "type": "shows",
+      "tmdbListId": 0,
+      "tmdbUpdateBanner": true
     },
     {
       "platform": "amazon-prime",
@@ -26,7 +30,9 @@
       "privacy": "private",
       "limit": 10,
       "traktListName": "Amazon Prime Top 10",
-      "type": "both"
+      "type": "both",
+      "tmdbListId": 0,
+      "tmdbUpdateBanner": true
     },
     {
       "platform": "apple-tv",
@@ -34,7 +40,9 @@
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "type": "both"
+      "type": "both",
+      "tmdbListId": 0,
+      "tmdbUpdateBanner": true
     },
     {
       "platform": "paramount-plus",
@@ -42,7 +50,9 @@
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "type": "both"
+      "type": "both",
+      "tmdbListId": 0,
+      "tmdbUpdateBanner": true
     }
   ],
   "FlixPatrolPopular": [
