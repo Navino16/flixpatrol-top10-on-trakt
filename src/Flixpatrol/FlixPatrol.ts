@@ -291,17 +291,20 @@ export class FlixPatrol {
     if (!trakt) return { traktId: null, tmdbId: null };
     const isMovie = type === 'Movies';
     if (this.tvCache !== null && this.movieCache !== null) {
-      const traktId: TraktTVId = isMovie
+      const cachedTraktId: TraktTVId = isMovie
         ? await this.movieCache.get(result, null)
         : await this.tvCache.get(result, null);
-      if (traktId) {
-        const tmdbId: number | null = this.movieTmdbCache !== null && this.tvTmdbCache !== null
+      if (cachedTraktId) {
+        const cachedTmdbId: number | null = this.movieTmdbCache !== null && this.tvTmdbCache !== null
           ? (isMovie
             ? await this.movieTmdbCache.get(result, null)
             : await this.tvTmdbCache.get(result, null)) ?? null
           : null;
-        logger.silly(`Found ${result} in cache. Trakt: ${traktId}, TMDB: ${tmdbId}`);
-        return { traktId, tmdbId };
+        if (cachedTmdbId !== null) {
+          logger.silly(`Found ${result} in cache. Trakt: ${cachedTraktId}, TMDB: ${cachedTmdbId}`);
+          return { traktId: cachedTraktId, tmdbId: cachedTmdbId };
+        }
+        logger.silly(`Found ${result} Trakt ID in cache but no TMDB ID — fetching from Trakt to populate TMDB cache`);
       }
     }
 
