@@ -55,8 +55,7 @@ export class TraktAPI {
       logger.info(`No trakt file ${this.traktSaveFile} found, initializing a new trakt connection`);
       try {
         const traktPoll = await this.trakt.get_codes();
-        logger.info(`Please open the verification url: ${traktPoll.verification_url}`);
-        logger.info(`And enter the following code: ${traktPoll.user_code}`);
+        logger.info(`Please open the verification url: ${traktPoll.verification_url}/${traktPoll.user_code}`);
         await this.trakt.poll_access(traktPoll);
         logger.info('Your are now connected to Trakt');
         const token = this.trakt.export_token();
