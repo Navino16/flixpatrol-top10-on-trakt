@@ -12,7 +12,7 @@ import type {
 import Trakt from 'trakt.tv';
 import fs from 'fs';
 import { logger, Utils, TraktError } from '../Utils';
-import type { TraktAPIOptions, TraktTVIds } from '../types';
+import type { TraktAPIOptions, TraktTVIds, TraktItemRef } from '../types';
 
 interface TraktAPIRuntimeOptions extends TraktAPIOptions {
   dryRun?: boolean;
@@ -176,8 +176,12 @@ export class TraktAPI {
     }
     logger.info(`Adding ${traktTVIDs.length} ${type} into Trakt list "${list.name}"`);
     const toAdd: { ids: TraktIds }[] = [];
-    traktTVIDs.forEach((traktTVID) => {
-      toAdd.push({ ids: { trakt: traktTVID } });
+    traktTVIDs.forEach((ref: TraktItemRef) => {
+      if ('trakt' in ref) {
+        toAdd.push({ ids: { trakt: ref.trakt } });
+      } else {
+        toAdd.push({ ids: { tmdb: ref.tmdb } as unknown as TraktIds });
+      }
     });
     logger.silly(`Trakt id items to add: ${JSON.stringify(toAdd)}`)
     const body: UsersListItemsAddRemove = {

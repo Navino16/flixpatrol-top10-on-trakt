@@ -5,7 +5,7 @@ interface TmdbAPIRuntimeOptions extends TmdbOptions {
   dryRun?: boolean;
 }
 
-const BASE_URL = 'https://api.themoviedb.org/4';
+const BASE_URL = 'https://api.themoviedb.org';
 
 export class TMDBAPI {
   private readonly accessToken: string;
@@ -38,6 +38,19 @@ export class TMDBAPI {
     return res.json();
   }
 
+  public async searchItem(type: 'movie' | 'tv', title: string, year: number): Promise<number | null> {
+    try {
+      const yearParam = type === 'movie' ? 'year' : 'first_air_date_year';
+      const base = `/3/search/${type}?query=${encodeURIComponent(title)}&language=en-US`;
+      const path = year > 0 ? `${base}&${yearParam}=${year}` : base;
+      const data = await this.request('GET', path) as { results?: { id: number }[] };
+      return data.results?.[0]?.id ?? null;
+    } catch (err) {
+      logger.warn(`TMDB search failed for ${type} "${title}" (${year}): ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   public async pushToList(
     items: TmdbMediaItems,
     listId: number,
@@ -55,14 +68,14 @@ export class TMDBAPI {
     }
 
     logger.info(`Clearing TMDB list ${listId}`);
-    await this.request('GET', `/list/${listId}/clear`);
+    await this.request('GET', `/4/list/${listId}/clear`);
 
     logger.info(`Adding ${items.length} item(s) to TMDB list ${listId}`);
-    await this.request('POST', `/list/${listId}/items`, { items });
+    await this.request('POST', `/4/list/${listId}/items`, { items });
 
     if (updateBanner || isPublic !== undefined) {
       logger.info(`Fetching TMDB list ${listId} metadata`);
-      const listData = await this.request('GET', `/list/${listId}?language=en-US&page=1`) as {
+      const listData = await this.request('GET', `/4/list/${listId}?language=en-US&page=1`) as {
         public?: boolean;
         results?: { backdrop_path?: string }[];
       };
@@ -87,7 +100,7 @@ export class TMDBAPI {
         }
 
         logger.info(`Updating TMDB list ${listId} metadata`);
-        await this.request('PUT', `/list/${listId}`, putBody);
+        await this.request('PUT', `/4/list/${listId}`, putBody);
       }
     }
   }

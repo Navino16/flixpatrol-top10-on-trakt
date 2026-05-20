@@ -83,7 +83,7 @@ const run = async () => {
     logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
 
-    const { movies, shows, tmdbMovies, tmdbShows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
+    const { movies, shows, tmdbMovies, tmdbShows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt, tmdb);
 
     if (trakt) {
       if (movies.length > 0) {
@@ -92,7 +92,7 @@ const run = async () => {
           logger.warn(`Some movies from FlixPatrol could not be matched on Trakt (${rawCounts.movies} found, ${movies.length} matched)`);
         }
         logger.info(`Saving movies for "${baseListName}"`);
-        logger.debug(`${top10.platform} movies: ${movies}`);
+        logger.debug(`${top10.platform} movies (${movies.length}): ${JSON.stringify(movies)}`);
         await trakt.pushToList(movies, baseListName, 'movie', top10.privacy);
         logger.info(`List ${baseListName} updated with ${movies.length} new movies`);
       }
@@ -102,7 +102,7 @@ const run = async () => {
           logger.warn(`Some shows from FlixPatrol could not be matched on Trakt (${rawCounts.shows} found, ${shows.length} matched)`);
         }
         logger.info(`Saving shows for "${baseListName}"`);
-        logger.debug(`${top10.platform} shows: ${shows}`);
+        logger.debug(`${top10.platform} shows (${shows.length}): ${JSON.stringify(shows)}`);
         await trakt.pushToList(shows, baseListName, 'show', top10.privacy);
         logger.info(`List ${baseListName} updated with ${shows.length} new shows`);
       }
@@ -129,8 +129,8 @@ const run = async () => {
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting movies for "${listName}"`);
-      const { traktIds: popularMovies, tmdbItems: tmdbMovies } = await flixpatrol.getPopular('Movies', popular, trakt);
-      logger.debug(`${popular.platform} movies: ${popularMovies}`);
+      const { traktIds: popularMovies, tmdbItems: tmdbMovies } = await flixpatrol.getPopular('Movies', popular, trakt, tmdb);
+      logger.debug(`${popular.platform} movies (${popularMovies.length}): ${JSON.stringify(popularMovies)}`);
       if (trakt) {
         await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
         logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
@@ -141,8 +141,8 @@ const run = async () => {
     if (popular.type === 'shows' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting shows for "${listName}"`);
-      const { traktIds: popularShows, tmdbItems: tmdbShows } = await flixpatrol.getPopular('TV Shows', popular, trakt);
-      logger.debug(`${popular.platform} shows: ${popularShows}`);
+      const { traktIds: popularShows, tmdbItems: tmdbShows } = await flixpatrol.getPopular('TV Shows', popular, trakt, tmdb);
+      logger.debug(`${popular.platform} shows (${popularShows.length}): ${JSON.stringify(popularShows)}`);
       if (trakt) {
         await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
         logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
@@ -173,8 +173,8 @@ const run = async () => {
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
-        const { traktIds: mostWatchedMovies, tmdbItems: tmdbMovies } = await flixpatrol.getMostWatched('Movies', mostWatched, trakt);
-        logger.debug(`most-watched movies: ${mostWatchedMovies}`);
+        const { traktIds: mostWatchedMovies, tmdbItems: tmdbMovies } = await flixpatrol.getMostWatched('Movies', mostWatched, trakt, tmdb);
+        logger.debug(`most-watched movies (${mostWatchedMovies.length}): ${JSON.stringify(mostWatchedMovies)}`);
         if (trakt) {
           await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
           logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
@@ -185,8 +185,8 @@ const run = async () => {
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
-        const { traktIds: mostWatchedShows, tmdbItems: tmdbShows } = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt);
-        logger.debug(`most-watched shows: ${mostWatchedShows}`);
+        const { traktIds: mostWatchedShows, tmdbItems: tmdbShows } = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt, tmdb);
+        logger.debug(`most-watched shows (${mostWatchedShows.length}): ${JSON.stringify(mostWatchedShows)}`);
         if (trakt) {
           await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
           logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
@@ -218,8 +218,8 @@ const run = async () => {
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
-        const { traktIds: mostHoursMovies, tmdbItems: tmdbMovies } = await flixpatrol.getMostHours('Movies', mostHours, trakt);
-        logger.debug(`most-hours-${mostHours.period} movies: ${mostHoursMovies}`);
+        const { traktIds: mostHoursMovies, tmdbItems: tmdbMovies } = await flixpatrol.getMostHours('Movies', mostHours, trakt, tmdb);
+        logger.debug(`most-hours-${mostHours.period} movies (${mostHoursMovies.length}): ${JSON.stringify(mostHoursMovies)}`);
         if (trakt) {
           await trakt.pushToList(mostHoursMovies, listName, 'movie', mostHours.privacy);
           logger.info(`List ${listName} updated with ${mostHoursMovies.length} new movies`);
@@ -230,8 +230,8 @@ const run = async () => {
       if (mostHours.type === 'shows' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
-        const { traktIds: mostHoursShows, tmdbItems: tmdbShows } = await flixpatrol.getMostHours('TV Shows', mostHours, trakt);
-        logger.debug(`most-hours-${mostHours.period} shows: ${mostHoursShows}`);
+        const { traktIds: mostHoursShows, tmdbItems: tmdbShows } = await flixpatrol.getMostHours('TV Shows', mostHours, trakt, tmdb);
+        logger.debug(`most-hours-${mostHours.period} shows (${mostHoursShows.length}): ${JSON.stringify(mostHoursShows)}`);
         if (trakt) {
           await trakt.pushToList(mostHoursShows, listName, 'show', mostHours.privacy);
           logger.info(`List ${listName} updated with ${mostHoursShows.length} new shows`);
