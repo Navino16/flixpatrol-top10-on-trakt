@@ -6,7 +6,7 @@
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "name": "Netflix Top 10 Movies",
+      "traktListName": "Netflix Top 10 Movies",
       "type": "movies",
       "normalizeName": false
     },
@@ -16,7 +16,7 @@
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "name": "Disney Plus Top 10 Shows",
+      "traktListName": "Disney Plus Top 10 Shows",
       "type": "shows"
     },
     {
@@ -25,7 +25,7 @@
       "fallback": false,
       "privacy": "private",
       "limit": 10,
-      "name": "Amazon Prime Top 10",
+      "traktListName": "Amazon Prime Top 10",
       "type": "both"
     },
     {
@@ -51,7 +51,7 @@
       "privacy": "private",
       "limit": 100,
       "type": "both",
-      "name": "Most popular titles in Wikipedia"
+      "traktListName": "Most popular titles in Wikipedia"
     }
   ],
   "FlixPatrolMostWatched": [
@@ -67,6 +67,9 @@
     "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"
+  },
+  "Tmdb": {
+    "accessToken": "Your TMDB v4 Read Access Token (Settings → API on themoviedb.org)"
   },
   "Cache": {
     "enabled": true,

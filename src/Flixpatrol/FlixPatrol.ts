@@ -2,7 +2,7 @@ import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
 import { logger, FlixPatrolError } from '../Utils';
-import type { TraktTVId, TraktTVIds } from '../types';
+import type { TraktTVId, TraktTVIds, TmdbMediaItems, TmdbMediaItem } from '../types';
 import { TraktAPI } from '../Trakt';
 import type {
   FlixPatrolMostWatched,
@@ -37,6 +37,10 @@ export class FlixPatrol {
 
   private readonly movieCache: FileSystemCache | null = null;
 
+  private readonly tvTmdbCache: FileSystemCache | null = null;
+
+  private readonly movieTmdbCache: FileSystemCache | null = null;
+
   private readonly impit: Impit;
 
   constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
@@ -45,16 +49,28 @@ export class FlixPatrol {
     this.impit = new Impit({ browser: 'chrome', timeout: 30000 });
     if (cacheOptions.enabled) {
       this.tvCache = Cache({
-        basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
-        ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
-        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
+        basePath: `${cacheOptions.savePath}/tv-shows`,
+        ns: 'flixpatrol-tv',
+        hash: 'sha1',
+        ttl: cacheOptions.ttl,
       });
       this.movieCache = Cache({
-        basePath: `${cacheOptions.savePath}/movies`, // (optional) Path where cache files are stored (default).
-        ns: 'flixpatrol-movie', // (optional) A grouping namespace for items.
-        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
+        basePath: `${cacheOptions.savePath}/movies`,
+        ns: 'flixpatrol-movie',
+        hash: 'sha1',
+        ttl: cacheOptions.ttl,
+      });
+      this.tvTmdbCache = Cache({
+        basePath: `${cacheOptions.savePath}/tv-shows`,
+        ns: 'flixpatrol-tv-tmdb',
+        hash: 'sha1',
+        ttl: cacheOptions.ttl,
+      });
+      this.movieTmdbCache = Cache({
+        basePath: `${cacheOptions.savePath}/movies`,
+        ns: 'flixpatrol-movie-tmdb',
+        hash: 'sha1',
+        ttl: cacheOptions.ttl,
       });
     }
   }
@@ -155,21 +171,22 @@ export class FlixPatrol {
 
   public async getTop10Sections(
     config: FlixPatrolTop10,
-    trakt: TraktAPI,
+    trakt: TraktAPI | null,
   ): Promise<{
     movies: TraktTVIds;
     shows: TraktTVIds;
+    tmdbMovies: TmdbMediaItems;
+    tmdbShows: TmdbMediaItems;
     rawCounts: { movies: number; shows: number; }
   }> {
-    // Validate kids configuration
     if (config.kids) {
       if (config.platform !== 'netflix') {
         logger.warn(`Kids lists are only available on Netflix, but platform is "${config.platform}". Skipping.`);
-        return { movies: [], shows: [], rawCounts: { movies: 0, shows: 0 } };
+        return { movies: [], shows: [], tmdbMovies: [], tmdbShows: [], rawCounts: { movies: 0, shows: 0 } };
       }
       if (config.location === 'world') {
         logger.warn('Kids lists are not available for worldwide. Please specify a country. Skipping.');
-        return { movies: [], shows: [], rawCounts: { movies: 0, shows: 0 } };
+        return { movies: [], shows: [], tmdbMovies: [], tmdbShows: [], rawCounts: { movies: 0, shows: 0 } };
       }
     }
 
@@ -179,25 +196,30 @@ export class FlixPatrol {
     }
 
     let movies: TraktTVIds = [];
+    let tmdbMovies: TmdbMediaItems = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'movies' || config.type === 'both') {
       moviesRaw = config.kids
         ? FlixPatrol.parseTop10KidsPage('Movies', html)
         : FlixPatrol.parseTop10Page('Movies', config.location, html);
-      movies = await this.convertResultsToIds(moviesRaw.slice(0, config.limit), 'Movies', trakt);
+      ({ traktIds: movies, tmdbItems: tmdbMovies } = await this.convertResultsToIds(
+        moviesRaw.slice(0, config.limit), 'Movies', trakt,
+      ));
     }
 
     let shows: TraktTVIds = [];
+    let tmdbShows: TmdbMediaItems = [];
     let showsRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'shows' || config.type === 'both') {
       showsRaw = config.kids
         ? FlixPatrol.parseTop10KidsPage('TV Shows', html)
         : FlixPatrol.parseTop10Page('TV Shows', config.location, html);
-      shows = await this.convertResultsToIds(showsRaw.slice(0, config.limit), 'TV Shows', trakt);
+      ({ traktIds: shows, tmdbItems: tmdbShows } = await this.convertResultsToIds(
+        showsRaw.slice(0, config.limit), 'TV Shows', trakt,
+      ));
     }
 
     if (movies.length === 0 && shows.length === 0 && config.fallback !== false && !config.kids) {
-      // Fallback to world if no match (not applicable for kids)
       logger.warn(`No items found for ${config.platform}, falling back to ${config.fallback} search`);
       const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
       return this.getTop10Sections(newConfig, trakt);
@@ -206,10 +228,12 @@ export class FlixPatrol {
     return {
       movies,
       shows,
+      tmdbMovies,
+      tmdbShows,
       rawCounts: {
         movies: Math.min(moviesRaw.length, config.limit),
         shows: Math.min(showsRaw.length, config.limit),
-      }
+      },
     };
   }
 
@@ -259,22 +283,34 @@ export class FlixPatrol {
     return results;
   }
 
-  // eslint-disable-next-line max-len
-  private async getTraktTVId(result: FlixPatrolMatchResult, type: FlixPatrolType, trakt: TraktAPI) : Promise<TraktTVId> {
+  private async getTraktTVId(
+    result: FlixPatrolMatchResult,
+    type: FlixPatrolType,
+    trakt: TraktAPI | null,
+  ): Promise<{ traktId: TraktTVId; tmdbId: number | null }> {
+    if (!trakt) return { traktId: null, tmdbId: null };
+    const isMovie = type === 'Movies';
     if (this.tvCache !== null && this.movieCache !== null) {
-      const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
-      if (id) {
-        logger.silly(`Found ${result} in cache. Id: ${id}`);
-        return id;
+      const traktId: TraktTVId = isMovie
+        ? await this.movieCache.get(result, null)
+        : await this.tvCache.get(result, null);
+      if (traktId) {
+        const tmdbId: number | null = this.movieTmdbCache !== null && this.tvTmdbCache !== null
+          ? (isMovie
+            ? await this.movieTmdbCache.get(result, null)
+            : await this.tvTmdbCache.get(result, null)) ?? null
+          : null;
+        logger.silly(`Found ${result} in cache. Trakt: ${traktId}, TMDB: ${tmdbId}`);
+        return { traktId, tmdbId };
       }
     }
+
     const html = await this.getFlixPatrolHTMLPage(result);
     if (html === null) {
       throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
     }
 
     const dom = new JSDOM(html);
-    // Title with fallback (kept)
     let title = dom.window.document.evaluate(
       '//div[contains(@class,"mb-6")]//h1[contains(@class,"mb-4")]/text()',
       dom.window.document,
@@ -292,7 +328,6 @@ export class FlixPatrol {
       ).stringValue.trim();
     }
 
-    // Flexible type detection
     let flixType = dom.window.document.evaluate(
       '//div[contains(@class,"mb-6")]//span[contains(. ,"Movie") or contains(. ,"TV Show")][1]/text()',
       dom.window.document,
@@ -306,7 +341,6 @@ export class FlixPatrol {
       else if (/TV Show/i.test(headerText)) flixType = 'TV Show';
     }
 
-    // Year with regex fallback
     let yearStr = dom.window.document.evaluate(
       '//div[@class="mb-6"]//span[5]/span/text()',
       dom.window.document,
@@ -321,43 +355,66 @@ export class FlixPatrol {
     }
     const year = parseInt(yearStr, 10);
 
-    const tryLookup = async (searchType: 'movie' | 'show'): Promise<TraktTVId> => {
+    const tryLookup = async (searchType: 'movie' | 'show'): Promise<{ traktId: TraktTVId; tmdbId: number | null }> => {
       const looked = await trakt.getFirstItemByQuery(searchType, title, Number.isNaN(year) ? 0 : year);
-      if (!looked) return null;
-      return searchType === 'movie' ? looked.movie?.ids.trakt ?? null : looked.show?.ids.trakt ?? null;
+      if (!looked) return { traktId: null, tmdbId: null };
+      if (searchType === 'movie') {
+        return {
+          traktId: looked.movie?.ids.trakt ?? null,
+          tmdbId: (looked.movie?.ids as unknown as { tmdb?: number })?.tmdb ?? null,
+        };
+      }
+      return {
+        traktId: looked.show?.ids.trakt ?? null,
+        tmdbId: (looked.show?.ids as unknown as { tmdb?: number })?.tmdb ?? null,
+      };
     };
 
-    let id: TraktTVId = null;
-    if (type === 'Movies') {
-      if (flixType === 'Movie' || !flixType) id = await tryLookup('movie');
+    let traktId: TraktTVId = null;
+    let tmdbId: number | null = null;
+    if (isMovie) {
+      if (flixType === 'Movie' || !flixType) ({ traktId, tmdbId } = await tryLookup('movie'));
     } else {
-      if (flixType === 'TV Show' || !flixType) id = await tryLookup('show');
+      if (flixType === 'TV Show' || !flixType) ({ traktId, tmdbId } = await tryLookup('show'));
     }
 
-    if (id && this.tvCache !== null && this.movieCache !== null) {
-      if (type === 'Movies') await this.movieCache.set(result, id);
-      else await this.tvCache.set(result, id);
+    if (traktId && this.tvCache !== null && this.movieCache !== null) {
+      if (isMovie) await this.movieCache.set(result, traktId);
+      else await this.tvCache.set(result, traktId);
     }
-    return id;
+    if (tmdbId && this.tvTmdbCache !== null && this.movieTmdbCache !== null) {
+      if (isMovie) await this.movieTmdbCache.set(result, tmdbId);
+      else await this.tvTmdbCache.set(result, tmdbId);
+    }
+    return { traktId, tmdbId };
   }
 
-  private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
-    const traktTVIds: TraktTVIds = [];
+  private async convertResultsToIds(
+    results: FlixPatrolMatchResult[],
+    type: FlixPatrolType,
+    trakt: TraktAPI | null,
+  ): Promise<{ traktIds: TraktTVIds; tmdbItems: TmdbMediaItems }> {
+    const traktIds: TraktTVIds = [];
+    const tmdbItems: TmdbMediaItems = [];
+    const mediaType: TmdbMediaItem['media_type'] = type === 'Movies' ? 'movie' : 'tv';
 
     for (const result of results) {
-      const id = await this.getTraktTVId(result, type, trakt);
-      if (id && !traktTVIds.includes(id)) {
-        traktTVIds.push(id);
+      const { traktId, tmdbId } = await this.getTraktTVId(result, type, trakt);
+      if (traktId && !traktIds.includes(traktId)) {
+        traktIds.push(traktId);
+      }
+      if (tmdbId && !tmdbItems.some((i) => i.media_id === tmdbId)) {
+        tmdbItems.push({ media_type: mediaType, media_id: tmdbId });
       }
     }
-    return traktTVIds;
+    return { traktIds, tmdbItems };
   }
 
   public async getPopular(
     type: FlixPatrolType,
     config: FlixPatrolPopular,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+    trakt: TraktAPI | null,
+  ): Promise<{ traktIds: TraktTVIds; tmdbItems: TmdbMediaItems }> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
     if (html === null) {
@@ -371,8 +428,8 @@ export class FlixPatrol {
   public async getMostWatched(
     type: FlixPatrolType,
     config: FlixPatrolMostWatched,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+    trakt: TraktAPI | null,
+  ): Promise<{ traktIds: TraktTVIds; tmdbItems: TmdbMediaItems }> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     let url = `/most-watched/${config.year}/${urlType}`;
     if (config.country !== undefined) {
@@ -427,8 +484,8 @@ export class FlixPatrol {
   public async getMostHours(
     type: FlixPatrolType,
     config: FlixPatrolMostHours,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+    trakt: TraktAPI | null,
+  ): Promise<{ traktIds: TraktTVIds; tmdbItems: TmdbMediaItems }> {
     const periodUrlMap: Record<string, string> = {
       'total': '/streaming-services/most-hours-total/netflix/',
       'first-week': '/streaming-services/most-hours-first-week/netflix/',

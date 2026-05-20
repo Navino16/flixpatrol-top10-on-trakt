@@ -8,6 +8,7 @@ import {
   FlixPatrolMostHoursSchema,
   TraktOptionsSchema,
   CacheOptionsSchema,
+  TmdbOptionsSchema,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -16,6 +17,7 @@ import type {
   FlixPatrolMostHours,
   TraktAPIOptions,
   CacheOptions,
+  TmdbOptions,
 } from '../types';
 
 // Re-export arrays for backward compatibility
@@ -87,10 +89,22 @@ export class GetAndValidateConfigs {
     }
   }
 
-  public static getTraktOptions(): TraktAPIOptions {
+  public static getTraktOptions(): TraktAPIOptions | null {
     try {
+      if (!config.has('Trakt')) return null;
       const data = config.get('Trakt');
       return validateConfig(TraktOptionsSchema, data, 'Trakt');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getTmdbOptions(): TmdbOptions | null {
+    try {
+      if (!config.has('Tmdb')) return null;
+      const data = config.get('Tmdb');
+      return validateConfig(TmdbOptionsSchema, data, 'Tmdb');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);

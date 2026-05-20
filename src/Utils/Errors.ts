@@ -38,3 +38,10 @@ export class TraktError extends AppError {
     this.name = 'TraktError';
   }
 }
+
+export class TmdbError extends AppError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TmdbError';
+  }
+}

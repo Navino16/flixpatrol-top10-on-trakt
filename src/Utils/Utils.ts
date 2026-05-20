@@ -7,14 +7,14 @@ export class Utils {
   }
 
   public static getListName(
-    config: { name?: string; normalizeName?: boolean },
+    config: { traktListName?: string; normalizeName?: boolean },
     defaultName: string
   ): string {
-    if (config.name && config.normalizeName === false) {
-      return config.name;
+    if (config.traktListName && config.normalizeName === false) {
+      return config.traktListName;
     }
-    if (config.name) {
-      return config.name.toLowerCase().replace(/\s+/g, '-');
+    if (config.traktListName) {
+      return config.traktListName.toLowerCase().replace(/\s+/g, '-');
     }
     return defaultName;
   }
@@ -34,7 +34,7 @@ export class Utils {
             fallback: false,
             privacy: 'private',
             limit: 10,
-            name: 'Netflix Top 10 Movies',
+            traktListName: 'Netflix Top 10 Movies',
             normalizeName: false,
             type: 'movies',
           },
@@ -44,7 +44,7 @@ export class Utils {
             fallback: false,
             privacy: 'private',
             limit: 10,
-            name: 'Disney Plus Top 10 Shows',
+            traktListName: 'Disney Plus Top 10 Shows',
             normalizeName: false,
             type: 'shows',
           },
@@ -54,7 +54,7 @@ export class Utils {
             fallback: false,
             privacy: 'private',
             limit: 10,
-            name: 'Amazon Prime Top 10',
+            traktListName: 'Amazon Prime Top 10',
             normalizeName: false,
             type: 'both',
           },
@@ -80,7 +80,7 @@ export class Utils {
             fallback: false,
             privacy: 'private',
             limit: 10,
-            name: 'Netflix Top 10 Kids',
+            traktListName: 'Netflix Top 10 Kids',
             normalizeName: false,
             type: 'both',
             kids: true,
@@ -89,7 +89,7 @@ export class Utils {
         FlixPatrolPopular: [
           {
             platform: 'wikipedia',
-            name: 'Most popular titles in Wikipedia',
+            traktListName: 'Most popular titles in Wikipedia',
             privacy: 'private',
             limit: 100,
             type: 'both',
