@@ -11,6 +11,15 @@ import type {
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import { TraktAPI } from './Trakt';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { version, name } = require('../package.json') as { version: string; name: string };
+
+logger.info('========================================');
+logger.info(`${name} v${version}`);
+logger.info(`Node.js ${process.version} on ${process.platform} (${process.arch})`);
+logger.info(`Log level: ${process.env.LOG_LEVEL || 'info'}`);
+logger.info('========================================');
+
 const dryRun = process.env.DRY_RUN === 'true';
 
 if (dryRun) {
@@ -41,6 +50,8 @@ try {
   logger.error(`${(err as Error).name}: ${(err as Error).message}`);
   process.exit(1);
 }
+
+logger.debug(`Config loaded: ${flixPatrolTop10.length} Top10, ${flixPatrolPopulars.length} Popular, ${flixPatrolMostWatched.filter((m) => m.enabled).length} MostWatched, ${flixPatrolMostHours.filter((m) => m.enabled).length} MostHours, cache ${cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
 logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
 logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
