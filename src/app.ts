@@ -17,7 +17,7 @@ const { version, name } = require('../package.json') as { version: string; name:
 logger.info('========================================');
 logger.info(`${name} v${version}`);
 logger.info(`Node.js ${process.version} on ${process.platform} (${process.arch})`);
-logger.info(`Log level: ${process.env.LOG_LEVEL || 'info'}`);
+logger.info(`Log level: ${logger.level}`);
 logger.info('========================================');
 
 const dryRun = process.env.DRY_RUN === 'true';
@@ -51,7 +51,10 @@ try {
   process.exit(1);
 }
 
-logger.debug(`Config loaded: ${flixPatrolTop10.length} Top10, ${flixPatrolPopulars.length} Popular, ${flixPatrolMostWatched.filter((m) => m.enabled).length} MostWatched, ${flixPatrolMostHours.filter((m) => m.enabled).length} MostHours, cache ${cacheOptions.enabled ? 'enabled' : 'disabled'}`);
+const enabledMostWatched = flixPatrolMostWatched.filter((m) => m.enabled).length;
+const enabledMostHours = flixPatrolMostHours.filter((m) => m.enabled).length;
+
+logger.debug(`Config loaded: ${flixPatrolTop10.length} Top10, ${flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
 logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
 logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
@@ -66,8 +69,8 @@ const trakt = new TraktAPI({ ...traktOptions, dryRun });
 // Calculate total number of lists for progress indicator
 const totalLists = flixPatrolTop10.length
   + flixPatrolPopulars.length
-  + flixPatrolMostWatched.filter((m) => m.enabled).length
-  + flixPatrolMostHours.filter((m) => m.enabled).length;
+  + enabledMostWatched
+  + enabledMostHours;
 let currentList = 0;
 
 trakt.connect().then(async () => {
