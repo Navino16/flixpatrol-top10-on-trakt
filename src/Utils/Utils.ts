@@ -138,6 +138,11 @@ export class Utils {
           savePath: './config/.cache',
           ttl: 604800,
         },
+        Notifications: {
+          run_start: [],
+          run_end: [],
+          error: [],
+        },
       };
 
       fs.writeFileSync('./config/default.json', JSON.stringify(defaultConfig, null, 2) + '\n');
