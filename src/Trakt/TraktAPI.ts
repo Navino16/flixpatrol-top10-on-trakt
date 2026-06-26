@@ -68,37 +68,71 @@ export class TraktAPI {
     }
   }
 
+  // Match Trakt's own slug normalization: lowercase, collapse any run of
+  // non-alphanumeric characters into a single hyphen, trim leading/trailing
+  // hyphens. Naive `replace(/\s+/g, '-')` left brackets and other punctuation
+  // intact and produced slugs that did not match the canonical form Trakt
+  // stores, so `.get()` could return partial data instead of 404 → crash.
+  private static toTraktSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  private static isValidList(list: unknown): list is TraktList {
+    return !!list
+      && typeof list === 'object'
+      && 'ids' in list
+      && !!(list as TraktList).ids
+      && typeof (list as TraktList).ids.slug === 'string';
+  }
+
   private async getList(listName: string, privacy: TraktPrivacy): Promise<TraktList> {
-    let list: TraktList;
-    const slug = listName.toLowerCase().replace(/\s+/g, '-');
+    const slug = TraktAPI.toTraktSlug(listName);
+    let list: TraktList | undefined;
+    let notFound = false;
+
     try {
       logger.info(`Getting list "${listName}" from trakt`);
       list = await this.trakt.users.list.get({ username: 'me', id: slug });
     } catch (getErr) {
       if ((getErr as Error).message.includes('404 (Not Found)')) {
-        if (this.dryRun) {
-          logger.info(`[DRY-RUN] Would create list "${listName}" with privacy "${privacy}"`);
-          // Return a mock list object for dry-run mode
-          return {
-            name: listName,
-            privacy,
-            ids: { trakt: 0, slug },
-          } as TraktList;
-        }
-        logger.warn(`List "${listName}" was not found on trakt, creating it`);
-        try {
-          // Avoid Trakt rate limit
-          await Utils.sleep(1000);
-          list = await this.trakt.users.lists.create({ username: 'me', name: listName, privacy });
-        } catch (createErr) {
-          throw new TraktError(`Failed to create list "${listName}": ${(createErr as Error).message}`);
-        }
+        notFound = true;
       } else {
         throw new TraktError(`Failed to get list "${listName}": ${(getErr as Error).message}`);
       }
     }
-    logger.silly(`Trakt list: ${JSON.stringify(list)}`)
-    return list;
+
+    // Trakt's API has been observed returning HTTP 200 with an empty body
+    // (`list === ""`) instead of a proper 404 for some missing-list lookups,
+    // so the success path needs its own shape check before we trust the response.
+    if (!notFound && !TraktAPI.isValidList(list)) {
+      logger.debug(`Trakt returned malformed response for "${listName}" (got ${JSON.stringify(list)}), treating as not-found`);
+      notFound = true;
+    }
+
+    if (notFound) {
+      if (this.dryRun) {
+        logger.info(`[DRY-RUN] Would create list "${listName}" with privacy "${privacy}"`);
+        return {
+          name: listName,
+          privacy,
+          ids: { trakt: 0, slug },
+        } as TraktList;
+      }
+      logger.warn(`List "${listName}" was not found on trakt, creating it`);
+      try {
+        // Avoid Trakt rate limit
+        await Utils.sleep(1000);
+        list = await this.trakt.users.lists.create({ username: 'me', name: listName, privacy });
+      } catch (createErr) {
+        throw new TraktError(`Failed to create list "${listName}": ${(createErr as Error).message}`);
+      }
+      if (!TraktAPI.isValidList(list)) {
+        throw new TraktError(`Failed to create list "${listName}": Trakt returned a malformed response`);
+      }
+    }
+
+    logger.silly(`Trakt list: ${JSON.stringify(list)}`);
+    return list as TraktList;
   }
 
   private async getListItems(list: TraktList, type: TraktType): Promise<TraktItem[]> {
