@@ -86,7 +86,8 @@ describe('NotificationManager', () => {
     await vi.advanceTimersByTimeAsync(5999);
     expect(resolved).toBe(false);
     await vi.advanceTimersByTimeAsync(2);
-    await Promise.resolve(); // flush microtasks
+    // Drain pending microtasks reliably
+    for (let i = 0; i < 10; i++) await Promise.resolve();
     expect(resolved).toBe(true);
   });
 

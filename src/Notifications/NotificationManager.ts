@@ -47,12 +47,14 @@ export class NotificationManager {
         logger.warn(`NotificationManager: adapter for "${event}" threw: ${(err as Error).message}`);
       }),
     );
+    let timerId: ReturnType<typeof setTimeout>;
     const cap = new Promise<void>((resolve) => {
-      setTimeout(() => {
+      timerId = setTimeout(() => {
         logger.warn(`NotificationManager: dispatch for "${event}" hit the ${DISPATCH_TIMEOUT_MS}ms cap`);
         resolve();
       }, DISPATCH_TIMEOUT_MS);
     });
     await Promise.race([Promise.allSettled(sends).then(() => undefined), cap]);
+    clearTimeout(timerId!);
   }
 }
