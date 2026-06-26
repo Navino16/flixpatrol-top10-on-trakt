@@ -372,9 +372,16 @@ If there is any configuration error, the tool will exit with information about t
     "enabled": true,
     "savePath": "./config/.cache",
     "ttl": 604800
+  },
+  "Notifications": {
+    "run_start": [],
+    "run_end": [],
+    "error": []
   }
 }
 ```
+
+The `Notifications` block is fully optional — leave the arrays empty (or omit the block entirely) to disable notifications. See [Notifications](#notifications) above for the supported destination types and a worked example.
 
 </details>
 
