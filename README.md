@@ -127,6 +127,69 @@ docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" gh
 
 The prefix is applied verbatim, **after** the normalization step (so brackets, spaces, and special characters in the prefix are preserved as-is). When active, a warning is emitted at startup so you don't forget it is set.
 
+#### Notifications
+
+Send a notification at the start of a run, at the end (with a summary), and on terminal errors. The block is optional — omit it entirely to disable notifications.
+
+```json
+{
+  "Notifications": {
+    "run_start": [
+      { "type": "webhook", "url": "https://discord.com/api/webhooks/..." }
+    ],
+    "run_end": [
+      { "type": "webhook", "url": "https://discord.com/api/webhooks/..." },
+      { "type": "apprise", "url": "http://apprise:8000", "key": "flixpatrol" }
+    ],
+    "error": [
+      { "type": "gotify", "url": "https://gotify.example.com", "token": "AbCdEf123" },
+      { "type": "ntfy", "url": "https://ntfy.sh", "topic": "flixpatrol-alerts" }
+    ]
+  }
+}
+```
+
+Each event takes a list of destinations. A destination has a `type` and the fields required by that type:
+
+| Type      | Fields                | Notes                                                                                |
+|-----------|-----------------------|--------------------------------------------------------------------------------------|
+| `webhook` | `url`                 | Sends generic JSON. If `url` matches `discord.com/api/webhooks/...` a Discord-shaped payload is sent automatically. |
+| `gotify`  | `url`, `token`        | POSTs to `{url}/message?token={token}`.                                              |
+| `ntfy`    | `url`, `topic`        | POSTs JSON to `{url}` with the topic in the body. Use `https://ntfy.sh` for the public service. |
+| `apprise` | `url`, `key`          | POSTs to `{url}/notify/{key}` against an Apprise API sidecar (see below).            |
+
+Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds.
+
+`DRY_RUN=true` does **not** suppress notifications (useful for testing the setup). Title/body are prefixed with `[DRY-RUN]` so they are easy to distinguish.
+
+##### Apprise sidecar (optional)
+
+The `apprise` destination talks to an [Apprise API](https://github.com/caronc/apprise-api) instance you host yourself. Once it is running, you configure your downstream services (Discord, Telegram, Email, etc.) inside Apprise — flixpatrol-top10 only needs to know the Apprise URL and a config key.
+
+```yaml
+# docker-compose.yml excerpt
+services:
+  flixpatrol:
+    image: ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      - apprise
+
+  apprise:
+    image: caronc/apprise:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apprise-config:/config
+```
+
+In the Apprise web UI (default `http://localhost:8000`), create a configuration key (for example `flixpatrol`) and add your downstream Apprise URLs (`discord://...`, `tgram://...`, `mailto://...`, etc.) under that key. Then reference it from `config/default.json`:
+
+```json
+{ "type": "apprise", "url": "http://apprise:8000", "key": "flixpatrol" }
+```
+
 ### Configuration File
 
 The configuration file is stored at `./config/default.json` (auto-generated on first run).
