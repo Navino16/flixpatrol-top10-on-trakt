@@ -1,5 +1,5 @@
 import { FlixPatrol } from './Flixpatrol';
-import { logger, Utils, AppError } from './Utils';
+import { logger, Utils, AppError, getPackageInfo } from './Utils';
 import type {
   CacheOptions,
   FlixPatrolMostWatched,
@@ -11,16 +11,7 @@ import type {
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import { TraktAPI } from './Trakt';
 
-let version = 'unknown';
-let name = 'flixpatrol-top10';
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pkg = require('../package.json') as { version?: string; name?: string };
-  if (pkg.version) version = pkg.version;
-  if (pkg.name) name = pkg.name;
-} catch (err) {
-  logger.warn(`Could not read package.json: ${(err as Error).message}`);
-}
+const { name, version } = getPackageInfo();
 
 logger.info('========================================');
 logger.info(`${name} v${version}`);
