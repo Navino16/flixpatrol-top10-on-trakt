@@ -20,12 +20,17 @@ logger.info(`Log level: ${logger.level}`);
 logger.info('========================================');
 
 const dryRun = process.env.DRY_RUN === 'true';
+const listNamePrefix = process.env.LIST_NAME_PREFIX || '';
 
 if (dryRun) {
   logger.info('========================================');
   logger.info('DRY-RUN MODE ENABLED');
   logger.info('No changes will be made to Trakt lists.');
   logger.info('========================================');
+}
+
+if (listNamePrefix) {
+  logger.warn(`LIST_NAME_PREFIX "${listNamePrefix}" is active — list names will be prefixed`);
 }
 
 Utils.ensureConfigExist();
@@ -77,7 +82,7 @@ trakt.connect().then(async () => {
   for (const top10 of flixPatrolTop10) {
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
-    const baseListName = Utils.getListName(top10, defaultName);
+    const baseListName = Utils.getListName(top10, defaultName, listNamePrefix);
     logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
 
@@ -108,7 +113,7 @@ trakt.connect().then(async () => {
 
   for (const popular of flixPatrolPopulars) {
     currentList++;
-    const listName = Utils.getListName(popular, `${popular.platform}-popular`);
+    const listName = Utils.getListName(popular, `${popular.platform}-popular`, listNamePrefix);
     logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
     if (popular.type === 'movies' || popular.type === 'both') {
@@ -137,7 +142,7 @@ trakt.connect().then(async () => {
       defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
       defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
-      const listName = Utils.getListName(mostWatched, defaultName);
+      const listName = Utils.getListName(mostWatched, defaultName, listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
@@ -167,7 +172,7 @@ trakt.connect().then(async () => {
       if (mostHours.language !== 'all') {
         defaultName += `-${mostHours.language}`;
       }
-      const listName = Utils.getListName(mostHours, defaultName);
+      const listName = Utils.getListName(mostHours, defaultName, listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
