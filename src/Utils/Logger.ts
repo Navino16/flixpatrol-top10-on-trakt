@@ -4,9 +4,19 @@ import {
 
 const myFormat = format.printf((info) => `[${info.timestamp}][${info.level}] ${info.message}`);
 
-const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'];
-const requestedLevel = process.env.LOG_LEVEL;
-const level = requestedLevel && VALID_LOG_LEVELS.includes(requestedLevel) ? requestedLevel : 'info';
+export const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'] as const;
+export const DEFAULT_LOG_LEVEL = 'info';
+
+export function resolveLogLevel(requested: string | undefined): { level: string; warning: string | null } {
+  if (!requested) return { level: DEFAULT_LOG_LEVEL, warning: null };
+  if ((VALID_LOG_LEVELS as readonly string[]).includes(requested)) return { level: requested, warning: null };
+  return {
+    level: DEFAULT_LOG_LEVEL,
+    warning: `Invalid LOG_LEVEL "${requested}", falling back to "${DEFAULT_LOG_LEVEL}". Valid: ${VALID_LOG_LEVELS.join(', ')}`,
+  };
+}
+
+const resolved = resolveLogLevel(process.env.LOG_LEVEL);
 
 export const logger: Logger = createLogger({
   format: format.combine(
@@ -16,12 +26,12 @@ export const logger: Logger = createLogger({
     format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
     myFormat,
   ),
-  level,
+  level: resolved.level,
   transports: [
     new transports.Console(),
   ],
 });
 
-if (requestedLevel && !VALID_LOG_LEVELS.includes(requestedLevel)) {
-  logger.warn(`Invalid LOG_LEVEL "${requestedLevel}", falling back to "info". Valid: ${VALID_LOG_LEVELS.join(', ')}`);
+if (resolved.warning) {
+  logger.warn(resolved.warning);
 }
