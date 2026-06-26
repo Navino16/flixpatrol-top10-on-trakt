@@ -1,4 +1,5 @@
-export type NotificationEvent = 'run_start' | 'run_end' | 'error';
+export const NOTIFICATION_EVENTS = ['run_start', 'run_end', 'error'] as const;
+export type NotificationEvent = typeof NOTIFICATION_EVENTS[number];
 
 export interface RunSummary {
   listsProcessed: number;

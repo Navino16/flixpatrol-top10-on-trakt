@@ -7,14 +7,22 @@ export interface PostJsonOptions {
   timeoutMs?: number;
 }
 
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '?';
+  }
+}
+
 /**
  * POST a JSON body to a URL with a bounded timeout and a no-throw contract.
  *
- * The destination URL is NEVER written to the log on failure — only the adapter
- * label + status / error message. This keeps webhook secrets (Discord bearer
- * tokens in the path, Slack signing tokens, Apprise routing keys, Gotify
- * tokens, etc.) out of log files, container stdout, and CI bundles. The user
- * knows which destination is failing from their own config.
+ * Failure logs include the adapter label + the destination's host (public,
+ * non-secret) so users with multiple destinations of the same type can tell
+ * which one is failing, but never the full URL — that would leak webhook
+ * secrets (Discord bearer tokens in the path, Apprise routing keys, etc.)
+ * into log files, container stdout, and CI bundles.
  */
 export async function postJsonWithTimeout(
   url: string,
@@ -25,6 +33,7 @@ export async function postJsonWithTimeout(
   const timeout = options.timeoutMs ?? TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  const host = safeHost(url);
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -33,10 +42,10 @@ export async function postJsonWithTimeout(
       signal: controller.signal,
     });
     if (!response.ok) {
-      logger.warn(`${label}: HTTP ${response.status}`);
+      logger.warn(`${label}[${host}]: HTTP ${response.status}`);
     }
   } catch (err) {
-    logger.warn(`${label}: ${(err as Error).message}`);
+    logger.warn(`${label}[${host}]: ${(err as Error).message}`);
   } finally {
     clearTimeout(timer);
   }

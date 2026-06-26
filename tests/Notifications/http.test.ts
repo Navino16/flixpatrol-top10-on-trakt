@@ -51,7 +51,7 @@ describe('postJsonWithTimeout', () => {
       .resolves.toBeUndefined();
   });
 
-  it('logs the adapter label and status code on non-2xx but NEVER the URL', async () => {
+  it('logs the adapter label + host + status on non-2xx, but NEVER the secret path or query', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
     const secretUrl = 'https://discord.com/api/webhooks/12345/super-secret-token';
     await postJsonWithTimeout(secretUrl, {}, 'WebhookAdapter');
@@ -59,11 +59,13 @@ describe('postJsonWithTimeout', () => {
     const message = warnSpy.mock.calls[0][0] as string;
     expect(message).toContain('WebhookAdapter');
     expect(message).toContain('401');
+    expect(message).toContain('discord.com');
     expect(message).not.toContain('super-secret-token');
-    expect(message).not.toContain('discord.com');
+    expect(message).not.toContain('12345');
+    expect(message).not.toContain('/api/webhooks/');
   });
 
-  it('logs the adapter label and error message on fetch throw but NEVER the URL', async () => {
+  it('logs the adapter label + host + error on fetch throw, but NEVER the secret path', async () => {
     fetchMock.mockRejectedValueOnce(new Error('boom'));
     const secretUrl = 'http://apprise:8000/notify/private-routing-key';
     await postJsonWithTimeout(secretUrl, {}, 'AppriseAdapter');
@@ -71,8 +73,16 @@ describe('postJsonWithTimeout', () => {
     const message = warnSpy.mock.calls[0][0] as string;
     expect(message).toContain('AppriseAdapter');
     expect(message).toContain('boom');
+    expect(message).toContain('apprise:8000');
     expect(message).not.toContain('private-routing-key');
-    expect(message).not.toContain('apprise:8000');
+    expect(message).not.toContain('/notify/');
+  });
+
+  it('falls back to "?" when the URL is malformed', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    await postJsonWithTimeout('not-a-url', {}, 'TestAdapter');
+    const message = warnSpy.mock.calls[0][0] as string;
+    expect(message).toContain('TestAdapter[?]');
   });
 
   it('aborts the request after the default 5 second timeout', async () => {

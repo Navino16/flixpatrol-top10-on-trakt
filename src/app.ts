@@ -123,35 +123,39 @@ async function run(): Promise<void> {
     await dispatchErrorAndExit(err);
   }
 
-  const enabledMostWatched = flixPatrolMostWatched.filter((m) => m.enabled).length;
-  const enabledMostHours = flixPatrolMostHours.filter((m) => m.enabled).length;
-
-  logger.debug(`Config loaded: ${flixPatrolTop10.length} Top10, ${flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${cacheOptions.enabled ? 'enabled' : 'disabled'}`);
-
-  logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
-  logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
-  logger.silly(`flixPatrolTop10: ${JSON.stringify(flixPatrolTop10)}`);
-  logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
-  logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
-  logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
-
-  const flixpatrol = new FlixPatrol(cacheOptions);
-  const trakt = new TraktAPI({ ...traktOptions, dryRun });
-
-  const totalLists = flixPatrolTop10.length
-    + flixPatrolPopulars.length
-    + enabledMostWatched
-    + enabledMostHours;
-  let currentList = 0;
-  const runStartAt = Date.now();
-  const summary: RunSummary = {
-    listsProcessed: 0,
-    moviesAdded: 0,
-    showsAdded: 0,
-    durationMs: 0,
-  };
-
+  // Everything past this point is wrapped in one try/catch so any throw — from
+  // .filter / JSON.stringify, the FlixPatrol/TraktAPI constructors, trakt.connect,
+  // or the list-processing loops — gets routed through dispatchErrorAndExit and
+  // delivers an 'error' notification.
   try {
+    const enabledMostWatched = flixPatrolMostWatched.filter((m) => m.enabled).length;
+    const enabledMostHours = flixPatrolMostHours.filter((m) => m.enabled).length;
+
+    logger.debug(`Config loaded: ${flixPatrolTop10.length} Top10, ${flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${cacheOptions.enabled ? 'enabled' : 'disabled'}`);
+
+    logger.silly(`cacheOptions: ${JSON.stringify(cacheOptions)}`);
+    logger.silly(`traktOptions: ${JSON.stringify({...traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
+    logger.silly(`flixPatrolTop10: ${JSON.stringify(flixPatrolTop10)}`);
+    logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
+    logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
+    logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
+
+    const flixpatrol = new FlixPatrol(cacheOptions);
+    const trakt = new TraktAPI({ ...traktOptions, dryRun });
+
+    const totalLists = flixPatrolTop10.length
+      + flixPatrolPopulars.length
+      + enabledMostWatched
+      + enabledMostHours;
+    let currentList = 0;
+    const runStartAt = Date.now();
+    const summary: RunSummary = {
+      listsProcessed: 0,
+      moviesAdded: 0,
+      showsAdded: 0,
+      durationMs: 0,
+    };
+
     await trakt.connect();
 
     // Fire-and-forget: do not block the pipeline on the notification round-trip.
@@ -325,7 +329,9 @@ process.on('SIGINT', async () => {
   }
   await flushPendingDispatches();
   logger.info('System: Application stopped');
-  process.exit();
+  // 130 = 128 + SIGINT (2); the standard Unix convention for "terminated by Ctrl-C".
+  // Cron/systemd unit branching on $? will correctly see this as a failed run.
+  process.exit(130);
 });
 
 run().catch((err: unknown) => {

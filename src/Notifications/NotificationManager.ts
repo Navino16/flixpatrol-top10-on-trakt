@@ -1,5 +1,6 @@
 import { logger } from '../Utils/Logger';
 import type { Notifier } from './Notifier';
+import { NOTIFICATION_EVENTS } from './types';
 import type {
   Destination,
   NotificationEvent,
@@ -29,7 +30,7 @@ export class NotificationManager {
 
   static fromConfig(config: NotificationsConfig): NotificationManager {
     const adapters: Partial<Record<NotificationEvent, Notifier[]>> = {};
-    for (const event of ['run_start', 'run_end', 'error'] as const) {
+    for (const event of NOTIFICATION_EVENTS) {
       const destinations = config[event];
       if (destinations && destinations.length > 0) {
         adapters[event] = destinations.map(buildAdapter);
