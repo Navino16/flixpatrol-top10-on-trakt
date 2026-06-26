@@ -89,10 +89,11 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 
 ### Environment Variables
 
-| Name      | Description                              | Values                          | Default |
-|-----------|------------------------------------------|---------------------------------|---------|
-| LOG_LEVEL | How verbose the log will be              | error, warn, info, debug, silly | info    |
-| DRY_RUN   | Run without making changes to Trakt      | true, false                     | false   |
+| Name             | Description                                                  | Values                          | Default |
+|------------------|--------------------------------------------------------------|---------------------------------|---------|
+| LOG_LEVEL        | How verbose the log will be                                  | error, warn, info, debug, silly | info    |
+| DRY_RUN          | Run without making changes to Trakt                          | true, false                     | false   |
+| LIST_NAME_PREFIX | String prepended to every list name (useful for dev/testing) | Any string, e.g. `[TEST]`       | (none)  |
 
 #### Dry-Run Mode
 
@@ -111,6 +112,20 @@ In dry-run mode:
 - Trakt search for ID conversion runs normally
 - OAuth authentication runs normally
 - List creation, item addition/removal, and updates are **logged but not executed**
+
+#### List Name Prefix
+
+Prepend a fixed string to every list name. Useful when running the tool against your real Trakt account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
+
+```bash
+# Linux/macOS — produces lists like "[TEST]netflix-world-top10-without-fallback"
+LIST_NAME_PREFIX='[TEST]' ./flixpatrol-top10-linux-x64
+
+# Docker
+docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+```
+
+The prefix is applied verbatim, **after** the normalization step (so brackets, spaces, and special characters in the prefix are preserved as-is). When active, a warning is emitted at startup so you don't forget it is set.
 
 ### Configuration File
 

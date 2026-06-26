@@ -109,6 +109,33 @@ describe('Utils', () => {
       const result = Utils.getListName(config, 'default-name');
       expect(result).toBe('-my-list-');
     });
+
+    it('should prepend prefix to the default name when no custom name is set', () => {
+      const result = Utils.getListName({}, 'netflix-top10', '[TEST]');
+      expect(result).toBe('[TEST]netflix-top10');
+    });
+
+    it('should prepend prefix after normalization', () => {
+      const config = { name: 'My Custom List' };
+      const result = Utils.getListName(config, 'default-name', '[TEST]');
+      expect(result).toBe('[TEST]my-custom-list');
+    });
+
+    it('should prepend prefix to a non-normalized custom name', () => {
+      const config = { name: 'My Custom List', normalizeName: false };
+      const result = Utils.getListName(config, 'default-name', '[TEST]');
+      expect(result).toBe('[TEST]My Custom List');
+    });
+
+    it('should not add any prefix when the prefix argument is undefined', () => {
+      const result = Utils.getListName({}, 'default-name');
+      expect(result).toBe('default-name');
+    });
+
+    it('should not add any prefix when the prefix argument is empty string', () => {
+      const result = Utils.getListName({}, 'default-name', '');
+      expect(result).toBe('default-name');
+    });
   });
 
   describe('ensureConfigExist', () => {
