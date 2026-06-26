@@ -1,5 +1,7 @@
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
+import { NotificationManager } from './Notifications';
+import type { RunSummary } from './Notifications';
 import type {
   CacheOptions,
   FlixPatrolMostWatched,
@@ -67,6 +69,25 @@ logger.silly(`flixPatrolPopulars: ${JSON.stringify(flixPatrolPopulars)}`);
 logger.silly(`flixPatrolMostWatched: ${JSON.stringify(flixPatrolMostWatched)}`);
 logger.silly(`flixPatrolMostHours: ${JSON.stringify(flixPatrolMostHours)}`);
 
+let notificationsConfig;
+try {
+  notificationsConfig = GetAndValidateConfigs.getNotifications();
+} catch (err) {
+  logger.error(`${(err as Error).name}: ${(err as Error).message}`);
+  process.exit(1);
+}
+const notifier = NotificationManager.fromConfig(notificationsConfig);
+const dryRunTag = dryRun ? '[DRY-RUN] ' : '';
+const runStartAt = Date.now();
+const summary: RunSummary = {
+  listsProcessed: 0,
+  moviesAdded: 0,
+  showsAdded: 0,
+  unmatchedMovies: 0,
+  unmatchedShows: 0,
+  durationMs: 0,
+};
+
 const flixpatrol = new FlixPatrol(cacheOptions);
 const trakt = new TraktAPI({ ...traktOptions, dryRun });
 
@@ -78,6 +99,11 @@ const totalLists = flixPatrolTop10.length
 let currentList = 0;
 
 trakt.connect().then(async () => {
+  await notifier.dispatch('run_start', {
+    title: `${dryRunTag}${name} v${version} run started`,
+    body: `Processing ${totalLists} lists`,
+    timestamp: new Date().toISOString(),
+  });
 
   for (const top10 of flixPatrolTop10) {
     currentList++;
@@ -92,22 +118,27 @@ trakt.connect().then(async () => {
       logger.info('==============================');
       if (rawCounts.movies > movies.length) {
         logger.warn(`Some movies from FlixPatrol could not be matched on Trakt (${rawCounts.movies} found, ${movies.length} matched)`);
+        summary.unmatchedMovies += rawCounts.movies - movies.length;
       }
       logger.info(`Saving movies for "${baseListName}"`);
       logger.debug(`${top10.platform} movies: ${movies}`);
       await trakt.pushToList(movies, baseListName, 'movie', top10.privacy);
       logger.info(`List ${baseListName} updated with ${movies.length} new movies`);
+      summary.moviesAdded += movies.length;
     }
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
         logger.warn(`Some shows from FlixPatrol could not be matched on Trakt (${rawCounts.shows} found, ${shows.length} matched)`);
+        summary.unmatchedShows += rawCounts.shows - shows.length;
       }
       logger.info(`Saving shows for "${baseListName}"`);
       logger.debug(`${top10.platform} shows: ${shows}`);
       await trakt.pushToList(shows, baseListName, 'show', top10.privacy);
       logger.info(`List ${baseListName} updated with ${shows.length} new shows`);
+      summary.showsAdded += shows.length;
     }
+    summary.listsProcessed++;
   }
 
 
@@ -123,6 +154,7 @@ trakt.connect().then(async () => {
       logger.debug(`${popular.platform} movies: ${popularMovies}`);
       await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
       logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
+      summary.moviesAdded += popularMovies.length;
     }
 
     if (popular.type === 'shows' || popular.type === 'both') {
@@ -132,7 +164,9 @@ trakt.connect().then(async () => {
       logger.debug(`${popular.platform} shows: ${popularShows}`);
       await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
       logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
+      summary.showsAdded += popularShows.length;
     }
+    summary.listsProcessed++;
   }
 
   for (const mostWatched of flixPatrolMostWatched) {
@@ -152,6 +186,7 @@ trakt.connect().then(async () => {
         logger.debug(`most-watched movies: ${mostWatchedMovies}`);
         await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
         logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
+        summary.moviesAdded += mostWatchedMovies.length;
       }
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
@@ -161,7 +196,9 @@ trakt.connect().then(async () => {
         logger.debug(`most-watched shows: ${mostWatchedShows}`);
         await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
         logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
+        summary.showsAdded += mostWatchedShows.length;
       }
+      summary.listsProcessed++;
     }
   }
 
@@ -182,6 +219,7 @@ trakt.connect().then(async () => {
         logger.debug(`most-hours-${mostHours.period} movies: ${mostHoursMovies}`);
         await trakt.pushToList(mostHoursMovies, listName, 'movie', mostHours.privacy);
         logger.info(`List ${listName} updated with ${mostHoursMovies.length} new movies`);
+        summary.moviesAdded += mostHoursMovies.length;
       }
 
       if (mostHours.type === 'shows' || mostHours.type === 'both') {
@@ -191,10 +229,25 @@ trakt.connect().then(async () => {
         logger.debug(`most-hours-${mostHours.period} shows: ${mostHoursShows}`);
         await trakt.pushToList(mostHoursShows, listName, 'show', mostHours.privacy);
         logger.info(`List ${listName} updated with ${mostHoursShows.length} new shows`);
+        summary.showsAdded += mostHoursShows.length;
       }
+      summary.listsProcessed++;
     }
   }
-}).catch((err: unknown) => {
+
+  summary.durationMs = Date.now() - runStartAt;
+  await notifier.dispatch('run_end', {
+    title: `${dryRunTag}${name} run finished`,
+    body: `Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows added`,
+    timestamp: new Date().toISOString(),
+    summary,
+  });
+}).catch(async (err: unknown) => {
+  await notifier.dispatch('error', {
+    title: `${dryRunTag}${name} run failed`,
+    body: `${(err as Error).name}: ${(err as Error).message}`,
+    timestamp: new Date().toISOString(),
+  });
   if (err instanceof AppError) {
     logger.error(`${err.name}: ${err.message}`);
   } else {
