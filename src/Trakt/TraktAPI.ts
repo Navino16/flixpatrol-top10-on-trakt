@@ -68,9 +68,18 @@ export class TraktAPI {
     }
   }
 
+  // Match Trakt's own slug normalization: lowercase, collapse any run of
+  // non-alphanumeric characters into a single hyphen, trim leading/trailing
+  // hyphens. Naive `replace(/\s+/g, '-')` left brackets and other punctuation
+  // intact and produced slugs that did not match the canonical form Trakt
+  // stores, so `.get()` could return partial data instead of 404 → crash.
+  private static toTraktSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
   private async getList(listName: string, privacy: TraktPrivacy): Promise<TraktList> {
     let list: TraktList;
-    const slug = listName.toLowerCase().replace(/\s+/g, '-');
+    const slug = TraktAPI.toTraktSlug(listName);
     try {
       logger.info(`Getting list "${listName}" from trakt`);
       list = await this.trakt.users.list.get({ username: 'me', id: slug });

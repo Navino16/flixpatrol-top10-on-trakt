@@ -360,5 +360,72 @@ describe('TraktAPI', () => {
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
     });
+
+    it('normalizes list names with brackets to match Trakt slug format', async () => {
+      // Regression for the crash observed with LIST_NAME_PREFIX="[TEST]":
+      // naive slug `[test]netflix-france-...` did not match Trakt's canonical
+      // `test-netflix-france-...`, so `.get()` returned partial data and the
+      // privacy-update path crashed on `list.ids.slug` (ids was undefined).
+      const mockList = {
+        name: '[TEST]netflix-france-top10-with-world-fallback',
+        privacy: 'private',
+        ids: { trakt: 1, slug: 'test-netflix-france-top10-with-world-fallback' },
+      };
+
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: {
+            get: ReturnType<typeof vi.fn>;
+            items: { get: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn> };
+          };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue(mockList);
+      traktInstance.users.list.items.get.mockResolvedValue([]);
+      traktInstance.users.list.items.add.mockResolvedValue(undefined);
+
+      await trakt.pushToList(
+        [123],
+        '[TEST]netflix-france-top10-with-world-fallback',
+        'movie',
+        'private',
+      );
+
+      expect(traktInstance.users.list.get).toHaveBeenCalledWith({
+        username: 'me',
+        id: 'test-netflix-france-top10-with-world-fallback',
+      });
+    });
+
+    it('collapses runs of special characters and trims hyphens for the Trakt slug', async () => {
+      const mockList = {
+        name: 'Foo (Bar) & Baz!',
+        privacy: 'private',
+        ids: { trakt: 2, slug: 'foo-bar-baz' },
+      };
+
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: {
+            get: ReturnType<typeof vi.fn>;
+            items: { get: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn> };
+          };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue(mockList);
+      traktInstance.users.list.items.get.mockResolvedValue([]);
+      traktInstance.users.list.items.add.mockResolvedValue(undefined);
+
+      await trakt.pushToList([123], 'Foo (Bar) & Baz!', 'movie', 'private');
+
+      expect(traktInstance.users.list.get).toHaveBeenCalledWith({
+        username: 'me',
+        id: 'foo-bar-baz',
+      });
+    });
   });
 });
