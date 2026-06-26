@@ -11,8 +11,16 @@ import type {
 import { GetAndValidateConfigs } from './Utils/GetAndValidateConfigs';
 import { TraktAPI } from './Trakt';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { version, name } = require('../package.json') as { version: string; name: string };
+let version = 'unknown';
+let name = 'flixpatrol-top10';
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pkg = require('../package.json') as { version?: string; name?: string };
+  if (pkg.version) version = pkg.version;
+  if (pkg.name) name = pkg.name;
+} catch (err) {
+  logger.warn(`Could not read package.json: ${(err as Error).message}`);
+}
 
 logger.info('========================================');
 logger.info(`${name} v${version}`);
