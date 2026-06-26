@@ -43,7 +43,7 @@ describe('NotificationManager', () => {
     const urls = fetchMock.mock.calls.map((c) => c[0]);
     expect(urls).toEqual(expect.arrayContaining([
       'https://a.example.com/hook',
-      'https://gotify.example.com/message?token=t',
+      'https://gotify.example.com/message',
       'https://ntfy.sh',
     ]));
   });

@@ -4,8 +4,6 @@ export interface RunSummary {
   listsProcessed: number;
   moviesAdded: number;
   showsAdded: number;
-  unmatchedMovies: number;
-  unmatchedShows: number;
   durationMs: number;
 }
 

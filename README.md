@@ -154,13 +154,15 @@ Each event takes a list of destinations. A destination has a `type` and the fiel
 | Type      | Fields                | Notes                                                                                |
 |-----------|-----------------------|--------------------------------------------------------------------------------------|
 | `webhook` | `url`                 | Sends generic JSON. If `url` matches `discord.com/api/webhooks/...` a Discord-shaped payload is sent automatically. |
-| `gotify`  | `url`, `token`        | POSTs to `{url}/message?token={token}`.                                              |
+| `gotify`  | `url`, `token`        | POSTs to `{url}/message` with the token sent via the `X-Gotify-Key` header (never in the query string, so it cannot leak into reverse-proxy access logs). |
 | `ntfy`    | `url`, `topic`        | POSTs JSON to `{url}` with the topic in the body. Use `https://ntfy.sh` for the public service. |
 | `apprise` | `url`, `key`          | POSTs to `{url}/notify/{key}` against an Apprise API sidecar (see below).            |
 
-Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds.
+Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds. Sensitive URL segments (Discord webhook tokens, Apprise routing keys) are redacted from log lines.
 
-`DRY_RUN=true` does **not** suppress notifications (useful for testing the setup). Title/body are prefixed with `[DRY-RUN]` so they are easy to distinguish.
+Every `url` field is validated as a full URL with scheme at config-load time — typos like `discord.com/...` (missing `https://`) are rejected at startup with a clear error rather than silently failing at runtime.
+
+`DRY_RUN=true` does **not** suppress notifications (useful for testing the setup). Title and body are both prefixed with `[DRY-RUN]` so they cannot be mistaken for a real run, and the `run_end` body says items "would be added" rather than "added".
 
 ##### Apprise sidecar (optional)
 

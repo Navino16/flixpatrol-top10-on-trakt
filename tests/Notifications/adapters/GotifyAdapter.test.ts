@@ -15,14 +15,25 @@ describe('GotifyAdapter', () => {
 
   const dest = { type: 'gotify' as const, url: 'https://gotify.example.com', token: 'AbCd' };
 
-  it('POSTs to {url}/message?token={token}', async () => {
+  it('POSTs to {url}/message with token in X-Gotify-Key header', async () => {
     const adapter = new GotifyAdapter(dest);
     await adapter.notify('run_start', { title: 't', body: 'b', timestamp: '2026-06-26T10:00:00.000Z' });
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://gotify.example.com/message?token=AbCd');
+    expect(url).toBe('https://gotify.example.com/message');
     expect(init.method).toBe('POST');
-    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
+    expect(init.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'X-Gotify-Key': 'AbCd',
+    });
+  });
+
+  it('does not include the token in the URL or query string', async () => {
+    const adapter = new GotifyAdapter(dest);
+    await adapter.notify('run_start', { title: 't', body: 'b', timestamp: '2026-06-26T10:00:00.000Z' });
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).not.toContain('AbCd');
+    expect(url).not.toContain('token=');
   });
 
   it('uses priority 5 for run_start and run_end', async () => {
@@ -47,7 +58,7 @@ describe('GotifyAdapter', () => {
   it('strips a trailing slash on the URL to avoid //message', async () => {
     const adapter = new GotifyAdapter({ ...dest, url: 'https://gotify.example.com/' });
     await adapter.notify('run_start', { title: 't', body: 'b', timestamp: '2026-06-26T10:00:00.000Z' });
-    expect(fetchMock.mock.calls[0][0]).toBe('https://gotify.example.com/message?token=AbCd');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://gotify.example.com/message');
   });
 
   it('resolves silently on non-2xx response', async () => {

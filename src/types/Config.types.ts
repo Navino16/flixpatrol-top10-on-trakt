@@ -114,24 +114,24 @@ export const CacheOptionsSchema = z.object({
 
 export const WebhookDestinationSchema = z.object({
   type: z.literal('webhook'),
-  url: z.string().min(1),
+  url: z.url(),
 });
 
 export const GotifyDestinationSchema = z.object({
   type: z.literal('gotify'),
-  url: z.string().min(1),
+  url: z.url(),
   token: z.string().min(1),
 });
 
 export const NtfyDestinationSchema = z.object({
   type: z.literal('ntfy'),
-  url: z.string().min(1),
+  url: z.url(),
   topic: z.string().min(1),
 });
 
 export const AppriseDestinationSchema = z.object({
   type: z.literal('apprise'),
-  url: z.string().min(1),
+  url: z.url(),
   key: z.string().min(1),
 });
 

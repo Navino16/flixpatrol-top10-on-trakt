@@ -42,15 +42,13 @@ describe('WebhookAdapter', () => {
       body: 'finished',
       timestamp: '2026-06-26T10:00:00.000Z',
       summary: {
-        listsProcessed: 5, moviesAdded: 100, showsAdded: 50,
-        unmatchedMovies: 2, unmatchedShows: 1, durationMs: 12000,
+        listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000,
       },
     });
     const init = fetchMock.mock.calls[0][1];
     const sentBody = JSON.parse(init.body as string);
     expect(sentBody.summary).toEqual({
-      listsProcessed: 5, moviesAdded: 100, showsAdded: 50,
-      unmatchedMovies: 2, unmatchedShows: 1, durationMs: 12000,
+      listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000,
     });
   });
 
@@ -66,7 +64,7 @@ describe('WebhookAdapter', () => {
     });
     const init = fetchMock.mock.calls[0][1];
     const sentBody = JSON.parse(init.body as string);
-    expect(sentBody.content).toBe('started');
+    expect(sentBody.content).toBeUndefined();
     expect(sentBody.embeds).toBeDefined();
     expect(sentBody.embeds[0]).toMatchObject({
       title: 'started',
@@ -126,7 +124,7 @@ describe('WebhookAdapter', () => {
     const promise = adapter.notify('run_start', {
       title: 't', body: 'b', timestamp: '2026-06-26T10:00:00.000Z',
     });
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(5001);
     await expect(promise).resolves.toBeUndefined();
     expect(capturedSignal?.aborted).toBe(true);
   });

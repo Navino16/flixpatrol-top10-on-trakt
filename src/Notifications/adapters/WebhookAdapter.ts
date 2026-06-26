@@ -1,12 +1,10 @@
-import { logger } from '../../Utils/Logger';
+import { postJsonWithTimeout } from '../http';
 import type { Notifier } from '../Notifier';
 import type {
   NotificationEvent,
   NotificationPayload,
   WebhookDestination,
 } from '../types';
-
-const TIMEOUT_MS = 5000;
 
 const DISCORD_COLORS: Record<NotificationEvent, number> = {
   run_start: 0x3498db,
@@ -26,7 +24,6 @@ function isDiscordUrl(url: string): boolean {
 
 function buildDiscordPayload(event: NotificationEvent, payload: NotificationPayload): unknown {
   return {
-    content: payload.title,
     embeds: [{
       title: payload.title,
       description: payload.body,
@@ -53,22 +50,6 @@ export class WebhookAdapter implements Notifier {
     const body = isDiscordUrl(this.destination.url)
       ? buildDiscordPayload(event, payload)
       : buildGenericPayload(event, payload);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const response = await fetch(this.destination.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        logger.warn(`WebhookAdapter: HTTP ${response.status} from ${this.destination.url}`);
-      }
-    } catch (err) {
-      logger.warn(`WebhookAdapter: ${(err as Error).message} for ${this.destination.url}`);
-    } finally {
-      clearTimeout(timer);
-    }
+    await postJsonWithTimeout(this.destination.url, body, 'WebhookAdapter');
   }
 }
