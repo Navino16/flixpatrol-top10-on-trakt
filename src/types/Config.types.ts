@@ -112,6 +112,42 @@ export const CacheOptionsSchema = z.object({
   ttl: z.number(),
 });
 
+export const WebhookDestinationSchema = z.object({
+  type: z.literal('webhook'),
+  url: z.string().min(1),
+});
+
+export const GotifyDestinationSchema = z.object({
+  type: z.literal('gotify'),
+  url: z.string().min(1),
+  token: z.string().min(1),
+});
+
+export const NtfyDestinationSchema = z.object({
+  type: z.literal('ntfy'),
+  url: z.string().min(1),
+  topic: z.string().min(1),
+});
+
+export const AppriseDestinationSchema = z.object({
+  type: z.literal('apprise'),
+  url: z.string().min(1),
+  key: z.string().min(1),
+});
+
+export const DestinationSchema = z.discriminatedUnion('type', [
+  WebhookDestinationSchema,
+  GotifyDestinationSchema,
+  NtfyDestinationSchema,
+  AppriseDestinationSchema,
+]);
+
+export const NotificationsSchema = z.object({
+  run_start: z.array(DestinationSchema).optional(),
+  run_end: z.array(DestinationSchema).optional(),
+  error: z.array(DestinationSchema).optional(),
+});
+
 // Infer types from schemas
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
@@ -121,3 +157,4 @@ export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriod
 export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
+export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;

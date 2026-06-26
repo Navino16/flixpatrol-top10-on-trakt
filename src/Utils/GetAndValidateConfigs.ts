@@ -8,6 +8,7 @@ import {
   FlixPatrolMostHoursSchema,
   TraktOptionsSchema,
   CacheOptionsSchema,
+  NotificationsSchema,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -17,6 +18,7 @@ import type {
   TraktAPIOptions,
   CacheOptions,
 } from '../types';
+import type { NotificationsConfig } from '../Notifications/types';
 
 // Re-export arrays for backward compatibility
 export {
@@ -101,6 +103,19 @@ export class GetAndValidateConfigs {
     try {
       const data = config.get('Cache');
       return validateConfig(CacheOptionsSchema, data, 'Cache');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getNotifications(): NotificationsConfig {
+    try {
+      if (!config.has('Notifications')) {
+        return {};
+      }
+      const data = config.get('Notifications');
+      return validateConfig(NotificationsSchema, data, 'Notifications');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
