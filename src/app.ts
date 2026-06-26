@@ -1,7 +1,11 @@
 import { FlixPatrol } from './Flixpatrol';
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
 import { NotificationManager } from './Notifications';
-import type { RunSummary } from './Notifications';
+import type {
+  NotificationEvent,
+  NotificationPayload,
+  RunSummary,
+} from './Notifications';
 import type {
   CacheOptions,
   FlixPatrolMostWatched,
@@ -36,27 +40,76 @@ if (listNamePrefix) {
   logger.warn(`LIST_NAME_PREFIX "${listNamePrefix}" is active — list names will be prefixed`);
 }
 
+// Bootstrap order matters for error notifications:
+//   1. ensureConfigExist() creates the default config when missing. If it throws
+//      (disk full, no write permission), no notifier exists yet so the failure
+//      cannot be notified — only logged.
+//   2. NotificationManager is built next, synchronously. A broken Notifications
+//      block in config.json also fails without a notification (we have no
+//      working notifier to talk through). This is an architectural limit.
+//   3. From this point on, every failure path can dispatch an 'error' notification.
 Utils.ensureConfigExist();
 
-// Notifier is built early and held at module scope so the SIGINT handler
-// can reach it. It stays null only if notification-config loading fails
-// (in which case we exit before any further work).
-let notifier: NotificationManager | null = null;
+let notifier: NotificationManager;
+try {
+  notifier = NotificationManager.fromConfig(GetAndValidateConfigs.getNotifications());
+} catch (err) {
+  logger.error(`${(err as Error).name}: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+// Track every dispatched notification so we can flush them before any
+// process.exit — without this, fire-and-forget dispatches (run_start) and
+// in-flight error dispatches can be cut off mid-flight.
+const pendingDispatches = new Set<Promise<void>>();
+
+function dispatch(event: NotificationEvent, payload: NotificationPayload): Promise<void> {
+  const p = notifier.dispatch(event, payload);
+  pendingDispatches.add(p);
+  p.finally(() => pendingDispatches.delete(p));
+  return p;
+}
+
+async function flushPendingDispatches(): Promise<void> {
+  if (pendingDispatches.size === 0) return;
+  await Promise.allSettled(Array.from(pendingDispatches));
+}
+
+// errorDispatchInFlight prevents the SIGINT handler from queuing a duplicate
+// 'error' notification when the catch block is already dispatching one.
+let errorDispatchInFlight = false;
+
+async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> {
+  errorDispatchInFlight = true;
+  try {
+    await dispatch('error', {
+      title: `${dryRunTag}${name} run failed`,
+      body: `${(err as Error).name}: ${(err as Error).message}`,
+      timestamp: new Date().toISOString(),
+    });
+  } finally {
+    await flushPendingDispatches();
+  }
+  if (err instanceof AppError) {
+    logger.error(`${err.name}: ${err.message}`);
+  } else {
+    logger.error(`Unexpected error: ${(err as Error).message}`);
+  }
+  process.exit(exitCode);
+}
 
 async function run(): Promise<void> {
-  try {
-    notifier = NotificationManager.fromConfig(GetAndValidateConfigs.getNotifications());
-  } catch (err) {
-    logger.error(`${(err as Error).name}: ${(err as Error).message}`);
-    process.exit(1);
-  }
-
-  let cacheOptions: CacheOptions;
-  let traktOptions: TraktAPIOptions;
-  let flixPatrolTop10: FlixPatrolTop10[];
-  let flixPatrolPopulars: FlixPatrolPopular[];
-  let flixPatrolMostWatched: FlixPatrolMostWatched[];
-  let flixPatrolMostHours: FlixPatrolMostHours[];
+  // Definite-assignment via `!`: each var is assigned inside the try; on a
+  // throw the catch calls dispatchErrorAndExit which terminates the process,
+  // so any access after the try implicitly runs only when the assignments
+  // succeeded. TS's flow analysis cannot prove this across an awaited
+  // Promise<never>, hence the assertion.
+  let cacheOptions!: CacheOptions;
+  let traktOptions!: TraktAPIOptions;
+  let flixPatrolTop10!: FlixPatrolTop10[];
+  let flixPatrolPopulars!: FlixPatrolPopular[];
+  let flixPatrolMostWatched!: FlixPatrolMostWatched[];
+  let flixPatrolMostHours!: FlixPatrolMostHours[];
 
   try {
     logger.info('Loading all configurations values');
@@ -67,13 +120,7 @@ async function run(): Promise<void> {
     flixPatrolMostWatched = GetAndValidateConfigs.getFlixPatrolMostWatched();
     flixPatrolMostHours = GetAndValidateConfigs.getFlixPatrolMostHours();
   } catch (err) {
-    await notifier.dispatch('error', {
-      title: `${dryRunTag}${name} configuration error`,
-      body: `${(err as Error).name}: ${(err as Error).message}`,
-      timestamp: new Date().toISOString(),
-    });
-    logger.error(`${(err as Error).name}: ${(err as Error).message}`);
-    process.exit(1);
+    await dispatchErrorAndExit(err);
   }
 
   const enabledMostWatched = flixPatrolMostWatched.filter((m) => m.enabled).length;
@@ -107,8 +154,10 @@ async function run(): Promise<void> {
   try {
     await trakt.connect();
 
-    // Fire-and-forget: run_start should not block the pipeline on the notification round-trip.
-    void notifier.dispatch('run_start', {
+    // Fire-and-forget: do not block the pipeline on the notification round-trip.
+    // The dispatch is tracked in pendingDispatches so it gets flushed before
+    // any process.exit (even on a fast-failing run).
+    void dispatch('run_start', {
       title: `${dryRunTag}${name} v${version} run started`,
       body: `Processing ${totalLists} lists`,
       timestamp: new Date().toISOString(),
@@ -244,44 +293,42 @@ async function run(): Promise<void> {
 
     summary.durationMs = Date.now() - runStartAt;
     const movedVerb = dryRun ? 'would be added' : 'added';
-    await notifier.dispatch('run_end', {
+    await dispatch('run_end', {
       title: `${dryRunTag}${name} run finished`,
       body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}`,
       timestamp: new Date().toISOString(),
       summary,
     });
+    await flushPendingDispatches();
   } catch (err) {
-    await notifier.dispatch('error', {
-      title: `${dryRunTag}${name} run failed`,
-      body: `${(err as Error).name}: ${(err as Error).message}`,
-      timestamp: new Date().toISOString(),
-    });
-    if (err instanceof AppError) {
-      logger.error(`${err.name}: ${err.message}`);
-    } else {
-      logger.error(`Unexpected error: ${(err as Error).message}`);
-    }
-    process.exit(1);
+    await dispatchErrorAndExit(err);
   }
 }
 
-run().catch((err: unknown) => {
-  logger.error(`Unexpected bootstrap error: ${(err as Error).message}`);
-  process.exit(1);
-});
-
 let shuttingDown = false;
 process.on('SIGINT', async () => {
-  if (shuttingDown) return;
+  if (shuttingDown) {
+    logger.warn('System: Force exit on second SIGINT signal');
+    process.exit(130);
+  }
   shuttingDown = true;
   logger.info('System: Receive SIGINT signal');
-  if (notifier) {
-    await notifier.dispatch('error', {
+  // If the catch block is already dispatching an error, don't queue a duplicate
+  // — the user would receive two notifications ("run failed" + "run aborted")
+  // for what is logically one incident.
+  if (!errorDispatchInFlight) {
+    await dispatch('error', {
       title: `${dryRunTag}${name} run aborted`,
       body: 'The run was interrupted by SIGINT',
       timestamp: new Date().toISOString(),
     });
   }
+  await flushPendingDispatches();
   logger.info('System: Application stopped');
   process.exit();
+});
+
+run().catch((err: unknown) => {
+  logger.error(`Unexpected bootstrap error: ${(err as Error).message}`);
+  process.exit(1);
 });

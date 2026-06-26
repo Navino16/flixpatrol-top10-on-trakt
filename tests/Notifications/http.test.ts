@@ -1,46 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { redactUrl, postJsonWithTimeout } from '../../src/Notifications/http';
-
-describe('redactUrl', () => {
-  it('redacts the Discord webhook token segment', () => {
-    expect(redactUrl('https://discord.com/api/webhooks/1234567890/secrettoken123'))
-      .toBe('https://discord.com/api/webhooks/1234567890/<redacted>');
-  });
-
-  it('redacts the Discord webhook token on discordapp.com too', () => {
-    expect(redactUrl('https://discordapp.com/api/webhooks/abc/xyz'))
-      .toBe('https://discordapp.com/api/webhooks/abc/<redacted>');
-  });
-
-  it('redacts the Apprise routing key', () => {
-    expect(redactUrl('http://apprise:8000/notify/flixpatrol-key'))
-      .toBe('http://apprise:8000/notify/<redacted>');
-  });
-
-  it('does not modify a generic webhook URL', () => {
-    expect(redactUrl('https://example.com/hook')).toBe('https://example.com/hook');
-  });
-
-  it('does not modify a Gotify-style URL without sensitive path', () => {
-    expect(redactUrl('https://gotify.example.com/message')).toBe('https://gotify.example.com/message');
-  });
-
-  it('returns the input unchanged when the URL is malformed', () => {
-    expect(redactUrl('not a url')).toBe('not a url');
-  });
-});
+import { postJsonWithTimeout } from '../../src/Notifications/http';
+import { logger } from '../../src/Utils/Logger';
 
 describe('postJsonWithTimeout', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
+    warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    warnSpy.mockRestore();
   });
 
   it('sends a POST with JSON content type and stringified body', async () => {
@@ -74,6 +49,30 @@ describe('postJsonWithTimeout', () => {
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     await expect(postJsonWithTimeout('https://example.com/x', {}, 'TestAdapter'))
       .resolves.toBeUndefined();
+  });
+
+  it('logs the adapter label and status code on non-2xx but NEVER the URL', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+    const secretUrl = 'https://discord.com/api/webhooks/12345/super-secret-token';
+    await postJsonWithTimeout(secretUrl, {}, 'WebhookAdapter');
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const message = warnSpy.mock.calls[0][0] as string;
+    expect(message).toContain('WebhookAdapter');
+    expect(message).toContain('401');
+    expect(message).not.toContain('super-secret-token');
+    expect(message).not.toContain('discord.com');
+  });
+
+  it('logs the adapter label and error message on fetch throw but NEVER the URL', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('boom'));
+    const secretUrl = 'http://apprise:8000/notify/private-routing-key';
+    await postJsonWithTimeout(secretUrl, {}, 'AppriseAdapter');
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const message = warnSpy.mock.calls[0][0] as string;
+    expect(message).toContain('AppriseAdapter');
+    expect(message).toContain('boom');
+    expect(message).not.toContain('private-routing-key');
+    expect(message).not.toContain('apprise:8000');
   });
 
   it('aborts the request after the default 5 second timeout', async () => {

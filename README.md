@@ -158,7 +158,7 @@ Each event takes a list of destinations. A destination has a `type` and the fiel
 | `ntfy`    | `url`, `topic`        | POSTs JSON to `{url}` with the topic in the body. Use `https://ntfy.sh` for the public service. |
 | `apprise` | `url`, `key`          | POSTs to `{url}/notify/{key}` against an Apprise API sidecar (see below).            |
 
-Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds. Sensitive URL segments (Discord webhook tokens, Apprise routing keys) are redacted from log lines.
+Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds. Destination URLs are never written to logs — only the adapter name and HTTP status / error message — so webhook secrets (Discord bearer tokens in the path, Apprise routing keys, etc.) cannot leak into log files or container stdout.
 
 Every `url` field is validated as a full URL with scheme at config-load time — typos like `discord.com/...` (missing `https://`) are rejected at startup with a clear error rather than silently failing at runtime.
 

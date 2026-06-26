@@ -2,28 +2,20 @@ import { logger } from '../Utils/Logger';
 
 export const TIMEOUT_MS = 5000;
 
-export function redactUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const discordMatch = parsed.pathname.match(/^(\/api\/webhooks\/[^/]+\/)[^/]+/);
-    if (discordMatch) {
-      return `${parsed.origin}${discordMatch[1]}<redacted>`;
-    }
-    const appriseMatch = parsed.pathname.match(/^(\/notify\/)[^/]+/);
-    if (appriseMatch) {
-      return `${parsed.origin}${appriseMatch[1]}<redacted>`;
-    }
-    return url;
-  } catch {
-    return url;
-  }
-}
-
 export interface PostJsonOptions {
   headers?: Record<string, string>;
   timeoutMs?: number;
 }
 
+/**
+ * POST a JSON body to a URL with a bounded timeout and a no-throw contract.
+ *
+ * The destination URL is NEVER written to the log on failure — only the adapter
+ * label + status / error message. This keeps webhook secrets (Discord bearer
+ * tokens in the path, Slack signing tokens, Apprise routing keys, Gotify
+ * tokens, etc.) out of log files, container stdout, and CI bundles. The user
+ * knows which destination is failing from their own config.
+ */
 export async function postJsonWithTimeout(
   url: string,
   body: unknown,
@@ -33,7 +25,6 @@ export async function postJsonWithTimeout(
   const timeout = options.timeoutMs ?? TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
-  const safeUrl = redactUrl(url);
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -42,10 +33,10 @@ export async function postJsonWithTimeout(
       signal: controller.signal,
     });
     if (!response.ok) {
-      logger.warn(`${label}: HTTP ${response.status} from ${safeUrl}`);
+      logger.warn(`${label}: HTTP ${response.status}`);
     }
   } catch (err) {
-    logger.warn(`${label}: ${(err as Error).message} for ${safeUrl}`);
+    logger.warn(`${label}: ${(err as Error).message}`);
   } finally {
     clearTimeout(timer);
   }
