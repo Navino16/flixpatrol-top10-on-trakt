@@ -11,6 +11,7 @@ import { ConfigurationError } from '../../src/Utils/Errors';
 vi.mock('config', () => ({
   default: {
     get: vi.fn(),
+    has: vi.fn(),
   },
 }));
 
@@ -349,6 +350,56 @@ describe('GetAndValidateConfigs', () => {
         vi.mocked(config.get).mockReturnValue(invalidConfig);
 
         expect(() => GetAndValidateConfigs.getCacheOptions()).toThrow(ConfigurationError);
+      });
+    });
+
+    describe('getNotifications', () => {
+      it('returns an empty object when the Notifications block is absent', () => {
+        vi.mocked(config.has).mockReturnValueOnce(false);
+        expect(GetAndValidateConfigs.getNotifications()).toEqual({});
+      });
+
+      it('returns the parsed config when valid', () => {
+        vi.mocked(config.has).mockReturnValueOnce(true);
+        vi.mocked(config.get).mockReturnValueOnce({
+          run_start: [{ type: 'webhook', url: 'https://example.com/hook' }],
+          error: [{ type: 'gotify', url: 'https://gotify.example.com', token: 'tok' }],
+        });
+        const result = GetAndValidateConfigs.getNotifications();
+        expect(result.run_start).toHaveLength(1);
+        expect(result.error?.[0]).toMatchObject({ type: 'gotify', token: 'tok' });
+      });
+
+      it('rejects an unknown destination type', () => {
+        vi.mocked(config.has).mockReturnValueOnce(true);
+        vi.mocked(config.get).mockReturnValueOnce({
+          run_end: [{ type: 'pigeon', url: 'https://example.com' }],
+        });
+        expect(() => GetAndValidateConfigs.getNotifications()).toThrow(/Notifications/);
+      });
+
+      it('rejects a gotify destination missing the token', () => {
+        vi.mocked(config.has).mockReturnValueOnce(true);
+        vi.mocked(config.get).mockReturnValueOnce({
+          error: [{ type: 'gotify', url: 'https://gotify.example.com' }],
+        });
+        expect(() => GetAndValidateConfigs.getNotifications()).toThrow(/token/);
+      });
+
+      it('rejects an ntfy destination missing the topic', () => {
+        vi.mocked(config.has).mockReturnValueOnce(true);
+        vi.mocked(config.get).mockReturnValueOnce({
+          run_end: [{ type: 'ntfy', url: 'https://ntfy.sh' }],
+        });
+        expect(() => GetAndValidateConfigs.getNotifications()).toThrow(/topic/);
+      });
+
+      it('rejects an apprise destination missing the key', () => {
+        vi.mocked(config.has).mockReturnValueOnce(true);
+        vi.mocked(config.get).mockReturnValueOnce({
+          run_end: [{ type: 'apprise', url: 'http://apprise:8000' }],
+        });
+        expect(() => GetAndValidateConfigs.getNotifications()).toThrow(/key/);
       });
     });
   });

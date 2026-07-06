@@ -327,12 +327,15 @@ export class FlixPatrol {
       return searchType === 'movie' ? looked.movie?.ids.trakt ?? null : looked.show?.ids.trakt ?? null;
     };
 
-    let id: TraktTVId = null;
-    if (type === 'Movies') {
-      if (flixType === 'Movie' || !flixType) id = await tryLookup('movie');
-    } else {
-      if (flixType === 'TV Show' || !flixType) id = await tryLookup('show');
-    }
+    // The caller already passed us the expected type (parseTop10Page targets a
+    // specific section heading). We previously tried to confirm against the
+    // detail page's flixType label, but FlixPatrol's markup drifted and that
+    // span now contains "Movie" on every detail page (see flixType log below),
+    // silently rejecting every legitimate TV-show match.
+    logger.silly(`Detected flixType="${flixType}" for ${result} (looking for ${type})`);
+    const id: TraktTVId = type === 'Movies'
+      ? await tryLookup('movie')
+      : await tryLookup('show');
 
     if (id && this.tvCache !== null && this.movieCache !== null) {
       if (type === 'Movies') await this.movieCache.set(result, id);

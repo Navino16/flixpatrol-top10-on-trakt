@@ -8,15 +8,15 @@ export class Utils {
 
   public static getListName(
     config: { name?: string; normalizeName?: boolean },
-    defaultName: string
+    defaultName: string,
+    prefix?: string,
   ): string {
-    if (config.name && config.normalizeName === false) {
-      return config.name;
-    }
-    if (config.name) {
-      return config.name.toLowerCase().replace(/\s+/g, '-');
-    }
-    return defaultName;
+    const base = (() => {
+      if (config.name && config.normalizeName === false) return config.name;
+      if (config.name) return config.name.toLowerCase().replace(/\s+/g, '-');
+      return defaultName;
+    })();
+    return prefix ? `${prefix}${base}` : base;
   }
 
   public static ensureConfigExist() {
@@ -137,6 +137,11 @@ export class Utils {
           enabled: true,
           savePath: './config/.cache',
           ttl: 604800,
+        },
+        Notifications: {
+          run_start: [],
+          run_end: [],
+          error: [],
         },
       };
 

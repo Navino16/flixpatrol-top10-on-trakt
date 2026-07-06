@@ -360,5 +360,125 @@ describe('TraktAPI', () => {
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
     });
+
+    it('normalizes list names with brackets to match Trakt slug format', async () => {
+      // Regression for the crash observed with LIST_NAME_PREFIX="[TEST]":
+      // naive slug `[test]netflix-france-...` did not match Trakt's canonical
+      // `test-netflix-france-...`, so `.get()` returned partial data and the
+      // privacy-update path crashed on `list.ids.slug` (ids was undefined).
+      const mockList = {
+        name: '[TEST]netflix-france-top10-with-world-fallback',
+        privacy: 'private',
+        ids: { trakt: 1, slug: 'test-netflix-france-top10-with-world-fallback' },
+      };
+
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: {
+            get: ReturnType<typeof vi.fn>;
+            items: { get: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn> };
+          };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue(mockList);
+      traktInstance.users.list.items.get.mockResolvedValue([]);
+      traktInstance.users.list.items.add.mockResolvedValue(undefined);
+
+      await trakt.pushToList(
+        [123],
+        '[TEST]netflix-france-top10-with-world-fallback',
+        'movie',
+        'private',
+      );
+
+      expect(traktInstance.users.list.get).toHaveBeenCalledWith({
+        username: 'me',
+        id: 'test-netflix-france-top10-with-world-fallback',
+      });
+    });
+
+    it('treats Trakt returning an empty-string body as not-found and creates the list', async () => {
+      // Regression: Trakt's API has been observed returning HTTP 200 with an
+      // empty body (`""`) instead of a proper 404 for some missing-list
+      // lookups. The previous code accepted that as a valid response, then
+      // crashed on `list.ids.slug` in the privacy-update branch.
+      const createdList = {
+        name: '[TEST]new-list',
+        privacy: 'private',
+        ids: { trakt: 99, slug: 'test-new-list' },
+      };
+
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: {
+            get: ReturnType<typeof vi.fn>;
+            items: { get: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn> };
+          };
+          lists: { create: ReturnType<typeof vi.fn> };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue('');
+      traktInstance.users.lists.create.mockResolvedValue(createdList);
+      traktInstance.users.list.items.get.mockResolvedValue([]);
+      traktInstance.users.list.items.add.mockResolvedValue(undefined);
+
+      await trakt.pushToList([123], '[TEST]new-list', 'movie', 'private');
+
+      expect(traktInstance.users.lists.create).toHaveBeenCalledWith({
+        username: 'me',
+        name: '[TEST]new-list',
+        privacy: 'private',
+      });
+    });
+
+    it('throws a clear error when the create response itself is malformed', async () => {
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: { get: ReturnType<typeof vi.fn> };
+          lists: { create: ReturnType<typeof vi.fn> };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue('');
+      traktInstance.users.lists.create.mockResolvedValue('');
+
+      await expect(
+        trakt.pushToList([123], '[TEST]borked', 'movie', 'private'),
+      ).rejects.toThrow(/malformed response/);
+    });
+
+    it('collapses runs of special characters and trims hyphens for the Trakt slug', async () => {
+      const mockList = {
+        name: 'Foo (Bar) & Baz!',
+        privacy: 'private',
+        ids: { trakt: 2, slug: 'foo-bar-baz' },
+      };
+
+      const trakt = new TraktAPI(mockOptions);
+      const traktInstance = (trakt as unknown as { trakt: {
+        users: {
+          list: {
+            get: ReturnType<typeof vi.fn>;
+            items: { get: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn> };
+          };
+        };
+      } }).trakt;
+
+      traktInstance.users.list.get.mockResolvedValue(mockList);
+      traktInstance.users.list.items.get.mockResolvedValue([]);
+      traktInstance.users.list.items.add.mockResolvedValue(undefined);
+
+      await trakt.pushToList([123], 'Foo (Bar) & Baz!', 'movie', 'private');
+
+      expect(traktInstance.users.list.get).toHaveBeenCalledWith({
+        username: 'me',
+        id: 'foo-bar-baz',
+      });
+    });
   });
 });

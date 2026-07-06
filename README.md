@@ -89,10 +89,11 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 
 ### Environment Variables
 
-| Name      | Description                              | Values                          | Default |
-|-----------|------------------------------------------|---------------------------------|---------|
-| LOG_LEVEL | How verbose the log will be              | error, warn, info, debug, silly | info    |
-| DRY_RUN   | Run without making changes to Trakt      | true, false                     | false   |
+| Name             | Description                                                  | Values                          | Default |
+|------------------|--------------------------------------------------------------|---------------------------------|---------|
+| LOG_LEVEL        | How verbose the log will be                                  | error, warn, info, debug, silly | info    |
+| DRY_RUN          | Run without making changes to Trakt                          | true, false                     | false   |
+| LIST_NAME_PREFIX | String prepended to every list name (useful for dev/testing) | Any string, e.g. `[TEST]`       | (none)  |
 
 #### Dry-Run Mode
 
@@ -111,6 +112,85 @@ In dry-run mode:
 - Trakt search for ID conversion runs normally
 - OAuth authentication runs normally
 - List creation, item addition/removal, and updates are **logged but not executed**
+
+#### List Name Prefix
+
+Prepend a fixed string to every list name. Useful when running the tool against your real Trakt account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
+
+```bash
+# Linux/macOS — produces lists like "[TEST]netflix-world-top10-without-fallback"
+LIST_NAME_PREFIX='[TEST]' ./flixpatrol-top10-linux-x64
+
+# Docker
+docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+```
+
+The prefix is applied verbatim, **after** the normalization step (so brackets, spaces, and special characters in the prefix are preserved as-is). When active, a warning is emitted at startup so you don't forget it is set.
+
+#### Notifications
+
+Send a notification at the start of a run, at the end (with a summary), and on terminal errors. The block is optional — omit it entirely to disable notifications.
+
+```json
+{
+  "Notifications": {
+    "run_start": [
+      { "type": "webhook", "url": "https://discord.com/api/webhooks/..." }
+    ],
+    "run_end": [
+      { "type": "webhook", "url": "https://discord.com/api/webhooks/..." },
+      { "type": "apprise", "url": "http://apprise:8000", "key": "flixpatrol" }
+    ],
+    "error": [
+      { "type": "gotify", "url": "https://gotify.example.com", "token": "AbCdEf123" },
+      { "type": "ntfy", "url": "https://ntfy.sh", "topic": "flixpatrol-alerts" }
+    ]
+  }
+}
+```
+
+Each event takes a list of destinations. A destination has a `type` and the fields required by that type:
+
+| Type      | Fields                | Notes                                                                                |
+|-----------|-----------------------|--------------------------------------------------------------------------------------|
+| `webhook` | `url`                 | Sends generic JSON. If `url` matches `discord.com/api/webhooks/...` a Discord-shaped payload is sent automatically. |
+| `gotify`  | `url`, `token`        | POSTs to `{url}/message` with the token sent via the `X-Gotify-Key` header (never in the query string, so it cannot leak into reverse-proxy access logs). |
+| `ntfy`    | `url`, `topic`        | POSTs JSON to `{url}` with the topic in the body. Use `https://ntfy.sh` for the public service. |
+| `apprise` | `url`, `key`          | POSTs to `{url}/notify/{key}` against an Apprise API sidecar (see below).            |
+
+Notifications are best-effort: a failing destination is logged at `warn` level but never blocks the main sync. Each adapter has a 5-second HTTP timeout and the manager caps total wait at 6 seconds. Failure logs include the adapter name and the destination's host (e.g. `WebhookAdapter[discord.com]: HTTP 401`) — never the full URL or any path / query secrets, so webhook tokens (Discord bearer tokens in the path, Apprise routing keys, etc.) cannot leak into log files or container stdout.
+
+Every `url` field is validated as a full URL with scheme at config-load time — typos like `discord.com/...` (missing `https://`) are rejected at startup with a clear error rather than silently failing at runtime.
+
+`DRY_RUN=true` does **not** suppress notifications (useful for testing the setup). Title and body are both prefixed with `[DRY-RUN]` so they cannot be mistaken for a real run, and the `run_end` body says items "would be added" rather than "added".
+
+##### Apprise sidecar (optional)
+
+The `apprise` destination talks to an [Apprise API](https://github.com/caronc/apprise-api) instance you host yourself. Once it is running, you configure your downstream services (Discord, Telegram, Email, etc.) inside Apprise — flixpatrol-top10 only needs to know the Apprise URL and a config key.
+
+```yaml
+# docker-compose.yml excerpt
+services:
+  flixpatrol:
+    image: ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      - apprise
+
+  apprise:
+    image: caronc/apprise:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apprise-config:/config
+```
+
+In the Apprise web UI (default `http://localhost:8000`), create a configuration key (for example `flixpatrol`) and add your downstream Apprise URLs (`discord://...`, `tgram://...`, `mailto://...`, etc.) under that key. Then reference it from `config/default.json`:
+
+```json
+{ "type": "apprise", "url": "http://apprise:8000", "key": "flixpatrol" }
+```
 
 ### Configuration File
 
@@ -292,9 +372,16 @@ If there is any configuration error, the tool will exit with information about t
     "enabled": true,
     "savePath": "./config/.cache",
     "ttl": 604800
+  },
+  "Notifications": {
+    "run_start": [],
+    "run_end": [],
+    "error": []
   }
 }
 ```
+
+The `Notifications` block is fully optional — leave the arrays empty (or omit the block entirely) to disable notifications. See [Notifications](#notifications) above for the supported destination types and a worked example.
 
 </details>
 
