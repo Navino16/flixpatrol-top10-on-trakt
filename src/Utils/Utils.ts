@@ -143,6 +143,11 @@ export class Utils {
           run_end: [],
           error: [],
         },
+        Schedule: {
+          enabled: false,
+          crons: ['0 6 * * *'],
+          runOnStart: false,
+        },
       };
 
       fs.writeFileSync('./config/default.json', JSON.stringify(defaultConfig, null, 2) + '\n');
