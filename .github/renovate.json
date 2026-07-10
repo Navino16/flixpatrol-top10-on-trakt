@@ -8,6 +8,8 @@
     "develop"
   ],
   "schedule": ["before 6am on monday"],
+  "platformAutomerge": false,
+  "automergeSchedule": ["at any time"],
   "packageRules": [
     {
       "description": "Group and auto-merge npm minor and patch updates",
