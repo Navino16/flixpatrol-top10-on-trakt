@@ -1,6 +1,6 @@
 {
   "name": "flixpatrol-top10",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "description": "Get top10 list from flixpatrol and upload them to trakt",
   "main": "app.js",
   "scripts": {
@@ -23,7 +23,6 @@
   "license": "GPL-3.0",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/config": "^4.4.0",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^26.1.0",
     "@vercel/ncc": "^0.44.1",
@@ -42,6 +41,7 @@
     "file-system-cache": "^2.4.7",
     "impit": "^0.14.1",
     "jsdom": "^29.1.1",
+    "node-cron": "^4.6.0",
     "trakt.tv": "^8.2.0",
     "winston": "^3.19.0",
     "zod": "^4.4.3"

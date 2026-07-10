@@ -402,5 +402,37 @@ describe('GetAndValidateConfigs', () => {
         expect(() => GetAndValidateConfigs.getNotifications()).toThrow(/key/);
       });
     });
+
+    describe('getScheduleOptions', () => {
+      it('returns disabled defaults when the Schedule block is absent', () => {
+        vi.mocked(config.has).mockReturnValue(false);
+        const result = GetAndValidateConfigs.getScheduleOptions();
+        expect(result).toEqual({ enabled: false, crons: [], runOnStart: false });
+      });
+
+      it('returns a valid enabled schedule', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({
+          enabled: true, crons: ['0 6 * * *', '0 18 * * *'], runOnStart: true,
+        });
+        const result = GetAndValidateConfigs.getScheduleOptions();
+        expect(result).toEqual({
+          enabled: true, crons: ['0 6 * * *', '0 18 * * *'], runOnStart: true,
+        });
+      });
+
+      it('throws when enabled with no crons', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true, crons: [] });
+        expect(() => GetAndValidateConfigs.getScheduleOptions()).toThrow(ConfigurationError);
+      });
+
+      it('throws when a cron expression is invalid', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true, crons: ['not a cron'] });
+        expect(() => GetAndValidateConfigs.getScheduleOptions())
+          .toThrow(/invalid cron expression/i);
+      });
+    });
   });
 });

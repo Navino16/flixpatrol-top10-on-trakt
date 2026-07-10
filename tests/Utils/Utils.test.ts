@@ -194,6 +194,7 @@ describe('Utils', () => {
       expect(parsed).toHaveProperty('FlixPatrolMostWatched');
       expect(parsed).toHaveProperty('Trakt');
       expect(parsed).toHaveProperty('Cache');
+      expect(parsed).toHaveProperty('Schedule');
     });
 
     it('should include Netflix and Disney in FlixPatrolTop10', () => {

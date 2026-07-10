@@ -35,6 +35,7 @@
   <a href="#configuration">Configuration</a> &bull;
   <a href="#supported-platforms">Supported Platforms</a> &bull;
   <a href="#scheduling">Scheduling</a> &bull;
+  <a href="#daemon-mode-built-in-scheduling">Daemon Mode</a> &bull;
   <a href="#troubleshooting">Troubleshooting</a> &bull;
   <a href="#development">Development</a>
 </p>
@@ -279,6 +280,19 @@ If there is any configuration error, the tool will exit with information about t
 </details>
 
 <details>
+<summary><strong>Schedule</strong> — Daemon mode / built-in scheduling configuration</summary>
+
+| Name       | Description                                                              | Mandatory | Values                                | Default |
+|------------|---------------------------------------------------------------------------|-----------|----------------------------------------|---------|
+| enabled    | Enable the built-in scheduler (daemon mode)?                             | No        | true, false                           | false   |
+| crons      | Cron expression(s) the app runs on, 5-field format (`min hour day month weekday`) | Yes, when `enabled: true` | Array of valid cron strings, e.g. `["0 6 * * *"]` | []      |
+| runOnStart | Also run immediately at startup, in addition to the schedule?            | No        | true, false                           | false   |
+
+The whole `Schedule` block is optional — omit it entirely (or leave `enabled: false`) to keep the classic one-shot behaviour: the app runs once and exits, exactly like today. See [Daemon Mode](#daemon-mode-built-in-scheduling) below for details.
+
+</details>
+
+<details>
 <summary><strong>Example configuration</strong></summary>
 
 ```json
@@ -377,11 +391,18 @@ If there is any configuration error, the tool will exit with information about t
     "run_start": [],
     "run_end": [],
     "error": []
+  },
+  "Schedule": {
+    "enabled": false,
+    "crons": ["0 6 * * *"],
+    "runOnStart": false
   }
 }
 ```
 
 The `Notifications` block is fully optional — leave the arrays empty (or omit the block entirely) to disable notifications. See [Notifications](#notifications) above for the supported destination types and a worked example.
+
+The `Schedule` block is fully optional and disabled by default — omit it (or leave `enabled: false`) to keep the classic one-shot behaviour. See [Daemon Mode](#daemon-mode-built-in-scheduling) below.
 
 </details>
 
@@ -440,6 +461,68 @@ For the complete list, see the source code: [Config.types.ts](https://github.com
 2. Create a new task
 3. Set the trigger (e.g., daily at 6 AM)
 4. Set the action to run the executable
+
+## Daemon Mode (built-in scheduling)
+
+Instead of relying on an external scheduler (cron, Task Scheduler, `docker run` on a timer), the app can run as a long-lived
+process with its own built-in scheduler. Add a `Schedule` block to `config/default.json` and set `enabled: true`:
+
+```json
+{
+  "Schedule": {
+    "enabled": true,
+    "crons": ["0 6 * * *"],
+    "runOnStart": false
+  }
+}
+```
+
+| Field        | Description                                                                 |
+|--------------|------------------------------------------------------------------------------|
+| `enabled`    | Turns daemon mode on. When `false` or omitted, the app runs once and exits — the current behaviour is completely unchanged. |
+| `crons`      | One or more cron expressions, standard 5-field format (`min hour day month weekday`), e.g. `"0 6 * * *"` for daily at 6 AM. Must contain at least one entry when `enabled` is `true`. |
+| `runOnStart` | When `true`, triggers an immediate run at startup, then continues to follow the configured schedule. |
+
+### Backward compatibility
+
+The `Schedule` block is entirely optional. If it is absent, or `enabled` is `false`, the app behaves exactly as before:
+it runs once and exits with the appropriate code. Your existing external cron job or `docker run` on a timer keeps
+working without any change.
+
+### Timezone
+
+The scheduler follows the system clock. There is no timezone field in the config — set the `TZ` environment variable
+(e.g. `TZ=Europe/Paris`) on the host or container so cron expressions are evaluated in the timezone you expect.
+
+### Behaviour while running
+
+- If a scheduled trigger fires while a run is still in progress, it is skipped (logged as a warning) rather than
+  queued or run concurrently.
+- A failed run is logged and sent through the [Notifications](#notifications) system (the `error` event), but it does
+  **not** stop the daemon — the scheduler keeps waiting for the next trigger.
+- On `SIGTERM` (e.g. `docker stop`) or `SIGINT` (Ctrl-C), the app performs a graceful shutdown: it stops accepting new
+  triggers and waits for the current run to finish its Trakt write before exiting, so lists are never left half-updated.
+
+### Docker Compose example
+
+Run the container as a long-lived daemon instead of a one-shot job:
+
+```yaml
+# docker-compose.yml
+services:
+  flixpatrol:
+    image: ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Paris
+    volumes:
+      - ./config:/app/config
+```
+
+With `Schedule.enabled: true` in `config/default.json`, this container stays up, runs on the configured cron
+schedule(s), and survives restarts (`restart: unless-stopped`). This replaces the external-cron pattern shown above
+(`docker run` triggered by a host cron entry) — you no longer need a cron job on the host, since the schedule now
+lives inside the app itself.
 
 ## Troubleshooting
 

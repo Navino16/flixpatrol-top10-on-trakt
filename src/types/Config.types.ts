@@ -148,6 +148,15 @@ export const NotificationsSchema = z.object({
   error: z.array(DestinationSchema).optional(),
 });
 
+export const ScheduleOptionsSchema = z.object({
+  enabled: z.boolean().default(false),
+  crons: z.array(z.string()).default([]),
+  runOnStart: z.boolean().default(false),
+}).refine(
+  (s) => !s.enabled || s.crons.length > 0,
+  { message: 'crons must contain at least one expression when enabled' },
+);
+
 // Infer types from schemas
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
@@ -158,3 +167,4 @@ export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLang
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;
+export type ScheduleOptions = z.infer<typeof ScheduleOptionsSchema>;
