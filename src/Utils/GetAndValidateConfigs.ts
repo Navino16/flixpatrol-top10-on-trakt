@@ -1,5 +1,6 @@
 import config from 'config';
 import { z } from 'zod';
+import cron from 'node-cron';
 import { ConfigurationError } from './Errors';
 import {
   FlixPatrolTop10Schema,
@@ -9,6 +10,7 @@ import {
   TraktOptionsSchema,
   CacheOptionsSchema,
   NotificationsSchema,
+  ScheduleOptionsSchema,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -17,6 +19,7 @@ import type {
   FlixPatrolMostHours,
   TraktAPIOptions,
   CacheOptions,
+  ScheduleOptions,
 } from '../types';
 import type { NotificationsConfig } from '../Notifications/types';
 
@@ -116,6 +119,25 @@ export class GetAndValidateConfigs {
       }
       const data = config.get('Notifications');
       return validateConfig(NotificationsSchema, data, 'Notifications');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getScheduleOptions(): ScheduleOptions {
+    try {
+      const data = config.has('Schedule') ? config.get('Schedule') : {};
+      const options = validateConfig(ScheduleOptionsSchema, data, 'Schedule');
+      if (options.enabled) {
+        const invalid = options.crons.filter((expr) => !cron.validate(expr));
+        if (invalid.length > 0) {
+          throw new ConfigurationError(
+            `Schedule.crons contains invalid cron expression(s): ${invalid.map((e) => `"${e}"`).join(', ')}`,
+          );
+        }
+      }
+      return options;
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);

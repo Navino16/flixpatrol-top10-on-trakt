@@ -77,5 +77,10 @@
     "run_start": [],
     "run_end": [],
     "error": []
+  },
+  "Schedule": {
+    "enabled": false,
+    "crons": ["0 6 * * *"],
+    "runOnStart": false
   }
 }
