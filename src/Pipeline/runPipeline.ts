@@ -27,6 +27,19 @@ export interface RunPipelineDeps {
 export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
   const dryRunTag = deps.dryRun ? '[DRY-RUN] ' : '';
 
+  const abortedBeforeWrite = async (): Promise<boolean> => {
+    if (!deps.signal?.aborted) {
+      return false;
+    }
+    logger.info('System: Graceful stop requested — halting after current Trakt write');
+    await deps.dispatch('error', {
+      title: `${dryRunTag}${deps.appName} run interrupted`,
+      body: 'The run was interrupted by a shutdown signal (SIGTERM/SIGINT)',
+      timestamp: new Date().toISOString(),
+    });
+    return true;
+  };
+
   const enabledMostWatched = deps.flixPatrolMostWatched.filter((m) => m.enabled).length;
   const enabledMostHours = deps.flixPatrolMostHours.filter((m) => m.enabled).length;
 
@@ -82,10 +95,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
       }
       logger.info(`Saving movies for "${baseListName}"`);
       logger.debug(`${top10.platform} movies: ${movies}`);
-      if (deps.signal?.aborted) {
-        logger.info('System: Graceful stop requested — halting after current Trakt write');
-        return summary;
-      }
+      if (await abortedBeforeWrite()) return summary;
       await trakt.pushToList(movies, baseListName, 'movie', top10.privacy);
       logger.info(`List ${baseListName} updated with ${movies.length} new movies`);
       summary.moviesAdded += movies.length;
@@ -97,10 +107,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
       }
       logger.info(`Saving shows for "${baseListName}"`);
       logger.debug(`${top10.platform} shows: ${shows}`);
-      if (deps.signal?.aborted) {
-        logger.info('System: Graceful stop requested — halting after current Trakt write');
-        return summary;
-      }
+      if (await abortedBeforeWrite()) return summary;
       await trakt.pushToList(shows, baseListName, 'show', top10.privacy);
       logger.info(`List ${baseListName} updated with ${shows.length} new shows`);
       summary.showsAdded += shows.length;
@@ -119,10 +126,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
       logger.info(`Getting movies for "${listName}"`);
       const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
       logger.debug(`${popular.platform} movies: ${popularMovies}`);
-      if (deps.signal?.aborted) {
-        logger.info('System: Graceful stop requested — halting after current Trakt write');
-        return summary;
-      }
+      if (await abortedBeforeWrite()) return summary;
       await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
       logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
       summary.moviesAdded += popularMovies.length;
@@ -133,10 +137,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
       logger.info(`Getting shows for "${listName}"`);
       const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
       logger.debug(`${popular.platform} shows: ${popularShows}`);
-      if (deps.signal?.aborted) {
-        logger.info('System: Graceful stop requested — halting after current Trakt write');
-        return summary;
-      }
+      if (await abortedBeforeWrite()) return summary;
       await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
       logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
       summary.showsAdded += popularShows.length;
@@ -159,10 +160,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
         logger.info(`Getting movies for "${listName}"`);
         const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched, trakt);
         logger.debug(`most-watched movies: ${mostWatchedMovies}`);
-        if (deps.signal?.aborted) {
-          logger.info('System: Graceful stop requested — halting after current Trakt write');
-          return summary;
-        }
+        if (await abortedBeforeWrite()) return summary;
         await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
         logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
         summary.moviesAdded += mostWatchedMovies.length;
@@ -173,10 +171,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
         logger.info(`Getting shows for "${listName}"`);
         const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt);
         logger.debug(`most-watched shows: ${mostWatchedShows}`);
-        if (deps.signal?.aborted) {
-          logger.info('System: Graceful stop requested — halting after current Trakt write');
-          return summary;
-        }
+        if (await abortedBeforeWrite()) return summary;
         await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
         logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
         summary.showsAdded += mostWatchedShows.length;
@@ -200,10 +195,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
         logger.info(`Getting movies for "${listName}"`);
         const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours, trakt);
         logger.debug(`most-hours-${mostHours.period} movies: ${mostHoursMovies}`);
-        if (deps.signal?.aborted) {
-          logger.info('System: Graceful stop requested — halting after current Trakt write');
-          return summary;
-        }
+        if (await abortedBeforeWrite()) return summary;
         await trakt.pushToList(mostHoursMovies, listName, 'movie', mostHours.privacy);
         logger.info(`List ${listName} updated with ${mostHoursMovies.length} new movies`);
         summary.moviesAdded += mostHoursMovies.length;
@@ -214,10 +206,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
         logger.info(`Getting shows for "${listName}"`);
         const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours, trakt);
         logger.debug(`most-hours-${mostHours.period} shows: ${mostHoursShows}`);
-        if (deps.signal?.aborted) {
-          logger.info('System: Graceful stop requested — halting after current Trakt write');
-          return summary;
-        }
+        if (await abortedBeforeWrite()) return summary;
         await trakt.pushToList(mostHoursShows, listName, 'show', mostHours.privacy);
         logger.info(`List ${listName} updated with ${mostHoursShows.length} new shows`);
         summary.showsAdded += mostHoursShows.length;

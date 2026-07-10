@@ -42,7 +42,11 @@ export class Scheduler {
       try {
         await this.options.runner(this.abortController.signal);
       } catch (err) {
-        await this.options.onError(err);
+        try {
+          await this.options.onError(err);
+        } catch (onErrorErr) {
+          logger.error(`Scheduler: onError handler itself failed: ${(onErrorErr as Error).message}`);
+        }
       }
     })();
     try {

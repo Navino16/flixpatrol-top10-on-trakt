@@ -84,6 +84,26 @@ describe('Scheduler', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
+  it('survives a runner rejection AND an onError rejection without crashing, and stays alive for the next trigger', async () => {
+    const onError = vi.fn().mockRejectedValue(new Error('onError boom'));
+    const runner = vi.fn().mockRejectedValue(new Error('runner boom'));
+    const scheduler = new Scheduler({
+      crons: ['* * * * *'], runOnStart: true, runner, onError,
+    });
+    // start() must not throw and must not produce an unhandled rejection.
+    expect(() => scheduler.start()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      expect.stringContaining('onError handler itself failed'),
+    );
+    // A later cron trigger still invokes runner again (daemon survived both rejections).
+    const tick = vi.mocked(cron.schedule).mock.calls[0][1] as () => void;
+    tick();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   it('stop() aborts the signal, stops tasks and awaits the in-flight run', async () => {
     const d = deferred<void>();
     let received: AbortSignal | undefined;

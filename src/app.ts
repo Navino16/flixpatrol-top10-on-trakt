@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
 import { NotificationManager } from './Notifications';
 import type {
@@ -120,7 +121,12 @@ async function bootstrapConfigs(): Promise<{
 async function main(): Promise<void> {
   const { deps, schedule } = await bootstrapConfigs();
 
-  if (!schedule.enabled) {
+  const authenticated = fs.existsSync(deps.traktOptions.saveFile);
+  if (schedule.enabled && !authenticated) {
+    logger.warn(`Schedule is enabled but no Trakt token file (${deps.traktOptions.saveFile}) exists yet — running once to complete Trakt authentication. The scheduler will start on the next launch, once a token has been saved.`);
+  }
+
+  if (!schedule.enabled || !authenticated) {
     // One-shot mode: unchanged behaviour.
     let shuttingDown = false;
     process.on('SIGINT', async () => {
@@ -172,7 +178,13 @@ async function main(): Promise<void> {
     },
   });
 
+  let daemonShuttingDown = false;
   const shutdown = async (signalName: string): Promise<void> => {
+    if (daemonShuttingDown) {
+      logger.warn('System: Force exit on second signal');
+      process.exit(130);
+    }
+    daemonShuttingDown = true;
     logger.info(`System: Received ${signalName} — stopping scheduler`);
     await scheduler.stop();
     await flushPendingDispatches();

@@ -58,6 +58,9 @@ describe('runPipeline abort checkpoint', () => {
     });
     await runPipeline(deps);
     expect(pushToList).not.toHaveBeenCalled();
+    expect(deps.dispatch).toHaveBeenCalledWith('error', expect.objectContaining({
+      title: expect.stringContaining('run interrupted'),
+    }));
   });
 
   it('performs writes when the signal is not aborted', async () => {
@@ -72,5 +75,8 @@ describe('runPipeline abort checkpoint', () => {
     });
     await runPipeline(deps);
     expect(pushToList).toHaveBeenCalledTimes(1);
+    expect(deps.dispatch).not.toHaveBeenCalledWith('error', expect.objectContaining({
+      title: expect.stringContaining('run interrupted'),
+    }));
   });
 });
