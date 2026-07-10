@@ -23,7 +23,6 @@
   "license": "GPL-3.0",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/config": "^4.4.0",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^26.1.0",
     "@vercel/ncc": "^0.44.1",
