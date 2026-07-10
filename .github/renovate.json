@@ -4,7 +4,9 @@
     "config:recommended",
     ":dependencyDashboard"
   ],
-  "baseBranches": ["develop"],
+  "baseBranchPatterns": [
+    "develop"
+  ],
   "schedule": ["before 6am on monday"],
   "packageRules": [
     {
