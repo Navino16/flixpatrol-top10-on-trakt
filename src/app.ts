@@ -105,6 +105,7 @@ async function bootstrapConfigs(): Promise<{
       flixPatrolPopulars: GetAndValidateConfigs.getFlixPatrolPopular(),
       flixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
       flixPatrolMostHours: GetAndValidateConfigs.getFlixPatrolMostHours(),
+      flareSolverrOptions: GetAndValidateConfigs.getFlareSolverrOptions(),
       dispatch,
       dryRun,
       listNamePrefix,
