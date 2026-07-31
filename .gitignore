@@ -7,3 +7,4 @@ config/local.json
 .trakt
 .cache/
 .reports/
+docker-compose.yml
