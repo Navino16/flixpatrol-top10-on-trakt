@@ -83,11 +83,16 @@ export class FlixPatrol {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
       try {
         const res = await this.impit.fetch(url);
-        logger.silly(`Status code: ${res.status}`);
+        logger.debug(`Status code: ${res.status} for ${url}`);
         if (res.status === 200) {
           return await res.text();
         }
         if (!RETRY_STATUS_CODES.has(res.status) || attempt === MAX_RETRIES) {
+          // Cloudflare sets cf-mitigated when it blocks or challenges a request, which is the
+          // difference between "FlixPatrol is down" and "we got bot-blocked".
+          const cfMitigated = res.headers?.get('cf-mitigated');
+          const cfSuffix = cfMitigated ? ` (cf-mitigated: ${cfMitigated})` : '';
+          logger.error(`Giving up on ${url}: HTTP ${res.status}${cfSuffix}`);
           return null;
         }
         logger.warn(`Retry attempt ${attempt} for ${url}: HTTP ${res.status}`);

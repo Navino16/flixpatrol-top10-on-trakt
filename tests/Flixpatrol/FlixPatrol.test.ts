@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
+import { logger } from '../../src/Utils/Logger';
 import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHours } from '../../src/types';
 
 // Mock impit: single shared `mockFetch` is returned from every `new Impit(...)`,
@@ -13,8 +14,9 @@ vi.mock('impit', () => ({
 }));
 
 // Helper to build an impit-style response from the legacy { status, data } shape used by the tests.
-const mockHtmlResponse = (input: { status: number; data: unknown }) => ({
+const mockHtmlResponse = (input: { status: number; data: unknown; headers?: Record<string, string> }) => ({
   status: input.status,
+  headers: new Headers(input.headers ?? {}),
   text: async () => (input.data as string) ?? '',
 });
 
@@ -155,6 +157,51 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getFlixPatrolHTMLPage('/error-path');
 
       expect(result).toBeNull();
+    });
+
+    it('should log the HTTP status at debug level', async () => {
+      const debugSpy = vi.spyOn(logger, 'debug').mockImplementation(() => logger);
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 200, data: '<html></html>' }));
+
+      await flixpatrol.getFlixPatrolHTMLPage('/test-path');
+
+      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('200'));
+      debugSpy.mockRestore();
+    });
+
+    it('should log status and cf-mitigated when giving up on a non-retryable status', async () => {
+      const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+      mockFetch.mockResolvedValue(mockHtmlResponse({
+        status: 403,
+        data: 'Just a moment...',
+        headers: { 'cf-mitigated': 'challenge' },
+      }));
+
+      const result = await flixpatrol.getFlixPatrolHTMLPage('/blocked');
+
+      expect(result).toBeNull();
+      const logged = errorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('403');
+      expect(logged).toContain('cf-mitigated');
+      expect(logged).toContain('challenge');
+      errorSpy.mockRestore();
+    });
+
+    it('should log the status when giving up on a non-retryable status without cf-mitigated', async () => {
+      const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 404, data: 'Not found' }));
+
+      const result = await flixpatrol.getFlixPatrolHTMLPage('/not-found');
+
+      expect(result).toBeNull();
+      expect(errorSpy.mock.calls.map((call) => String(call[0])).join('\n')).toContain('404');
+      errorSpy.mockRestore();
+    });
+
+    it('should not throw when the response has no headers', async () => {
+      mockFetch.mockResolvedValue({ status: 403, text: async () => 'blocked' });
+
+      await expect(flixpatrol.getFlixPatrolHTMLPage('/no-headers')).resolves.toBeNull();
     });
 
     it('should use custom URL when provided', async () => {
