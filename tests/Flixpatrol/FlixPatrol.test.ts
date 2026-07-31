@@ -221,6 +221,70 @@ describe('FlixPatrol', () => {
     });
   });
 
+  describe('getFlixPatrolHTMLPage with FlareSolverr', () => {
+    // A minimal stand-in for FlareSolverrClient: only get() is reachable from
+    // getFlixPatrolHTMLPage, and the session lifecycle is runPipeline's concern.
+    const makeClient = (html: string | null) => ({
+      createSession: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn().mockResolvedValue(html),
+      destroySession: vi.fn().mockResolvedValue(undefined),
+    });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('fetches through FlareSolverr and never touches impit', async () => {
+      const client = makeClient('<html>via flaresolverr</html>');
+      const flixpatrol = new FlixPatrol(
+        { enabled: false, savePath: '', ttl: 0 },
+        {},
+        client as unknown as ConstructorParameters<typeof FlixPatrol>[2],
+      );
+
+      const result = await flixpatrol.getFlixPatrolHTMLPage('/top10/netflix/france');
+
+      expect(result).toBe('<html>via flaresolverr</html>');
+      expect(client.get).toHaveBeenCalledWith('https://flixpatrol.com/top10/netflix/france');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('propagates a null from FlareSolverr', async () => {
+      const client = makeClient(null);
+      const flixpatrol = new FlixPatrol(
+        { enabled: false, savePath: '', ttl: 0 },
+        {},
+        client as unknown as ConstructorParameters<typeof FlixPatrol>[2],
+      );
+
+      await expect(flixpatrol.getFlixPatrolHTMLPage('/blocked')).resolves.toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('honours a custom base url when routing through FlareSolverr', async () => {
+      const client = makeClient('<html></html>');
+      const flixpatrol = new FlixPatrol(
+        { enabled: false, savePath: '', ttl: 0 },
+        { url: 'https://custom.flixpatrol.com' },
+        client as unknown as ConstructorParameters<typeof FlixPatrol>[2],
+      );
+
+      await flixpatrol.getFlixPatrolHTMLPage('/test');
+
+      expect(client.get).toHaveBeenCalledWith('https://custom.flixpatrol.com/test');
+    });
+
+    it('uses impit when no client is supplied (optionality regression guard)', async () => {
+      const flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
+      mockFetch.mockResolvedValue(mockHtmlResponse({ status: 200, data: '<html>via impit</html>' }));
+
+      const result = await flixpatrol.getFlixPatrolHTMLPage('/test-path');
+
+      expect(result).toBe('<html>via impit</html>');
+      expect(mockFetch).toHaveBeenCalledWith('https://flixpatrol.com/test-path');
+    });
+  });
+
   describe('HTML parsing (via static methods)', () => {
     // Test parsePage indirectly through the public static parseTop10Page pattern
     // We need to make the parsing methods accessible for testing
