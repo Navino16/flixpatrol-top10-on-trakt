@@ -148,6 +148,11 @@ export class Utils {
           crons: ['0 6 * * *'],
           runOnStart: false,
         },
+        FlareSolverr: {
+          enabled: false,
+          url: 'http://localhost:8191/v1',
+          maxTimeout: 60000,
+        },
       };
 
       fs.writeFileSync('./config/default.json', JSON.stringify(defaultConfig, null, 2) + '\n');
