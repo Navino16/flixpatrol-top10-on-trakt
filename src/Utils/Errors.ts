@@ -38,3 +38,13 @@ export class TraktError extends AppError {
     this.name = 'TraktError';
   }
 }
+
+/**
+ * Error thrown when FlareSolverr session management fails
+ */
+export class FlareSolverrError extends AppError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FlareSolverrError';
+  }
+}
