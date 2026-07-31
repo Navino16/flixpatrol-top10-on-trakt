@@ -471,11 +471,11 @@ To run this application you need a Trakt account and a Client ID / Client Secret
 
 ## Supported Platforms
 
-### Top 10 Platforms (72)
+### Top 10 Platforms (74)
 
 `9now`, `abema`, `amazon`, `amazon-channels`, `amazon-prime`, `amc-plus`, `antenna-tv`, `apple-tv`, `bbc`, `canal`, `catchplay`, `cda`, `chili`, `claro-video`, `coupang-play`, `crunchyroll`, `discovery-plus`, `disney`, `francetv`, `friday`, `globoplay`, `go3`, `google`, `hami-video`, `hayu`, `hbo-max`, `hrti`, `hulu`, `hulu-nippon`, `itunes`, `jiocinema`, `jiohotstar`, `joyn`, `lemino`, `m6plus`, `mgm-plus`, `myvideo`, `neon-tv`, `netflix`, `now`, `oneplay`, `osn`, `paramount-plus`, `peacock`, `player`, `pluto-tv`, `raiplay`, `rakuten-tv`, `rtl-plus`, `sbs`, `shahid`, `skyshowtime`, `stan`, `starz`, `streamz`, `telasa`, `tf1`, `tod`, `trueid`, `tubi`, `tv-2-norge`, `u-next`, `viaplay`, `videoland`, `vidio`, `viki`, `viu`, `vix`, `voyo`, `vudu`, `watchit`, `wavve`, `wow`, `zee5`
 
-### Popular Sources (12)
+### Popular Sources (2)
 
 `wikipedia`, `youtube`
 
