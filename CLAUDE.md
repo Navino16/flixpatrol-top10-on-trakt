@@ -26,6 +26,9 @@ src/
 ├── Flixpatrol/
 │   ├── index.ts                # Exports FlixPatrol class and types
 │   └── FlixPatrol.ts           # Web scraping logic
+├── FlareSolverr/
+│   ├── index.ts                # Exports FlareSolverrClient
+│   └── FlareSolverrClient.ts   # FlareSolverr v1 protocol client (sessions + request.get)
 ├── Trakt/
 │   ├── index.ts                # Exports TraktAPI class and types
 │   └── TraktAPI.ts             # Trakt.tv API wrapper
@@ -41,14 +44,16 @@ src/
 **`src/app.ts`** - Entry point flow:
 1. `Utils.ensureConfigExist()` - creates default config if missing
 2. Loads and validates all configurations via `GetAndValidateConfigs`
-3. Initializes `FlixPatrol` and `TraktAPI` instances
-4. Calls `trakt.connect()` (OAuth device flow)
-5. Processes Top10 → Popular → MostWatched lists sequentially
-6. For each: scrape FlixPatrol → convert to Trakt IDs → sync list
+3. Calls `runPipeline()`, which:
+   1. Creates the FlareSolverr session, if enabled
+   2. Initializes `FlixPatrol` and `TraktAPI` instances
+   3. Calls `trakt.connect()` (OAuth device flow)
+   4. Processes Top10 → Popular → MostWatched lists sequentially (for each: scrape FlixPatrol → convert to Trakt IDs → sync list)
+   5. Destroys the FlareSolverr session in a `finally` block, once the run ends
 
 **`src/Flixpatrol/FlixPatrol.ts`** - Web scraping:
 - Platform/location constants defined as const arrays (type guards derive from these)
-- Uses axios for HTTP requests with custom User-Agent
+- Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured
 - HTML parsing via JSDOM with XPath expressions
 - File-system caching with `file-system-cache` (SHA1 keys, TTL-based, separate caches for movies/TV shows)
 
@@ -122,6 +127,11 @@ File: `config/default.json`
     enabled: boolean,
     savePath: string,  // cache directory
     ttl: number  // seconds (default: 604800 = 7 days)
+  },
+  FlareSolverr: {
+    enabled: boolean,  // default: false
+    url?: string,  // mandatory when enabled, e.g. http://localhost:8191/v1
+    maxTimeout: number  // default: 60000
   }
 }
 ```

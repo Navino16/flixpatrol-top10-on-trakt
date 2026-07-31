@@ -10,6 +10,13 @@ vi.mock('../../src/Trakt', () => ({
 vi.mock('../../src/Flixpatrol', () => ({
   FlixPatrol: vi.fn().mockImplementation(function FlixPatrolMock() { return { getTop10Sections }; }),
 }));
+const createSession = vi.fn().mockResolvedValue(undefined);
+const destroySession = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../src/FlareSolverr', () => ({
+  FlareSolverrClient: vi.fn().mockImplementation(function FlareSolverrClientMock() {
+    return { createSession, destroySession, get: vi.fn() };
+  }),
+}));
 vi.mock('../../src/Utils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/Utils')>();
   return {
@@ -78,5 +85,49 @@ describe('runPipeline abort checkpoint', () => {
     expect(deps.dispatch).not.toHaveBeenCalledWith('error', expect.objectContaining({
       title: expect.stringContaining('run interrupted'),
     }));
+  });
+});
+
+describe('runPipeline FlareSolverr lifecycle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not create a session when the config is absent', async () => {
+    await runPipeline(baseDeps());
+
+    expect(createSession).not.toHaveBeenCalled();
+    expect(destroySession).not.toHaveBeenCalled();
+  });
+
+  it('does not create a session when disabled', async () => {
+    await runPipeline(baseDeps({
+      flareSolverrOptions: { enabled: false, maxTimeout: 60000 },
+    }));
+
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('creates and destroys the session when enabled', async () => {
+    await runPipeline(baseDeps({
+      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000 },
+    }));
+
+    expect(createSession).toHaveBeenCalledOnce();
+    expect(destroySession).toHaveBeenCalledOnce();
+  });
+
+  it('destroys the session even when the run throws', async () => {
+    getTop10Sections.mockRejectedValueOnce(new Error('scrape exploded'));
+
+    await expect(runPipeline(baseDeps({
+      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000 },
+      flixPatrolTop10: [{
+        platform: 'netflix', location: 'world', fallback: false,
+        privacy: 'private', limit: 10, type: 'both',
+      }],
+    }))).rejects.toThrow('scrape exploded');
+
+    expect(destroySession).toHaveBeenCalledOnce();
   });
 });

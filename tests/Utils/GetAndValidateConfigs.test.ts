@@ -434,5 +434,50 @@ describe('GetAndValidateConfigs', () => {
           .toThrow(/invalid cron expression/i);
       });
     });
+
+    describe('getFlareSolverrOptions', () => {
+      it('returns disabled defaults when the FlareSolverr block is absent', () => {
+        vi.mocked(config.has).mockReturnValue(false);
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result).toEqual({ enabled: false, maxTimeout: 60000 });
+      });
+
+      it('returns disabled defaults without error when present but disabled', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: false });
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result).toEqual({ enabled: false, maxTimeout: 60000 });
+      });
+
+      it('returns a valid enabled configuration', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({
+          enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 90000,
+        });
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result).toEqual({
+          enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 90000,
+        });
+      });
+
+      it('defaults maxTimeout to 60000 when omitted', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true, url: 'http://localhost:8191/v1' });
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result.maxTimeout).toBe(60000);
+      });
+
+      it('throws when enabled with no url', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true });
+        expect(() => GetAndValidateConfigs.getFlareSolverrOptions()).toThrow(ConfigurationError);
+      });
+
+      it('throws when url is not a valid URL', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true, url: 'not-a-url' });
+        expect(() => GetAndValidateConfigs.getFlareSolverrOptions()).toThrow(ConfigurationError);
+      });
+    });
   });
 });

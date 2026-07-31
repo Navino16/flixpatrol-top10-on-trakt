@@ -293,6 +293,48 @@ The whole `Schedule` block is optional — omit it entirely (or leave `enabled: 
 </details>
 
 <details>
+<summary><strong>FlareSolverr</strong> — Cloudflare challenge bypass (optional)</summary>
+
+FlixPatrol is behind a Cloudflare managed challenge that returns HTTP 403 to
+non-browser clients. [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)
+solves that challenge and proxies the request.
+
+This block is **entirely optional**. If it is absent, or `enabled` is `false`, the
+tool behaves exactly as before and never contacts FlareSolverr.
+
+| Name       | Description                                    | Mandatory        | Values                    | Default |
+|------------|------------------------------------------------|------------------|---------------------------|---------|
+| enabled    | Route FlixPatrol requests through FlareSolverr  | No               | true, false               | false   |
+| url        | FlareSolverr v1 API endpoint                    | If enabled       | Any valid URL             |         |
+| maxTimeout | Challenge solving timeout in milliseconds       | No               | Number                    | 60000   |
+
+When enabled, a browser session is created once at the start of each run and
+destroyed at the end. The first request solves the challenge (around 12s); later
+requests reuse the session and take 1-3s each.
+
+Run FlareSolverr alongside the tool:
+
+```yaml
+# docker-compose.yml
+services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    # Published on loopback only: FlareSolverr has no authentication and must not
+    # be reachable from the network.
+    ports:
+      - "127.0.0.1:8191:8191"
+    environment:
+      - LOG_LEVEL=info
+    restart: unless-stopped
+```
+
+If the tool itself runs in Docker on the same Compose network, use the service name
+instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
+
+</details>
+
+<details>
 <summary><strong>Example configuration</strong></summary>
 
 ```json
@@ -396,6 +438,11 @@ The whole `Schedule` block is optional — omit it entirely (or leave `enabled: 
     "enabled": false,
     "crons": ["0 6 * * *"],
     "runOnStart": false
+  },
+  "FlareSolverr": {
+    "enabled": false,
+    "url": "http://localhost:8191/v1",
+    "maxTimeout": 60000
   }
 }
 ```
@@ -403,6 +450,8 @@ The whole `Schedule` block is optional — omit it entirely (or leave `enabled: 
 The `Notifications` block is fully optional — leave the arrays empty (or omit the block entirely) to disable notifications. See [Notifications](#notifications) above for the supported destination types and a worked example.
 
 The `Schedule` block is fully optional and disabled by default — omit it (or leave `enabled: false`) to keep the classic one-shot behaviour. See [Daemon Mode](#daemon-mode-built-in-scheduling) below.
+
+The `FlareSolverr` block is fully optional and disabled by default — omit it (or leave `enabled: false`) to keep the classic behaviour of talking directly to FlixPatrol.
 
 </details>
 
@@ -534,6 +583,7 @@ lives inside the app itself.
 | "Bad matching"          | This is a FlixPatrol/Trakt limitation. Titles are matched by name and year.              |
 | "Authentication failed" | Delete `./config/.trakt` and re-authenticate.                                            |
 | "Permission denied" on config folder (Docker) | The Docker image runs as a non-root user (`flixpatrol`, UID 1000). Fix permissions with: `sudo chown -R 1000:1000 /path/to/config` |
+| "Unable to get FlixPatrol ... page" with `HTTP 403 (cf-mitigated: challenge)` | Cloudflare is challenging the request. Enable the optional `FlareSolverr` block (see Configuration File). |
 
 ## Development
 
