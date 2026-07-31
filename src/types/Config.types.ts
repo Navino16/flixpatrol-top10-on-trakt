@@ -157,6 +157,15 @@ export const ScheduleOptionsSchema = z.object({
   { message: 'crons must contain at least one expression when enabled' },
 );
 
+export const FlareSolverrOptionsSchema = z.object({
+  enabled: z.boolean().default(false),
+  url: z.url().optional(),
+  maxTimeout: z.number().default(60000),
+}).refine(
+  (f) => !f.enabled || (f.url !== undefined && f.url.length > 0),
+  { message: 'url must be set when enabled' },
+);
+
 // Infer types from schemas
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
@@ -168,3 +177,4 @@ export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;
 export type ScheduleOptions = z.infer<typeof ScheduleOptionsSchema>;
+export type FlareSolverrOptions = z.infer<typeof FlareSolverrOptionsSchema>;
