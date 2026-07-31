@@ -44,11 +44,12 @@ src/
 **`src/app.ts`** - Entry point flow:
 1. `Utils.ensureConfigExist()` - creates default config if missing
 2. Loads and validates all configurations via `GetAndValidateConfigs`
-3. Calls `runPipeline()`, which creates the FlareSolverr session (if enabled) before processing any list, and destroys it in a `finally` block once the run ends
-4. Initializes `FlixPatrol` and `TraktAPI` instances
-5. Calls `trakt.connect()` (OAuth device flow)
-6. Processes Top10 → Popular → MostWatched lists sequentially
-7. For each: scrape FlixPatrol → convert to Trakt IDs → sync list
+3. Calls `runPipeline()`, which:
+   1. Creates the FlareSolverr session, if enabled
+   2. Initializes `FlixPatrol` and `TraktAPI` instances
+   3. Calls `trakt.connect()` (OAuth device flow)
+   4. Processes Top10 → Popular → MostWatched lists sequentially (for each: scrape FlixPatrol → convert to Trakt IDs → sync list)
+   5. Destroys the FlareSolverr session in a `finally` block, once the run ends
 
 **`src/Flixpatrol/FlixPatrol.ts`** - Web scraping:
 - Platform/location constants defined as const arrays (type guards derive from these)
