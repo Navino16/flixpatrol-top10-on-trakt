@@ -18,6 +18,16 @@ const okSolution = (html: string, status = 200) => ({
 const payloadOf = (fetchMock: ReturnType<typeof vi.fn>, call: number): Record<string, unknown> =>
   JSON.parse(fetchMock.mock.calls[call][1].body as string);
 
+// Drives a get() call that is expected to hit the retry backoff at least once.
+// Fake timers are used so the 1s/2s/4s exponential backoff never actually sleeps
+// in the test run; advancing by a generous window flushes any pending retries
+// regardless of how many attempts the scenario needs.
+const runGet = async (target: FlareSolverrClient, url: string): Promise<string | null> => {
+  const promise = target.get(url);
+  await vi.advanceTimersByTimeAsync(10000);
+  return promise;
+};
+
 describe('FlareSolverrClient', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let client: FlareSolverrClient;
@@ -31,6 +41,7 @@ describe('FlareSolverrClient', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   describe('createSession', () => {
@@ -59,6 +70,17 @@ describe('FlareSolverrClient', () => {
       fetchMock.mockResolvedValue(jsonResponse({ status: 'error', message: 'boom' }));
 
       await expect(client.createSession()).rejects.toThrow(/boom/);
+    });
+
+    it('includes the underlying fetch failure cause in the thrown message', async () => {
+      // Node's fetch collapses every transport failure into "TypeError: fetch failed"
+      // and puts the actionable reason in .cause. Without surfacing it, a dead
+      // container, a wrong port, and a DNS failure would all look identical.
+      const transportError = new TypeError('fetch failed');
+      (transportError as { cause?: unknown }).cause = new Error('connect ECONNREFUSED 127.0.0.1:8191');
+      fetchMock.mockRejectedValue(transportError);
+
+      await expect(client.createSession()).rejects.toThrow(/connect ECONNREFUSED 127\.0\.0\.1:8191/);
     });
   });
 
@@ -105,16 +127,19 @@ describe('FlareSolverrClient', () => {
       expect(payloadOf(fetchMock, 1).maxTimeout).toBe(90000);
     });
 
-    it('returns null and logs when the envelope status is not ok', async () => {
+    it('retries an error envelope and returns null after exhausting all attempts', async () => {
+      vi.useFakeTimers();
       const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
       fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
-      fetchMock.mockResolvedValueOnce(jsonResponse({ status: 'error', message: 'challenge failed' }));
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'error', message: 'challenge failed' }));
       await client.createSession();
 
-      const html = await client.get('https://flixpatrol.com/a');
+      const html = await runGet(client, 'https://flixpatrol.com/a');
 
       expect(html).toBeNull();
       expect(errorSpy.mock.calls.map((c) => String(c[0])).join('\n')).toContain('challenge failed');
+      // session.create + 3 request.get attempts
+      expect(fetchMock).toHaveBeenCalledTimes(4);
     });
 
     it('returns null when the solution HTTP status is not 200', async () => {
@@ -125,12 +150,71 @@ describe('FlareSolverrClient', () => {
       await expect(client.get('https://flixpatrol.com/a')).resolves.toBeNull();
     });
 
-    it('returns null on a network error', async () => {
+    it('returns null immediately on a non-retryable solution status, without a second attempt', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
-      fetchMock.mockRejectedValueOnce(new Error('socket hang up'));
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html></html>', 404)));
       await client.createSession();
 
-      await expect(client.get('https://flixpatrol.com/a')).resolves.toBeNull();
+      const html = await client.get('https://flixpatrol.com/a');
+
+      expect(html).toBeNull();
+      // session.create + exactly one request.get attempt, no retry
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns null and logs after exhausting all retries on repeated network errors', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockRejectedValue(new Error('socket hang up'));
+      await client.createSession();
+
+      const html = await runGet(client, 'https://flixpatrol.com/a');
+
+      expect(html).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
+
+    it('retries after a transport failure and succeeds on the second attempt', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockRejectedValueOnce(new Error('socket hang up'));
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html>recovered</html>')));
+      await client.createSession();
+
+      const html = await runGet(client, 'https://flixpatrol.com/a');
+
+      expect(html).toBe('<html>recovered</html>');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('retries after an error envelope and succeeds on a later attempt', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ status: 'error', message: 'challenge failed' }));
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html>recovered</html>')));
+      await client.createSession();
+
+      const html = await runGet(client, 'https://flixpatrol.com/a');
+
+      expect(html).toBe('<html>recovered</html>');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('returns null when an ok/200 envelope carries no response body', async () => {
+      const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockResolvedValueOnce(jsonResponse({
+        status: 'ok',
+        solution: { url: 'https://flixpatrol.com/a', status: 200 },
+      }));
+      await client.createSession();
+
+      const html = await client.get('https://flixpatrol.com/a');
+
+      expect(html).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      // No retry: this is a malformed-but-"ok" response, not a transient failure.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 

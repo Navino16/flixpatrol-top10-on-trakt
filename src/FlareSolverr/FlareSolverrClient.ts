@@ -8,6 +8,11 @@ import type { FlareSolverrOptions } from '../types';
  */
 const SESSION_NAME = 'flixpatrol-top10';
 
+// Mirrors FlixPatrol.ts's own retry constants: same retryable HTTP statuses,
+// same attempt budget, same exponential backoff shape (1s, 2s, 4s).
+const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+
 interface FlareSolverrSolution {
   url: string;
   status: number;
@@ -60,6 +65,25 @@ export class FlareSolverrClient {
   }
 
   /**
+   * Formats a caught error for a thrown/logged message, appending the underlying
+   * `cause` when present. Node's fetch collapses every transport failure — dead
+   * container, wrong port, wrong host, DNS failure, missing `http://` scheme —
+   * into the same generic `TypeError: fetch failed`; the actionable detail lives
+   * in `err.cause`, which is otherwise silently dropped.
+   */
+  private static formatError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    // `Error.cause` (ES2022) isn't in this project's configured TS lib, so it is
+    // read through an explicit shape rather than widening the whole tsconfig target.
+    const cause = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
+    if (cause === undefined) {
+      return message;
+    }
+    const causeText = cause instanceof Error ? cause.message : String(cause);
+    return `${message} (${causeText})`;
+  }
+
+  /**
    * Opens the browser session. Throws on failure: without a session there is no
    * point starting the run, and failing here surfaces a dead container before any
    * list is processed rather than midway through.
@@ -71,7 +95,7 @@ export class FlareSolverrClient {
       envelope = await this.command({ cmd: 'sessions.create', session: SESSION_NAME });
     } catch (err) {
       throw new FlareSolverrError(
-        `sessions.create failed at ${this.endpoint}: ${(err as Error).message}`,
+        `sessions.create failed at ${this.endpoint}: ${FlareSolverrClient.formatError(err)}`,
       );
     }
     if (envelope.status !== 'ok') {
@@ -86,29 +110,65 @@ export class FlareSolverrClient {
   /**
    * Fetches a URL through FlareSolverr. Returns null on any failure, matching the
    * contract of FlixPatrol.getFlixPatrolHTMLPage so callers gain no new case.
+   *
+   * Retries up to MAX_RETRIES times, mirroring the impit retry loop in
+   * FlixPatrol.getFlixPatrolHTMLPage (same attempt budget, same 1s/2s/4s
+   * exponential backoff). This is deliberately selective, not a blanket
+   * retry-on-everything:
+   *  - a thrown/transport error is retried;
+   *  - an envelope with `status !== 'ok'` is retried — this is how FlareSolverr
+   *    reports a challenge-solve timeout, which is measurably flaky;
+   *  - a `solution.status` in RETRY_STATUS_CODES is retried;
+   *  - any other definitive `solution.status` (e.g. 404, 403) returns null
+   *    immediately, exactly as impit does for a non-retryable status — retrying
+   *    would only waste up to two more 60s solves on a page that will never work.
    */
   public async get(url: string): Promise<string | null> {
-    try {
-      const envelope = await this.command({
-        cmd: 'request.get',
-        url,
-        session: this.sessionId ?? SESSION_NAME,
-        maxTimeout: this.maxTimeout,
-      });
-      if (envelope.status !== 'ok') {
-        logger.error(`FlareSolverr failed for ${url}: ${envelope.message ?? envelope.status}`);
-        return null;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      try {
+        const envelope = await this.command({
+          cmd: 'request.get',
+          url,
+          session: this.sessionId ?? SESSION_NAME,
+          maxTimeout: this.maxTimeout,
+        });
+
+        if (envelope.status !== 'ok') {
+          const reason = envelope.message ?? envelope.status;
+          if (attempt === MAX_RETRIES) {
+            logger.error(`FlareSolverr failed for ${url}: ${reason}`);
+            return null;
+          }
+          logger.warn(`Retry attempt ${attempt} for ${url}: ${reason}`);
+        } else if (!envelope.solution || envelope.solution.status !== 200) {
+          const solutionStatus = envelope.solution?.status;
+          const retryable = solutionStatus !== undefined && RETRY_STATUS_CODES.has(solutionStatus);
+          if (!retryable || attempt === MAX_RETRIES) {
+            logger.error(`FlareSolverr returned HTTP ${solutionStatus} for ${url}`);
+            return null;
+          }
+          logger.warn(`Retry attempt ${attempt} for ${url}: HTTP ${solutionStatus}`);
+        } else if (typeof envelope.solution.response !== 'string') {
+          // ok/200 envelope with no usable body: treat as a definitive failure rather
+          // than silently returning undefined (which callers can't distinguish from a
+          // real empty page, and which would flow into JSDOM/downstream parsing).
+          logger.error(`FlareSolverr returned no response body for ${url}`);
+          return null;
+        } else {
+          logger.debug(`FlareSolverr fetched ${url} (HTTP ${envelope.solution.status})`);
+          return envelope.solution.response;
+        }
+      } catch (err) {
+        if (attempt === MAX_RETRIES) {
+          logger.error(`FlareSolverr request failed for ${url}: ${FlareSolverrClient.formatError(err)}`);
+          return null;
+        }
+        logger.warn(`Retry attempt ${attempt} for ${url}: ${FlareSolverrClient.formatError(err)}`);
       }
-      if (!envelope.solution || envelope.solution.status !== 200) {
-        logger.error(`FlareSolverr returned HTTP ${envelope.solution?.status} for ${url}`);
-        return null;
-      }
-      logger.debug(`FlareSolverr fetched ${url} (HTTP ${envelope.solution.status})`);
-      return envelope.solution.response;
-    } catch (err) {
-      logger.error(`FlareSolverr request failed for ${url}: ${(err as Error).message}`);
-      return null;
+      // Exponential backoff: 1s, 2s, 4s
+      await new Promise((resolve) => { setTimeout(resolve, 2 ** (attempt - 1) * 1000); });
     }
+    return null;
   }
 
   /**
@@ -131,7 +191,7 @@ export class FlareSolverrClient {
       }
       logger.debug(`FlareSolverr session ${id} destroyed`);
     } catch (err) {
-      logger.warn(`FlareSolverr sessions.destroy failed for ${id}: ${(err as Error).message}`);
+      logger.warn(`FlareSolverr sessions.destroy failed for ${id}: ${FlareSolverrClient.formatError(err)}`);
     }
   }
 }
