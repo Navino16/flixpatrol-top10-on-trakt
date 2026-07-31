@@ -9,10 +9,24 @@ npm install          # Install dependencies
 npm run build        # Build TypeScript to build/
 npm run start        # Build and run
 npm run start:dev    # Development mode with nodemon hot reload
+npm test             # Run the test suite once (vitest)
+npm run test:watch   # Run tests in watch mode
+npm run test:coverage # Run tests with coverage (reports in .reports/coverage)
 npm run lint         # Run ESLint
 npm run lint-and-fix # Run ESLint with auto-fix
 npm run package      # Create cross-platform binaries in bin/
 ```
+
+### Environment Variables
+
+| Variable | Effect |
+|---|---|
+| `LOG_LEVEL` | `error`, `warn`, `info` (default), `debug`, `silly` |
+| `DRY_RUN` | `true` skips every Trakt write; lists are computed and logged only |
+| `LIST_NAME_PREFIX` | Prefixes every list name, e.g. `[TEST]`. Use it for local runs so real lists are never touched |
+
+When running the app locally to verify a change by hand, always set
+`LIST_NAME_PREFIX="[TEST]"` so nothing writes to the real lists.
 
 ## Architecture Overview
 
@@ -22,17 +36,40 @@ TypeScript CLI tool that scrapes FlixPatrol for streaming platform top 10 lists 
 
 ```
 src/
-├── app.ts                      # Entry point
+├── app.ts                      # Entry point: bootstrap, one-shot vs daemon mode
 ├── Flixpatrol/
 │   ├── index.ts                # Exports FlixPatrol class and types
 │   └── FlixPatrol.ts           # Web scraping logic
+├── FlareSolverr/
+│   ├── index.ts                # Exports FlareSolverrClient
+│   └── FlareSolverrClient.ts   # FlareSolverr v1 protocol client (sessions + request.get)
 ├── Trakt/
 │   ├── index.ts                # Exports TraktAPI class and types
 │   └── TraktAPI.ts             # Trakt.tv API wrapper
+├── Pipeline/
+│   ├── index.ts                # Exports runPipeline
+│   └── runPipeline.ts          # One run: FlareSolverr session lifecycle + all list processing
+├── Scheduler/
+│   ├── index.ts                # Exports Scheduler
+│   └── Scheduler.ts            # Daemon mode: cron-driven repeated runs
+├── Notifications/
+│   ├── index.ts                # Exports NotificationManager and types
+│   ├── NotificationManager.ts  # Dispatches events to configured destinations
+│   ├── Notifier.ts             # Notifier interface
+│   ├── http.ts                 # POST helper with timeout and no-throw contract
+│   ├── types.ts                # Notification config/event types
+│   └── adapters/               # webhook, gotify, ntfy, apprise
+├── types/
+│   ├── index.ts                # Barrel for all types
+│   ├── Config.types.ts         # Zod schemas + inferred config types
+│   ├── FlixPatrol.types.ts     # Platform/location/type unions
+│   └── Trakt.types.ts          # Trakt id types
 └── Utils/
-    ├── index.ts                # Exports logger and Utils
+    ├── index.ts                # Exports logger, Utils, errors, package info
     ├── Logger.ts               # Winston logger config
-    ├── Utils.ts                # Helper functions (sleep, ensureConfigExist)
+    ├── Utils.ts                # Helper functions (sleep, getListName, ensureConfigExist)
+    ├── Errors.ts               # AppError + Configuration/FlixPatrol/Trakt/FlareSolverr errors
+    ├── getPackageInfo.ts       # Reads name/version for logs and notifications
     └── GetAndValidateConfigs.ts # Config validation
 ```
 
@@ -40,15 +77,36 @@ src/
 
 **`src/app.ts`** - Entry point flow:
 1. `Utils.ensureConfigExist()` - creates default config if missing
-2. Loads and validates all configurations via `GetAndValidateConfigs`
-3. Initializes `FlixPatrol` and `TraktAPI` instances
-4. Calls `trakt.connect()` (OAuth device flow)
-5. Processes Top10 → Popular → MostWatched lists sequentially
-6. For each: scrape FlixPatrol → convert to Trakt IDs → sync list
+2. Builds the `NotificationManager` early, so later failures can be notified. Two failures cannot be: a config file that can't be written, and a broken `Notifications` block — no working notifier exists yet at that point.
+3. Loads and validates all configurations via `GetAndValidateConfigs`
+4. Branches on `Schedule.enabled`:
+   - **one-shot** (default, or when no Trakt token exists yet): runs the pipeline once, then exits. `SIGINT` dispatches an `error` notification and exits 130.
+   - **daemon**: hands the pipeline to `Scheduler`, which re-runs it on each cron tick. `SIGTERM`/`SIGINT` stop the scheduler gracefully.
+5. Every exit path flushes pending notification dispatches before `process.exit`, so fire-and-forget notifications are not cut off.
+
+**`src/Pipeline/runPipeline.ts`** - One run:
+1. Creates the FlareSolverr session, if enabled (before any list, so a dead container fails fast)
+2. Initializes `FlixPatrol` and `TraktAPI` instances
+3. Calls `trakt.connect()` (OAuth device flow)
+4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially (for each: scrape FlixPatrol → convert to Trakt IDs → sync list)
+5. Dispatches `run_end` with a summary (lists processed, movies/shows added, duration)
+6. Destroys the FlareSolverr session in a `finally` block, so it also covers the early abort paths and thrown errors
+
+Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current Trakt write, never mid-write.
+
+**`src/Scheduler/Scheduler.ts`** - Daemon mode:
+- Runs the pipeline on `node-cron` schedules; `runOnStart` triggers an immediate first run
+- Guards against overlap: a tick is skipped while a run is still in flight
+- `stop()` awaits the in-flight run so a shutdown never truncates a Trakt write
+
+**`src/Notifications/`** - Event dispatch:
+- Three events: `run_start`, `run_end`, `error`, each with its own list of destinations
+- Adapters: webhook, gotify, ntfy, apprise
+- No-throw contract: a failing destination logs a warning and never breaks a run. Logs carry only the destination host, never the full URL, which would leak webhook secrets
 
 **`src/Flixpatrol/FlixPatrol.ts`** - Web scraping:
 - Platform/location constants defined as const arrays (type guards derive from these)
-- Uses axios for HTTP requests with custom User-Agent
+- Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured
 - HTML parsing via JSDOM with XPath expressions
 - File-system caching with `file-system-cache` (SHA1 keys, TTL-based, separate caches for movies/TV shows)
 
@@ -58,17 +116,20 @@ src/
 - Search: matches titles by name and year
 
 **`src/Utils/GetAndValidateConfigs.ts`** - Configuration validation:
-- Runtime validation of all config properties
-- Exits with `process.exit(1)` on validation errors (no exception handling)
+- Zod schemas validate every config block at load time
+- Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
+- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error
 
 ### Key Types
 
 ```typescript
 // FlixPatrol types
-type FlixPatrolTop10Platform = 'netflix' | 'hbo-max' | 'disney' | 'amazon-prime' | ... // 54 platforms
-type FlixPatrolTop10Location = 'world' | 'france' | 'united-states' | ... // 200+ countries
-type FlixPatrolPopularPlatform = 'movie-db' | 'imdb' | 'letterboxd' | ... // 14 sources
+type FlixPatrolTop10Platform = 'netflix' | 'hbo-max' | 'disney' | 'amazon-prime' | ... // 74 platforms
+type FlixPatrolTop10Location = 'world' | 'france' | 'united-states' | ... // 199 locations
+type FlixPatrolPopularPlatform = 'wikipedia' | 'youtube' // 2 sources
 type FlixPatrolConfigType = 'movies' | 'shows' | 'both'
+type FlixPatrolMostHoursPeriod = 'total' | 'first-week' | 'first-month'
+type FlixPatrolMostHoursLanguage = 'all' | 'english' | 'non-english'
 
 // Trakt types
 type TraktTVId = number | null
@@ -113,6 +174,16 @@ File: `config/default.json`
     original?: boolean,  // Netflix originals only
     orderByViews?: boolean  // sort by views instead of hours
   }],
+  FlixPatrolMostHours: [{  // optional block: absent means []
+    enabled: boolean,
+    privacy: TraktPrivacy,
+    limit: number,  // 1-100
+    type: 'movies' | 'shows' | 'both',
+    period: 'total' | 'first-week' | 'first-month',
+    language?: 'all' | 'english' | 'non-english',  // default: 'all'
+    name?: string,
+    normalizeName?: boolean
+  }],
   Trakt: {
     saveFile: string,  // OAuth token file path
     clientId: string,
@@ -122,6 +193,26 @@ File: `config/default.json`
     enabled: boolean,
     savePath: string,  // cache directory
     ttl: number  // seconds (default: 604800 = 7 days)
+  },
+  Notifications: {  // optional block: absent means {}
+    run_start?: Destination[],
+    run_end?: Destination[],
+    error?: Destination[]
+    // Destination is a discriminated union on `type`:
+    //   { type: 'webhook', url }
+    //   { type: 'gotify',  url, token }
+    //   { type: 'ntfy',    url, topic }
+    //   { type: 'apprise', url, key }
+  },
+  Schedule: {  // optional block: absent means disabled
+    enabled: boolean,  // default: false
+    crons: string[],  // default: []; must be non-empty when enabled
+    runOnStart: boolean  // default: false
+  },
+  FlareSolverr: {  // optional block: absent means disabled
+    enabled: boolean,  // default: false
+    url?: string,  // mandatory when enabled, e.g. http://localhost:8191/v1
+    maxTimeout: number  // default: 60000
   }
 }
 ```
@@ -151,9 +242,12 @@ Detail page (title/year extraction):
 
 ### Error Handling
 
-- **Configuration errors**: `logger.error()` + `process.exit(1)`
-- **API/Network errors**: `logger.error()` + `process.exit(1)` or return null
-- **SIGINT**: Graceful shutdown with log message
+Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `FlixPatrolError`, `TraktError`, `FlareSolverrError`.
+
+- **Configuration errors**: throw `ConfigurationError`, caught in `app.ts` → `error` notification → exit 1
+- **Scraping failures**: `getFlixPatrolHTMLPage` returns `null` (never throws); callers turn that into `FlixPatrolError`, which fails the run
+- **Notification failures**: logged as warnings only — a broken destination never fails a run
+- **SIGINT / SIGTERM**: graceful. One-shot mode dispatches an `error` notification and exits 130; daemon mode stops the scheduler and awaits the in-flight run. An abort checkpoint between lists stops only after the current Trakt write completes
 
 ### Rate Limiting
 

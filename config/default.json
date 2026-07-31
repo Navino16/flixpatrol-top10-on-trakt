@@ -17,7 +17,8 @@
       "privacy": "private",
       "limit": 10,
       "name": "Disney Plus Top 10 Shows",
-      "type": "shows"
+      "type": "shows",
+      "normalizeName": false
     },
     {
       "platform": "amazon-prime",
@@ -26,7 +27,8 @@
       "privacy": "private",
       "limit": 10,
       "name": "Amazon Prime Top 10",
-      "type": "both"
+      "type": "both",
+      "normalizeName": false
     },
     {
       "platform": "apple-tv",
@@ -43,6 +45,17 @@
       "privacy": "private",
       "limit": 10,
       "type": "both"
+    },
+    {
+      "platform": "netflix",
+      "location": "united-states",
+      "fallback": false,
+      "privacy": "private",
+      "limit": 10,
+      "name": "Netflix Top 10 Kids",
+      "normalizeName": false,
+      "type": "both",
+      "kids": true
     }
   ],
   "FlixPatrolPopular": [
@@ -61,6 +74,30 @@
       "limit": 50,
       "type": "both",
       "year": 2024
+    }
+  ],
+  "FlixPatrolMostHours": [
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "both",
+      "period": "total"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "both",
+      "period": "first-week"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 50,
+      "type": "both",
+      "period": "first-month",
+      "language": "english"
     }
   ],
   "Trakt": {
@@ -82,5 +119,10 @@
     "enabled": false,
     "crons": ["0 6 * * *"],
     "runOnStart": false
+  },
+  "FlareSolverr": {
+    "enabled": false,
+    "url": "http://localhost:8191/v1",
+    "maxTimeout": 60000
   }
 }

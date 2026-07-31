@@ -11,6 +11,7 @@ import {
   CacheOptionsSchema,
   NotificationsSchema,
   ScheduleOptionsSchema,
+  FlareSolverrOptionsSchema,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -20,6 +21,7 @@ import type {
   TraktAPIOptions,
   CacheOptions,
   ScheduleOptions,
+  FlareSolverrOptions,
 } from '../types';
 import type { NotificationsConfig } from '../Notifications/types';
 
@@ -138,6 +140,16 @@ export class GetAndValidateConfigs {
         }
       }
       return options;
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getFlareSolverrOptions(): FlareSolverrOptions {
+    try {
+      const data = config.has('FlareSolverr') ? config.get('FlareSolverr') : {};
+      return validateConfig(FlareSolverrOptionsSchema, data, 'FlareSolverr');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);

@@ -197,6 +197,23 @@ describe('Utils', () => {
       expect(parsed).toHaveProperty('Schedule');
     });
 
+    it('should include a disabled FlareSolverr block in the generated config', () => {
+      vi.mocked(fs.existsSync)
+        .mockReturnValueOnce(false) // config/default.json does not exist
+        .mockReturnValueOnce(true); // config directory already exists
+
+      expect(() => Utils.ensureConfigExist()).toThrow('process.exit called');
+
+      const written = vi.mocked(fs.writeFileSync).mock.calls[0][1] as string;
+      const parsed = JSON.parse(written) as { FlareSolverr: Record<string, unknown> };
+      expect(parsed.FlareSolverr).toEqual({
+        enabled: false,
+        url: 'http://localhost:8191/v1',
+        maxTimeout: 60000,
+      });
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
     it('should include Netflix and Disney in FlixPatrolTop10', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 

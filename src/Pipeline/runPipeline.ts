@@ -1,11 +1,12 @@
 import { FlixPatrol } from '../Flixpatrol';
 import { TraktAPI } from '../Trakt';
+import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils } from '../Utils';
 import type {
   NotificationEvent, NotificationPayload, RunSummary,
 } from '../Notifications';
 import type {
-  CacheOptions, FlixPatrolMostWatched, FlixPatrolMostHours,
+  CacheOptions, FlareSolverrOptions, FlixPatrolMostWatched, FlixPatrolMostHours,
   FlixPatrolPopular, FlixPatrolTop10, TraktAPIOptions,
 } from '../types';
 
@@ -16,6 +17,7 @@ export interface RunPipelineDeps {
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
   flixPatrolMostHours: FlixPatrolMostHours[];
+  flareSolverrOptions?: FlareSolverrOptions;
   dispatch: (event: NotificationEvent, payload: NotificationPayload) => Promise<void>;
   dryRun: boolean;
   listNamePrefix: string;
@@ -24,7 +26,32 @@ export interface RunPipelineDeps {
   signal?: AbortSignal;
 }
 
+/**
+ * Owns the FlareSolverr session lifetime, which is exactly one run.
+ *
+ * createSession() runs before any list is processed so an unreachable container
+ * fails the run immediately instead of midway through. destroySession() runs in a
+ * finally — including on the early `return summary` abort paths — because a leaked
+ * session keeps a Chrome resident in the container between runs in daemon mode.
+ */
 export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
+  const flareSolverr = deps.flareSolverrOptions?.enabled
+    ? new FlareSolverrClient(deps.flareSolverrOptions)
+    : undefined;
+
+  if (flareSolverr) {
+    await flareSolverr.createSession();
+  }
+  try {
+    return await executeRun(deps, flareSolverr);
+  } finally {
+    if (flareSolverr) {
+      await flareSolverr.destroySession();
+    }
+  }
+}
+
+async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClient): Promise<RunSummary> {
   const dryRunTag = deps.dryRun ? '[DRY-RUN] ' : '';
 
   const abortedBeforeWrite = async (): Promise<boolean> => {
@@ -52,7 +79,7 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
   logger.silly(`flixPatrolMostHours: ${JSON.stringify(deps.flixPatrolMostHours)}`);
 
-  const flixpatrol = new FlixPatrol(deps.cacheOptions);
+  const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
   const trakt = new TraktAPI({ ...deps.traktOptions, dryRun: deps.dryRun });
 
   const totalLists = deps.flixPatrolTop10.length

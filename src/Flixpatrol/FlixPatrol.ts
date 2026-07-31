@@ -4,6 +4,7 @@ import { Impit } from 'impit';
 import { logger, FlixPatrolError } from '../Utils';
 import type { TraktTVId, TraktTVIds } from '../types';
 import { TraktAPI } from '../Trakt';
+import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
   FlixPatrolMostWatched,
   FlixPatrolMostHours,
@@ -39,10 +40,17 @@ export class FlixPatrol {
 
   private readonly impit: Impit;
 
-  constructor(cacheOptions: CacheOptions, options: FlixPatrolOptions = {}) {
+  private readonly flareSolverr?: FlareSolverrClient;
+
+  constructor(
+    cacheOptions: CacheOptions,
+    options: FlixPatrolOptions = {},
+    flareSolverr?: FlareSolverrClient,
+  ) {
     this.options.url = options.url || 'https://flixpatrol.com';
     // Use Impit with Chrome browser impersonation to bypass Cloudflare's TLS fingerprint check.
     this.impit = new Impit({ browser: 'chrome', timeout: 30000 });
+    this.flareSolverr = flareSolverr;
     if (cacheOptions.enabled) {
       this.tvCache = Cache({
         basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
@@ -80,14 +88,29 @@ export class FlixPatrol {
     const url = `${this.options.url}${path}`;
     logger.silly(`Accessing URL: ${url}`);
 
+    // When FlareSolverr is configured, every request goes through it. We do not try
+    // impit first: FlixPatrol currently answers 403 (cf-mitigated: challenge) to
+    // any non-browser client, and making the bypass conditional on that exact
+    // header would silently stop working if Cloudflare changed the signal.
+    // No retry loop here — FlareSolverr retries internally, and wrapping a 12s
+    // challenge solve in a 3x exponential backoff produces pathological runtimes.
+    if (this.flareSolverr) {
+      return this.flareSolverr.get(url);
+    }
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
       try {
         const res = await this.impit.fetch(url);
-        logger.silly(`Status code: ${res.status}`);
+        logger.debug(`Status code: ${res.status} for ${url}`);
         if (res.status === 200) {
           return await res.text();
         }
         if (!RETRY_STATUS_CODES.has(res.status) || attempt === MAX_RETRIES) {
+          // Cloudflare sets cf-mitigated when it blocks or challenges a request, which is the
+          // difference between "FlixPatrol is down" and "we got bot-blocked".
+          const cfMitigated = res.headers?.get('cf-mitigated');
+          const cfSuffix = cfMitigated ? ` (cf-mitigated: ${cfMitigated})` : '';
+          logger.error(`Giving up on ${url}: HTTP ${res.status}${cfSuffix}`);
           return null;
         }
         logger.warn(`Retry attempt ${attempt} for ${url}: HTTP ${res.status}`);
