@@ -515,10 +515,10 @@ describe('GetAndValidateConfigs', () => {
         expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
       });
 
-      // A raw Zod dump on a 2.x file reads "invalid discriminator value" and tells
-      // the user nothing. These lock the actionable message instead.
-      describe('2.x migration', () => {
-        it('shows the Target block to write, carrying the legacy Trakt values across', () => {
+      // A raw Zod dump on an unmigrated file reads "invalid discriminator value" and
+      // tells the user nothing. These lock the actionable message instead.
+      describe('unmigrated configurations', () => {
+        it('shows the Target block to write, carrying the root Trakt values across', () => {
           useConfig({
             Trakt: { saveFile: './config/.trakt', clientId: 'my-id', clientSecret: 'my-secret' },
           });
@@ -541,7 +541,9 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toMatch(/invalid|expected|Target\.type:/i);
         });
 
-        it('carries the legacy Floppy values across when Target only selects the backend', () => {
+        // The selector-only `Target` never shipped: it existed briefly while 3.0.0
+        // was being built. Detected all the same, for anyone who ran that build.
+        it('carries the root Floppy values across when Target only selects the backend', () => {
           useConfig({
             Target: { type: 'floppy' },
             Floppy: { url: 'http://floppy:8000', apiKey: 'floppy-token' },
@@ -569,24 +571,56 @@ describe('GetAndValidateConfigs', () => {
           expect(message).toContain('Then remove the old `Trakt` block.');
         });
 
-        it('lists every stale legacy block that has to go', () => {
-          useConfig({
-            Target: {
-              type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
-            },
-            Trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
-            Mdblist: { apiKey: 'key' },
-          });
-
-          expect(() => GetAndValidateConfigs.getTargetOptions())
-            .toThrow(/Then remove the old `Trakt`, `Mdblist` blocks\./);
-        });
-
-        it('reports the migration when no Target and no legacy block exist at all', () => {
+        it('reports the migration when no Target and no root credential block exist at all', () => {
           useConfig({});
 
           expect(() => GetAndValidateConfigs.getTargetOptions())
             .toThrow(/Configuration format changed in 3\.0\.0\./);
+        });
+      });
+
+      // Dead config is not a reason to refuse to start: a correct migration that
+      // left the old block behind must boot, with a warning and nothing more.
+      describe('obsolete root-level blocks alongside a valid Target', () => {
+        const validTarget = {
+          type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
+        };
+
+        it('starts normally and warns once when a root Trakt block is left over', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+          useConfig({
+            Target: validTarget,
+            Trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
+          });
+
+          expect(GetAndValidateConfigs.getTargetOptions()).toEqual(validTarget);
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn.mock.calls[0][0]).toContain('`Trakt`');
+          expect(warn.mock.calls[0][0]).toMatch(/no longer\s+read and can be deleted/);
+          warn.mockRestore();
+        });
+
+        it('names every obsolete block in the single warning', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+          useConfig({
+            Target: validTarget,
+            Trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
+            Mdblist: { apiKey: 'key' },
+          });
+
+          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn.mock.calls[0][0]).toContain('`Trakt`, `Mdblist`');
+          warn.mockRestore();
+        });
+
+        it('stays silent on a clean migrated configuration', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+          useConfig({ Target: validTarget });
+
+          expect(GetAndValidateConfigs.getTargetOptions()).toEqual(validTarget);
+          expect(warn).not.toHaveBeenCalled();
+          warn.mockRestore();
         });
       });
     });

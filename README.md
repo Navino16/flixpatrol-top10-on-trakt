@@ -94,9 +94,10 @@ the `Target` block, which carries both the backend name and its credentials; eve
 else in the configuration stays the same.
 
 > **Warning**
-> The `Target` block changed shape in **3.0.0** and the root-level `Trakt`, `Floppy` and
-> `Mdblist` blocks are gone. See [Migrating from 2.x](#migrating-from-2x) — the app detects
-> the old format at startup and prints the exact block to write.
+> The `Target` block is **new in 3.0.0**. It replaces the root-level `Trakt` block, which is
+> the only backend configuration earlier versions had. See
+> [Migrating from 2.x](#migrating-from-2x) — the app detects the old format at startup and
+> prints the exact block to write.
 
 |                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
 |--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
@@ -153,21 +154,15 @@ list is created private and a warning says so once at startup.
 
 ## Migrating from 2.x
 
-In 2.x the backend was selected by a `Target` block and its credentials lived in a separate
-root-level block, of which two were always dead weight. In 3.0.0 they are a single
-discriminated union: the `Target` block carries `type` **and** the credentials for that
-backend, and the root-level `Trakt`, `Floppy` and `Mdblist` blocks are no longer read.
+Up to and including **2.17.0** the only backend was Trakt, configured by a root-level `Trakt`
+block. 3.0.0 adds Floppy and mdblist, so the backend is now chosen explicitly: the new
+`Target` block carries `type` **and** the credentials of that backend, and the root-level
+`Trakt` block is no longer read.
 
-The app detects the old format at startup, prints the exact block to write with your own
-values already filled in, and exits without touching your file — the config directory is
-frequently a read-only mount, and the file is usually version-controlled, so nothing is
-rewritten on your behalf.
-
-**Trakt**
+There is exactly one change to make — rename the block and add `"type": "trakt"`:
 
 ```jsonc
-// before (2.x)
-"Target": { "type": "trakt" },
+// before (2.17.0)
 "Trakt": {
   "saveFile": "./config/.trakt",
   "clientId": "your-trakt-client-id",
@@ -183,44 +178,24 @@ rewritten on your behalf.
 }
 ```
 
-**Floppy**
+Nothing else in your configuration changes. Floppy and mdblist are new in 3.0.0 and have
+nothing to migrate — see [Choosing Your Platform](#choosing-your-platform) for their `Target`
+blocks.
 
-```jsonc
-// before (2.x)
-"Target": { "type": "floppy" },
-"Floppy": {
-  "url": "http://localhost:8000",
-  "apiKey": "your-floppy-token"
-}
+The app detects the old format at startup, prints the exact block to write with your own
+values already filled in, and exits without touching your file — the config directory is
+frequently a read-only mount, and the file is usually version-controlled, so nothing is
+rewritten on your behalf.
 
-// after (3.0.0)
-"Target": {
-  "type": "floppy",
-  "url": "http://localhost:8000",
-  "apiKey": "your-floppy-token"
-}
-```
+Three more points:
 
-**mdblist**
-
-```jsonc
-// before (2.x)
-"Target": { "type": "mdblist" },
-"Mdblist": { "apiKey": "your-mdblist-api-key" }
-
-// after (3.0.0)
-"Target": {
-  "type": "mdblist",
-  "apiKey": "your-mdblist-api-key"
-}
-```
-
-Two more points:
-
-- The `Target` block is no longer optional. A configuration with neither `Target` nor a
-  root-level credential block gets the same migration message, defaulting to the Trakt shape.
+- The `Target` block is mandatory. A configuration with neither `Target` nor a root-level
+  `Trakt` block gets the same migration message, defaulting to the Trakt shape.
+- Leaving the old `Trakt` block behind is harmless. Once `Target` is valid the app starts
+  normally and only logs a warning naming the obsolete block, so you can delete it whenever
+  you like.
 - If `<Cache.savePath>/movies` or `<Cache.savePath>/tv-shows` still exist, they are leftovers
-  from the pre-2.x cache layout and nothing reads them any more. A warning names them at
+  from the 2.x cache layout and nothing reads them any more. A warning names them at
   startup; delete them yourself whenever you like — the app never removes your files.
 
 ## Configuration
@@ -417,7 +392,7 @@ credentials that backend needs. The block is mandatory.
 | url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
 | apiKey              | Floppy API token (Settings → Advanced), or mdblist API key (preferences page)          | If `type` is floppy or mdblist | A valid string |                 |
 
-The root-level `Trakt`, `Floppy` and `Mdblist` blocks of 2.x no longer exist — see
+It replaces the root-level `Trakt` block of 2.17.0 and earlier — see
 [Migrating from 2.x](#migrating-from-2x). See
 [Choosing Your Platform](#choosing-your-platform) for the trade-offs between the three
 backends.

@@ -127,7 +127,7 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - Platform/location constants defined as const arrays (type guards derive from these)
 - Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured
 - HTML parsing via JSDOM with XPath expressions
-- File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. Pre-2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
+- File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. The 2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
 
 **`src/Trakt/TraktAPI.ts`** - Trakt.tv integration:
 - OAuth device flow: user visits verification_url, enters code, token saved to file
@@ -139,7 +139,8 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
 - Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error. `Target` is **not** optional since 3.0.0
 - `getTargetOptions()` returns the `Target` discriminated union straight from Zod — backend and credentials in one block, so `createTarget` narrows on `type` and hands the same object to the adapter
-- **2.x detection**: a root-level `Trakt`/`Floppy`/`Mdblist` block, or a `Target` carrying only `type`, throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
+- **Unmigrated-config detection**: `Target` absent, or present but failing the union — including the never-released intermediate shape where it carried only `type` — throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim from the root-level `Trakt`/`Floppy`/`Mdblist` block (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
+- **Obsolete blocks are not fatal**: once `Target` satisfies the union, a leftover root-level `Trakt`/`Floppy`/`Mdblist` block only produces one `warn` naming it. Rejecting a correctly migrated config over dead config would be an outage for nothing. Only `Trakt` ever shipped (2.17.0 and earlier); `Floppy` and `Mdblist` existed solely in an unreleased intermediate shape and are deliberately absent from README
 - `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all four list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list)
 
 ### Key Types
@@ -212,9 +213,9 @@ File: `config/default.json`
     name?: string,
     normalizeName?: boolean
   }],
-  // MANDATORY since 3.0.0. Zod discriminated union on `type`: the block carries the
-  // backend AND its credentials, so an invalid pairing is unrepresentable. The
-  // root-level `Trakt` / `Floppy` / `Mdblist` blocks of 2.x are gone.
+  // NEW and MANDATORY in 3.0.0. Zod discriminated union on `type`: the block carries
+  // the backend AND its credentials, so an invalid pairing is unrepresentable. It
+  // replaces the root-level `Trakt` block, the only backend config 2.17.0 had.
   Target:
     | { type: 'trakt',
         saveFile: string,      // OAuth token file path

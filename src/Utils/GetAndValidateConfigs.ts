@@ -66,12 +66,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
   && value !== null
   && !Array.isArray(value);
 
-/** Root-level credential blocks of 2.x, dropped in 3.0.0 in favour of the `Target` union. */
-const LEGACY_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
+/**
+ * Root-level credential blocks that 3.0.0 does not read. Only `Trakt` ever
+ * shipped, in 2.17.0 and earlier. `Floppy` and `Mdblist` existed solely in an
+ * unreleased intermediate shape of this branch; they are listed here so anyone
+ * running that intermediate shape gets the same guidance, and they are
+ * deliberately absent from the user-facing documentation.
+ */
+const OBSOLETE_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
 
-type LegacyBlockName = (typeof LEGACY_CREDENTIAL_BLOCKS)[number];
+type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
 
-const LEGACY_BLOCK_OF: Record<TargetBackendName, LegacyBlockName> = {
+const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
   trakt: 'Trakt',
   floppy: 'Floppy',
   mdblist: 'Mdblist',
@@ -116,35 +122,52 @@ function renderTargetBlock(
 
 /**
  * Builds the migration message. It shows the block to write rather than dumping
- * a schema error, because the raw Zod output on a 2.x file ("invalid
+ * a schema error, because the raw Zod output on an unmigrated file ("invalid
  * discriminator value") tells the user nothing about what to do next.
  */
 function buildMigrationMessage(
   type: TargetBackendName,
-  presentLegacyBlocks: LegacyBlockName[],
+  presentObsoleteBlocks: ObsoleteBlockName[],
   targetRecord: Record<string, unknown> | undefined,
-  legacyRecord: Record<string, unknown> | undefined,
+  obsoleteRecord: Record<string, unknown> | undefined,
 ): string {
-  const sourceBlock = LEGACY_BLOCK_OF[type];
-  const head = presentLegacyBlocks.includes(sourceBlock)
+  const sourceBlock = OBSOLETE_BLOCK_OF[type];
+  const head = presentObsoleteBlocks.includes(sourceBlock)
     ? `Replace your root-level \`${sourceBlock}\` block with:`
     : 'Your `Target` block must now carry the credentials of the selected backend. Replace it with:';
-  const tail = presentLegacyBlocks.length > 0
-    ? `Then remove the old ${presentLegacyBlocks.map((b) => `\`${b}\``).join(', ')} `
-      + `block${presentLegacyBlocks.length > 1 ? 's' : ''}.`
-    : 'The root-level `Trakt`, `Floppy` and `Mdblist` blocks are no longer read.';
+  const tail = presentObsoleteBlocks.length > 0
+    ? `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
+      + `block${presentObsoleteBlocks.length > 1 ? 's' : ''}.`
+    : 'Credentials live in the `Target` block itself: there is no separate root-level '
+      + 'credential block.';
 
   return [
     'Configuration format changed in 3.0.0.',
     '',
     head,
     '',
-    // An already-migrated `Target` wins over a stale legacy block, so a partial
-    // migration is echoed back with the values the user most recently wrote.
-    renderTargetBlock(type, [targetRecord, legacyRecord]),
+    // An already-migrated `Target` wins over an obsolete root-level block, so a
+    // partial migration is echoed back with the values the user most recently wrote.
+    renderTargetBlock(type, [targetRecord, obsoleteRecord]),
     '',
     tail,
   ].join('\n');
+}
+
+/**
+ * Names the obsolete root-level blocks a migrated configuration still carries.
+ * Dead config is harmless — it is never read — so this is a single warning and
+ * never an error: refusing to start would turn a successful migration into an
+ * outage.
+ */
+function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): void {
+  if (presentObsoleteBlocks.length === 0) return;
+
+  const names = presentObsoleteBlocks.map((block) => `\`${block}\``).join(', ');
+  const plural = presentObsoleteBlocks.length > 1;
+  logger.warn(`Obsolete root-level ${names} block${plural ? 's' : ''} found in your configuration. `
+    + `Credentials now live in the \`Target\` block, so ${plural ? 'they are' : 'it is'} no longer `
+    + `read and can be deleted.`);
 }
 
 export class GetAndValidateConfigs {
@@ -192,55 +215,71 @@ export class GetAndValidateConfigs {
   }
 
   /**
-   * Returns the actionable migration message when the configuration still uses
-   * the 2.x shape, `null` when it is already in the 3.0.0 shape.
+   * Returns the actionable migration message when the configuration has not been
+   * migrated to the 3.0.0 `Target` block, `null` when the schema should report
+   * the problem itself.
    *
-   * Two signals mark a 2.x file: a root-level credential block that nothing
-   * reads any more, and a `Target` that carries only the selector (including no
-   * `Target` at all, which used to default to Trakt).
+   * Only reached once `Target` has failed to satisfy the union, so it never sees
+   * an already-migrated file. Two signals mark an unmigrated one: a root-level
+   * credential block that nothing reads any more, and a `Target` that carries
+   * only the selector — including no `Target` at all.
    */
-  private static detectLegacyTargetConfig(): string | null {
-    const presentLegacyBlocks = LEGACY_CREDENTIAL_BLOCKS.filter((block) => config.has(block));
-    const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
+  private static detectUnmigratedConfig(
+    rawTarget: unknown,
+    presentObsoleteBlocks: ObsoleteBlockName[],
+  ): string | null {
     const targetRecord = isRecord(rawTarget) ? rawTarget : undefined;
 
-    // A `Target` that is present but not an object is not a 2.x shape: let the
-    // schema report it instead of guessing a migration.
+    // A `Target` that is present but not an object is not an unmigrated shape:
+    // let the schema report it instead of guessing a migration.
     if (rawTarget !== undefined && targetRecord === undefined) {
-      if (presentLegacyBlocks.length === 0) return null;
-      return buildMigrationMessage('trakt', presentLegacyBlocks, undefined, undefined);
+      if (presentObsoleteBlocks.length === 0) return null;
+      return buildMigrationMessage('trakt', presentObsoleteBlocks, undefined, undefined);
     }
 
     const selectorOnly = targetRecord === undefined
       || Object.keys(targetRecord).every((key) => key === 'type');
-    if (presentLegacyBlocks.length === 0 && !selectorOnly) return null;
+    if (presentObsoleteBlocks.length === 0 && !selectorOnly) return null;
 
-    // Which backend to show: what the user selected, else the single legacy
+    // Which backend to show: what the user selected, else the single obsolete
     // block they kept, else the historical default.
     const selected = targetRecord?.type;
     let type: TargetBackendName = 'trakt';
     if (isBackendName(selected)) {
       type = selected;
-    } else if (presentLegacyBlocks.length === 1) {
-      type = targetBackend.find((backend) => LEGACY_BLOCK_OF[backend] === presentLegacyBlocks[0]) ?? 'trakt';
+    } else if (presentObsoleteBlocks.length === 1) {
+      type = targetBackend
+        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'trakt';
     }
 
-    const legacyBlock = LEGACY_BLOCK_OF[type];
-    const rawLegacy: unknown = config.has(legacyBlock) ? config.get(legacyBlock) : undefined;
+    const obsoleteBlock = OBSOLETE_BLOCK_OF[type];
+    const rawObsolete: unknown = config.has(obsoleteBlock) ? config.get(obsoleteBlock) : undefined;
     return buildMigrationMessage(
       type,
-      presentLegacyBlocks,
+      presentObsoleteBlocks,
       targetRecord,
-      isRecord(rawLegacy) ? rawLegacy : undefined,
+      isRecord(rawObsolete) ? rawObsolete : undefined,
     );
   }
 
   public static getTargetOptions(): TargetOptions {
     try {
-      const migration = GetAndValidateConfigs.detectLegacyTargetConfig();
+      const presentObsoleteBlocks = OBSOLETE_CREDENTIAL_BLOCKS.filter((block) => config.has(block));
+      const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
+
+      // A valid `Target` is a migrated configuration, whatever else is lying
+      // around: obsolete root-level blocks are dead config, worth a warning and
+      // never a failed startup.
+      const parsed = TargetSchema.safeParse(rawTarget);
+      if (parsed.success) {
+        warnAboutObsoleteBlocks(presentObsoleteBlocks);
+        return parsed.data;
+      }
+
+      const migration = GetAndValidateConfigs.detectUnmigratedConfig(rawTarget, presentObsoleteBlocks);
       if (migration !== null) throw new ConfigurationError(migration);
 
-      return validateConfig(TargetSchema, config.get('Target'), 'Target');
+      return validateConfig(TargetSchema, rawTarget, 'Target');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
