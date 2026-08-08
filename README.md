@@ -90,7 +90,13 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 ## Choosing Your Platform
 
 The lists this tool builds can be written to three different backends. Pick one with
-the `Target` block; everything else in the configuration stays the same.
+the `Target` block, which carries both the backend name and its credentials; everything
+else in the configuration stays the same.
+
+> **Warning**
+> The `Target` block changed shape in **3.0.0** and the root-level `Trakt`, `Floppy` and
+> `Mdblist` blocks are gone. See [Migrating from 2.x](#migrating-from-2x) — the app detects
+> the old format at startup and prints the exact block to write.
 
 |                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
 |--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
@@ -98,18 +104,15 @@ the `Target` block; everything else in the configuration stays the same.
 | Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
 | Hosting            | none                           | none              | none               | none                | you provide it                              |
 | Authentication     | OAuth device flow              | OAuth device flow | API key            | API key             | API key                                     |
-| `privacy` honoured | 4 levels                       | 4 levels          | public/private     | public/private      | ignored, set it by hand in the web UI       |
+| `privacy` honoured | 4 levels                       | 4 levels          | public/private only | public/private only | ignored, set it by hand in the web UI       |
 | Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
 
 ### Trakt (default)
 
-The `Target` block is optional: omitting it entirely keeps the historical Trakt
-behaviour, so existing configurations need no change at all.
-
 ```json
 {
-  "Target": { "type": "trakt" },
-  "Trakt": {
+  "Target": {
+    "type": "trakt",
     "saveFile": "./config/.trakt",
     "clientId": "your-trakt-client-id",
     "clientSecret": "your-trakt-client-secret"
@@ -121,8 +124,8 @@ behaviour, so existing configurations need no change at all.
 
 ```json
 {
-  "Target": { "type": "floppy" },
-  "Floppy": {
+  "Target": {
+    "type": "floppy",
     "url": "http://localhost:8000",
     "apiKey": "your-floppy-token"
   }
@@ -133,12 +136,92 @@ behaviour, so existing configurations need no change at all.
 
 ```json
 {
-  "Target": { "type": "mdblist" },
-  "Mdblist": {
+  "Target": {
+    "type": "mdblist",
     "apiKey": "your-mdblist-api-key"
   }
 }
 ```
+
+### Privacy levels per backend
+
+`privacy` on a list entry takes `private`, `link`, `friends` or `public`. The last two are
+Trakt concepts with no equivalent elsewhere, so **the app refuses to start** when `link` or
+`friends` is used with `Target.type` set to `floppy` or `mdblist` — the error names each
+offending block and index. On Floppy, visibility cannot be set through the API at all: every
+list is created private and a warning says so once at startup.
+
+## Migrating from 2.x
+
+In 2.x the backend was selected by a `Target` block and its credentials lived in a separate
+root-level block, of which two were always dead weight. In 3.0.0 they are a single
+discriminated union: the `Target` block carries `type` **and** the credentials for that
+backend, and the root-level `Trakt`, `Floppy` and `Mdblist` blocks are no longer read.
+
+The app detects the old format at startup, prints the exact block to write with your own
+values already filled in, and exits without touching your file — the config directory is
+frequently a read-only mount, and the file is usually version-controlled, so nothing is
+rewritten on your behalf.
+
+**Trakt**
+
+```jsonc
+// before (2.x)
+"Target": { "type": "trakt" },
+"Trakt": {
+  "saveFile": "./config/.trakt",
+  "clientId": "your-trakt-client-id",
+  "clientSecret": "your-trakt-client-secret"
+}
+
+// after (3.0.0)
+"Target": {
+  "type": "trakt",
+  "saveFile": "./config/.trakt",
+  "clientId": "your-trakt-client-id",
+  "clientSecret": "your-trakt-client-secret"
+}
+```
+
+**Floppy**
+
+```jsonc
+// before (2.x)
+"Target": { "type": "floppy" },
+"Floppy": {
+  "url": "http://localhost:8000",
+  "apiKey": "your-floppy-token"
+}
+
+// after (3.0.0)
+"Target": {
+  "type": "floppy",
+  "url": "http://localhost:8000",
+  "apiKey": "your-floppy-token"
+}
+```
+
+**mdblist**
+
+```jsonc
+// before (2.x)
+"Target": { "type": "mdblist" },
+"Mdblist": { "apiKey": "your-mdblist-api-key" }
+
+// after (3.0.0)
+"Target": {
+  "type": "mdblist",
+  "apiKey": "your-mdblist-api-key"
+}
+```
+
+Two more points:
+
+- The `Target` block is no longer optional. A configuration with neither `Target` nor a
+  root-level credential block gets the same migration message, defaulting to the Trakt shape.
+- If `<Cache.savePath>/movies` or `<Cache.savePath>/tv-shows` still exist, they are leftovers
+  from the pre-2.x cache layout and nothing reads them any more. A warning names them at
+  startup; delete them yourself whenever you like — the app never removes your files.
 
 ## Configuration
 
@@ -320,32 +403,40 @@ If there is any configuration error, the tool will exit with information about t
 </details>
 
 <details>
-<summary><strong>Target</strong> — Which backend the lists are written to (optional)</summary>
+<summary><strong>Target</strong> — Which backend the lists are written to, and its credentials</summary>
 
-| Name           | Description                                    | Mandatory | Values                   | Default |
-|----------------|------------------------------------------------|-----------|--------------------------|---------|
-| Target.type    | Which backend receives the generated lists     | No        | trakt, floppy, mdblist   | trakt   |
-| Floppy.url     | Base URL of your Floppy instance               | If `type: "floppy"`  | Any valid URL | |
-| Floppy.apiKey  | Floppy API token (Settings → Advanced)         | If `type: "floppy"`  | A valid string | |
-| Mdblist.apiKey | mdblist API key (preferences page)             | If `type: "mdblist"` | A valid string | |
+`Target` is a discriminated union on `type`: it carries the backend name **and** exactly the
+credentials that backend needs. The block is mandatory.
 
-The whole `Target` block is optional — omit it and the tool writes to Trakt exactly as
-it always has. See [Choosing Your Platform](#choosing-your-platform) for the trade-offs
-between the three backends.
+| Name                | Description                                                                            | Mandatory             | Values                 | Default         |
+|---------------------|----------------------------------------------------------------------------------------|-----------------------|------------------------|-----------------|
+| type                | Which backend receives the generated lists                                             | Yes                   | trakt, floppy, mdblist |                 |
+| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | ./config/.trakt |
+| clientId            | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))     | If `type: "trakt"`    | A valid string         |                 |
+| clientSecret        | Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new)) | If `type: "trakt"`    | A valid string         |                 |
+| url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
+| apiKey              | Floppy API token (Settings → Advanced), or mdblist API key (preferences page)          | If `type` is floppy or mdblist | A valid string |                 |
+
+The root-level `Trakt`, `Floppy` and `Mdblist` blocks of 2.x no longer exist — see
+[Migrating from 2.x](#migrating-from-2x). See
+[Choosing Your Platform](#choosing-your-platform) for the trade-offs between the three
+backends.
 
 </details>
 
 <details>
-<summary><strong>Trakt & Cache</strong> — Authentication and caching</summary>
+<summary><strong>Cache</strong> — Caching</summary>
 
-| Name              | Description                                                                                          | Mandatory | Values         | Default          |
-|-------------------|------------------------------------------------------------------------------------------------------|-----------|----------------|------------------|
-| Trakt.saveFile    | Where to save the Trakt session file                                                                 | Yes       | Any valid path | ./config/.trakt  |
-| Trakt.clientId    | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))                   | Yes       | A valid string |                  |
-| Trakt.clientSecret| Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new))               | Yes       | A valid string |                  |
-| Cache.enabled     | Enable caching? (recommended)                                                                        | Yes       | true, false    | true             |
-| Cache.savePath    | Where to save the cache files                                                                        | Yes       | Any valid path | ./config/.cache  |
-| Cache.ttl         | Cache validity duration in seconds                                                                   | Yes       | Number > 0     | 604800 (7 days)  |
+| Name              | Description                                | Mandatory | Values         | Default          |
+|-------------------|--------------------------------------------|-----------|----------------|------------------|
+| Cache.enabled     | Enable caching? (recommended)              | Yes       | true, false    | true             |
+| Cache.savePath    | Where to save the cache files              | Yes       | Any valid path | ./config/.cache  |
+| Cache.ttl         | Cache validity duration in seconds         | Yes       | Number > 0     | 604800 (7 days)  |
+
+The cache has two levels under `savePath`: `details/` for the scraped FlixPatrol detail
+pages, and `resolution-<backend>/` for the title-to-identifier mapping of each backend. Older
+`movies/` and `tv-shows/` directories are leftovers and can be deleted; a startup warning
+names them if they are still there.
 
 </details>
 
@@ -489,7 +580,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
       "language": "english"
     }
   ],
-  "Trakt": {
+  "Target": {
+    "type": "trakt",
     "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"
@@ -550,12 +642,12 @@ tool at your instance and it will create and refresh lists there instead of on T
    the process is killed in that narrow window, the stray row stays behind — on a
    dedicated account it is harmless noise, on your own account it pollutes your watchlist.
 2. Log in as that account and copy its token from **Settings → Advanced**.
-3. Put it in `Floppy.apiKey`, and your instance URL in `Floppy.url`.
+3. Put it in `Target.apiKey`, and your instance URL in `Target.url`.
 
 ```json
 {
-  "Target": { "type": "floppy" },
-  "Floppy": {
+  "Target": {
+    "type": "floppy",
     "url": "http://localhost:8000",
     "apiKey": "your-floppy-token"
   }
@@ -564,9 +656,11 @@ tool at your instance and it will create and refresh lists there instead of on T
 
 > **Note**
 > The Floppy API exposes no way to set a list's visibility, so the `privacy` field of your
-> list entries is ignored and every list the tool creates stays private. If you want to
-> share one, flip it by hand in the web UI. This blocks nothing in practice: **Kometa
-> reads private lists with the same token**, so a private list is fully usable.
+> list entries is ignored and every list the tool creates stays private — a warning says so
+> once at startup. If you want to share one, flip it by hand in the web UI. This blocks
+> nothing in practice: **Kometa reads private lists with the same token**, so a private list
+> is fully usable. Note that `link` and `friends` are rejected outright on this backend, as
+> they are Trakt-only concepts.
 
 When wiring the result into [Kometa](https://kometa.wiki/), prefer the `floppy_list`
 builder over `floppy_list_details`: the latter overwrites your Plex collection summary
@@ -579,16 +673,20 @@ Floppy's native `latest_update` field instead of a "Last Updated" description.
 
 1. Create an account and copy your API key from your
    [preferences page](https://mdblist.com/preferences/).
-2. Put it in `Mdblist.apiKey`.
+2. Put it in `Target.apiKey`.
 
 ```json
 {
-  "Target": { "type": "mdblist" },
-  "Mdblist": {
+  "Target": {
+    "type": "mdblist",
     "apiKey": "your-mdblist-api-key"
   }
 }
 ```
+
+> **Note**
+> mdblist only knows public and private lists, so `link` and `friends` are rejected at
+> startup on this backend. Use `private` or `public`.
 
 > **Warning**
 > A free mdblist account is capped at **4 static lists**. Configure more entries than that

@@ -106,12 +106,6 @@ export const TraktOptionsSchema = z.object({
   clientSecret: z.string(),
 });
 
-export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
-
-export const TargetSchema = z.object({
-  type: z.enum(targetBackend).default('trakt'),
-});
-
 export const FloppyOptionsSchema = z.object({
   url: z.url(),
   apiKey: z.string().min(1, 'apiKey must not be empty'),
@@ -120,6 +114,24 @@ export const FloppyOptionsSchema = z.object({
 export const MdblistOptionsSchema = z.object({
   apiKey: z.string().min(1, 'apiKey must not be empty'),
 });
+
+export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
+
+/**
+ * The backend selector and its credentials are one discriminated union rather
+ * than a selector plus three sibling credential blocks. A `Target` entry
+ * therefore carries exactly the fields its backend needs, and combinations such
+ * as "type: floppy with only Trakt credentials" are no longer representable.
+ */
+export const TraktTargetSchema = TraktOptionsSchema.extend({ type: z.literal('trakt') });
+export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
+export const MdblistTargetSchema = MdblistOptionsSchema.extend({ type: z.literal('mdblist') });
+
+export const TargetSchema = z.discriminatedUnion('type', [
+  TraktTargetSchema,
+  FloppyTargetSchema,
+  MdblistTargetSchema,
+]);
 
 export const CacheOptionsSchema = z.object({
   enabled: z.boolean(),
@@ -193,10 +205,13 @@ export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
 export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
 
-export type TargetOptions =
-  | { type: 'trakt'; trakt: TraktAPIOptions }
-  | { type: 'floppy'; floppy: FloppyOptions }
-  | { type: 'mdblist'; mdblist: MdblistOptions };
+/**
+ * Still a discriminated union on `type`, so `createTarget` keeps narrowing on
+ * it — only the credentials are now inlined instead of nested under a
+ * per-backend key.
+ */
+export type TargetOptions = z.infer<typeof TargetSchema>;
+export type TraktPrivacy = z.infer<typeof TraktPrivacySchema>;
 
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;

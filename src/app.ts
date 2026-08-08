@@ -99,16 +99,29 @@ async function bootstrapConfigs(): Promise<{
   try {
     logger.info('Loading all configurations values');
     const cacheOptions = GetAndValidateConfigs.getCacheOptions();
+    Utils.warnAboutOrphanedCaches(cacheOptions.savePath);
+
+    const targetOptions = GetAndValidateConfigs.getTargetOptions();
+    const lists = {
+      FlixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
+      FlixPatrolPopular: GetAndValidateConfigs.getFlixPatrolPopular(),
+      FlixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
+      FlixPatrolMostHours: GetAndValidateConfigs.getFlixPatrolMostHours(),
+    };
+    // Cross-check and backend-wide warnings need both halves loaded, hence here
+    // and not inside any single schema.
+    GetAndValidateConfigs.checkTargetCompatibility(targetOptions, lists);
+
     // Built exactly once per process: the daemon auth gate below and every
     // scheduled run then share one adapter, and one resolution cache.
-    const target = createTarget(GetAndValidateConfigs.getTargetOptions(), cacheOptions, dryRun);
+    const target = createTarget(targetOptions, cacheOptions, dryRun);
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,
       target,
-      flixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
-      flixPatrolPopulars: GetAndValidateConfigs.getFlixPatrolPopular(),
-      flixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
-      flixPatrolMostHours: GetAndValidateConfigs.getFlixPatrolMostHours(),
+      flixPatrolTop10: lists.FlixPatrolTop10,
+      flixPatrolPopulars: lists.FlixPatrolPopular,
+      flixPatrolMostWatched: lists.FlixPatrolMostWatched,
+      flixPatrolMostHours: lists.FlixPatrolMostHours,
       flareSolverrOptions: GetAndValidateConfigs.getFlareSolverrOptions(),
       dispatch,
       dryRun,

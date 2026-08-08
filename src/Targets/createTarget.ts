@@ -9,12 +9,14 @@ export function createTarget(
   cacheOptions: CacheOptions,
   dryRun: boolean,
 ): ListTarget {
+  // Each branch narrows to the variant carrying exactly that backend's
+  // credentials, which is structurally the options object every adapter expects.
   switch (options.type) {
     case 'floppy':
-      return new FloppyTarget(options.floppy, cacheOptions, dryRun);
+      return new FloppyTarget(options, cacheOptions, dryRun);
     case 'mdblist':
-      return new MdblistTarget(options.mdblist, cacheOptions, dryRun);
+      return new MdblistTarget(options, cacheOptions, dryRun);
     default:
-      return new TraktTarget(options.trakt, cacheOptions, dryRun);
+      return new TraktTarget(options, cacheOptions, dryRun);
   }
 }

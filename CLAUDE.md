@@ -85,7 +85,7 @@ src/
 **`src/app.ts`** - Entry point flow:
 1. `Utils.ensureConfigExist()` - creates default config if missing
 2. Builds the `NotificationManager` early, so later failures can be notified. Two failures cannot be: a config file that can't be written, and a broken `Notifications` block — no working notifier exists yet at that point.
-3. Loads and validates all configurations via `GetAndValidateConfigs`
+3. Loads and validates all configurations via `GetAndValidateConfigs`, then runs the startup checks that need several blocks at once: `Utils.warnAboutOrphanedCaches()` and `GetAndValidateConfigs.checkTargetCompatibility()`
 4. Branches on `Schedule.enabled`:
    - **one-shot** (default, or when no Trakt token exists yet): runs the pipeline once, then exits. `SIGINT` dispatches an `error` notification and exits 130.
    - **daemon**: hands the pipeline to `Scheduler`, which re-runs it on each cron tick. `SIGTERM`/`SIGINT` stop the scheduler gracefully.
@@ -127,7 +127,7 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - Platform/location constants defined as const arrays (type guards derive from these)
 - Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured
 - HTML parsing via JSDOM with XPath expressions
-- File-system caching with `file-system-cache` (SHA1 keys, TTL-based, separate caches for movies/TV shows)
+- File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. Pre-2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
 
 **`src/Trakt/TraktAPI.ts`** - Trakt.tv integration:
 - OAuth device flow: user visits verification_url, enters code, token saved to file
@@ -137,8 +137,10 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 **`src/Utils/GetAndValidateConfigs.ts`** - Configuration validation:
 - Zod schemas validate every config block at load time
 - Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
-- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`, `Target`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error
-- `getTargetOptions()` returns a discriminated union: an absent `Target` block resolves to `{ type: 'trakt' }`, and only then is the `Trakt` block validated. `Floppy`/`Mdblist` are validated only when the matching `type` is selected, so a user on one backend never has to fill in the others
+- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error. `Target` is **not** optional since 3.0.0
+- `getTargetOptions()` returns the `Target` discriminated union straight from Zod — backend and credentials in one block, so `createTarget` narrows on `type` and hands the same object to the adapter
+- **2.x detection**: a root-level `Trakt`/`Floppy`/`Mdblist` block, or a `Target` carrying only `type`, throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
+- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all four list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list)
 
 ### Key Types
 
@@ -210,21 +212,19 @@ File: `config/default.json`
     name?: string,
     normalizeName?: boolean
   }],
-  Target: {  // optional block: absent means { type: 'trakt' }
-    type: 'trakt' | 'floppy' | 'mdblist'  // default: 'trakt'
-  },
-  Floppy: {  // required only when Target.type === 'floppy'
-    url: string,     // base URL of the instance, e.g. http://localhost:8000
-    apiKey: string   // token from Settings -> Advanced (non-empty)
-  },
-  Mdblist: {  // required only when Target.type === 'mdblist'
-    apiKey: string   // non-empty
-  },
-  Trakt: {  // still validated whenever Target.type resolves to 'trakt'
-    saveFile: string,  // OAuth token file path
-    clientId: string,
-    clientSecret: string
-  },
+  // MANDATORY since 3.0.0. Zod discriminated union on `type`: the block carries the
+  // backend AND its credentials, so an invalid pairing is unrepresentable. The
+  // root-level `Trakt` / `Floppy` / `Mdblist` blocks of 2.x are gone.
+  Target:
+    | { type: 'trakt',
+        saveFile: string,      // OAuth token file path
+        clientId: string,
+        clientSecret: string }
+    | { type: 'floppy',
+        url: string,           // base URL of the instance, e.g. http://localhost:8000
+        apiKey: string }       // token from Settings -> Advanced (non-empty)
+    | { type: 'mdblist',
+        apiKey: string },      // non-empty
   Cache: {
     enabled: boolean,
     savePath: string,  // cache directory

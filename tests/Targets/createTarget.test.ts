@@ -6,8 +6,7 @@ const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 describe('createTarget', () => {
   it('builds a Trakt target', () => {
     const target = createTarget({
-      type: 'trakt',
-      trakt: { saveFile: './x', clientId: 'a', clientSecret: 'b' },
+      type: 'trakt', saveFile: './x', clientId: 'a', clientSecret: 'b',
     }, cacheOptions, false);
     expect(target.backend).toBe('trakt');
     expect(target.requiresInteractiveAuth).toBe(true);
@@ -15,15 +14,14 @@ describe('createTarget', () => {
 
   it('builds a Floppy target that needs no interactive auth', () => {
     const target = createTarget({
-      type: 'floppy',
-      floppy: { url: 'http://floppy:8000', apiKey: 'token' },
+      type: 'floppy', url: 'http://floppy:8000', apiKey: 'token',
     }, cacheOptions, false);
     expect(target.backend).toBe('floppy');
     expect(target.requiresInteractiveAuth).toBe(false);
   });
 
   it('builds an mdblist target', () => {
-    const target = createTarget({ type: 'mdblist', mdblist: { apiKey: 'k' } }, cacheOptions, false);
+    const target = createTarget({ type: 'mdblist', apiKey: 'k' }, cacheOptions, false);
     expect(target.backend).toBe('mdblist');
   });
 });
