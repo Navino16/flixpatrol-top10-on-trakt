@@ -56,7 +56,7 @@ const detailPage = (title: string, year: number) => `
 
 // A detail page whose header carries a title but no premiere block at all.
 const NO_YEAR_DETAIL_HTML = '<div class="info-grid"><div class="info-grid-header">'
-  + '<h1 class="mb-4 text-h1">Sans Annee</h1></div></div>';
+  + '<h1 class="mb-4 text-h1">Movie Without Year</h1></div></div>';
 
 // The site-wide marketing blurb that lives in `div.mb-6` on every detail page. It ends
 // in a hardcoded "2021", which a text-scanning year fallback would happily pick up and
@@ -1961,7 +1961,7 @@ describe('FlixPatrol', () => {
       await cached.getPopular('Movies', config);
       const afterSecond = mockFetch.mock.calls.length;
 
-      expect(first).toEqual([{ title: 'Sans Annee', year: null }]);
+      expect(first).toEqual([{ title: 'Movie Without Year', year: null }]);
       expect(afterFirst - before).toBe(3);
       // Same cost again: nothing was cached, so both detail pages are re-fetched.
       expect(afterSecond - afterFirst).toBe(3);

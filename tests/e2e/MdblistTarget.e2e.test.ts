@@ -4,26 +4,27 @@ import {
 import { MdblistTarget } from '../../src/Targets/adapters/MdblistTarget';
 
 /**
- * Suite E2E : elle parle au vrai service mdblist et n'est activée que si
- * `E2E_MDBLIST_API_KEY` est fournie. Sans elle la suite est ignorée, de sorte
- * qu'une CI sans secrets reste verte.
+ * E2E suite: it talks to the real mdblist service and is only enabled when
+ * `E2E_MDBLIST_API_KEY` is provided. Without it the suite is skipped, so that a
+ * CI without secrets stays green.
  *
- * Le compte de test est un compte gratuit appartenant à une vraie personne, ce
- * qui impose trois règles absolues :
- * - toute liste créée l'est en `private`, jamais autrement ;
- * - `afterAll` supprime la liste créée, le palier gratuit ne tolérant que
- *   quatre listes statiques ;
- * - le budget est de 1 000 requêtes par jour, donc la suite tient sous une
- *   vingtaine d'appels et journalise le quota restant à la fin.
+ * The test account is a free account belonging to a real person, which imposes
+ * three absolute rules:
+ * - every list created is created as `private`, never otherwise;
+ * - `afterAll` deletes the list it created, the free tier only tolerating four
+ *   static lists;
+ * - the budget is 1,000 requests per day, so the suite stays under about twenty
+ *   calls and logs the remaining quota at the end.
  *
- * Tout ce qui est vérifié l'est en interrogeant le service directement en
- * `fetch`, jamais via l'adapter : c'est l'état réel du service qui fait foi.
+ * Everything that is checked is checked by querying the service directly with
+ * `fetch`, never through the adapter: the real state of the service is what
+ * counts.
  */
 const apiKey = process.env.E2E_MDBLIST_API_KEY ?? '';
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 const BASE = 'https://api.mdblist.com';
 
-// Nom unique par exécution : deux lancements concurrents ne se détruisent pas.
+// Unique name per run: two concurrent runs do not destroy each other.
 const listName = `e2e-probe-${process.pid}-${Date.now().toString(36)}`;
 
 const INCEPTION = 27205;
@@ -39,7 +40,7 @@ interface UserList {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-/** Appel direct à l'API, sans passer par l'adapter. */
+/** Direct call to the API, without going through the adapter. */
 const api = async (
   path: string,
   method: 'GET' | 'DELETE' = 'GET',
@@ -89,7 +90,7 @@ const readListItems = async (listId: number): Promise<{ movies: number[]; shows:
 
 describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   let target: MdblistTarget;
-  // Partagés entre les cas : les relire coûterait des requêtes du budget quotidien.
+  // Shared between cases: re-reading them would cost requests from the daily budget.
   let listId = 0;
   let updatedBeforeReplace = '';
 
@@ -98,8 +99,8 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   });
 
   afterAll(async () => {
-    // La liste doit disparaître quoi qu'il arrive : le palier gratuit n'en
-    // tolère que quatre, et une liste orpheline brûlerait le quota du compte.
+    // The list must disappear whatever happens: the free tier only tolerates
+    // four of them, and an orphaned list would burn the account's quota.
     const list = await findList(listName);
     if (list === null) {
       console.warn(`[E2E] mdblist list "${listName}" was already absent, nothing to clean`);
@@ -121,7 +122,7 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
 
     const list = await findList(listName);
     expect(list).not.toBeNull();
-    // Exigence du propriétaire du compte : jamais autre chose que privé.
+    // Requirement from the account owner: never anything other than private.
     expect(list?.private).toBe(true);
 
     listId = list?.id ?? 0;
@@ -139,7 +140,7 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
 
     const items = await readListItems(listId);
     expect(items.movies).toEqual([FIGHT_CLUB]);
-    // L'autre bucket n'est pas touché : un push de films ne purge pas les séries.
+    // The other bucket is untouched: a movie push does not purge the shows.
     expect(items.shows).toEqual([BREAKING_BAD]);
 
     const after = await findList(listName);

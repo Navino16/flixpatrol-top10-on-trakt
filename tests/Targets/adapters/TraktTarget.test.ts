@@ -52,8 +52,8 @@ describe('TraktTarget', () => {
 
   it('passes year 0 when the media item has no year', async () => {
     getFirstItemByQuery.mockResolvedValueOnce({ movie: { ids: { trakt: 1 } } });
-    await target.resolveMany([{ title: 'Sans Année', year: null }], 'movie');
-    expect(getFirstItemByQuery).toHaveBeenCalledWith('movie', 'Sans Année', 0);
+    await target.resolveMany([{ title: 'Movie Without Year', year: null }], 'movie');
+    expect(getFirstItemByQuery).toHaveBeenCalledWith('movie', 'Movie Without Year', 0);
   });
 
   it('drops unresolved items and de-duplicates the rest', async () => {

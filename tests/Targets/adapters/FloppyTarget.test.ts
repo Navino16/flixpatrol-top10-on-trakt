@@ -166,7 +166,7 @@ describe('FloppyTarget', () => {
           { item: { media_id: '2', source: 'tmdb', media_type: 'tv' } },
         ],
       }))
-      .mockResolvedValueOnce(json({}, 204)) // DELETE du seul film
+      .mockResolvedValueOnce(json({}, 204)) // DELETE of the only movie
       .mockResolvedValueOnce(json([{ list_id: 7 }]));
     await target.pushToList(['tmdb:3'], 'my-list', 'movie', 'public');
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/');

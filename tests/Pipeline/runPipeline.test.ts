@@ -65,12 +65,12 @@ const warnSpy = logger.warn as unknown as ReturnType<typeof vi.fn>;
 const sillySpy = logger.silly as unknown as ReturnType<typeof vi.fn>;
 const debugSpy = logger.debug as unknown as ReturnType<typeof vi.fn>;
 
-/** Nom de liste passé à pushToList lors du n-ième write (0-indexé). */
+/** List name passed to pushToList on the nth write (0-indexed). */
 function listNameOfWrite(index: number): string {
   return String(pushToList.mock.calls[index][1]);
 }
 
-/** Payload de la notification `event` la plus récente. */
+/** Payload of the most recent `event` notification. */
 function lastPayload(
   dispatch: RunPipelineDeps['dispatch'],
   event: string,

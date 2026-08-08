@@ -4,30 +4,31 @@ import {
 import { FloppyTarget } from '../../src/Targets/adapters/FloppyTarget';
 
 /**
- * Suite E2E : elle parle à une vraie instance Floppy et n'est activée que si
- * `E2E_FLOPPY_URL` et `E2E_FLOPPY_API_KEY` sont fournis. Sans eux la suite est
- * ignorée, de sorte qu'une CI sans secrets reste verte.
+ * E2E suite: it talks to a real Floppy instance and is only enabled when
+ * `E2E_FLOPPY_URL` and `E2E_FLOPPY_API_KEY` are provided. Without them the
+ * suite is skipped, so that a CI without secrets stays green.
  *
- * Tout ce qui est vérifié l'est en interrogeant le serveur directement en
- * `fetch`, jamais via l'adapter : c'est l'état réel du service qui fait foi.
+ * Everything that is checked is checked by querying the server directly with
+ * `fetch`, never through the adapter: the real state of the service is what
+ * counts.
  *
- * ── Le piège du catalogue ────────────────────────────────────────────────────
- * Le catalogue de médias de Floppy est **commun à toute l'instance**, pas propre
- * à l'utilisateur, et il ne fait que grossir. Un média déjà catalogué répond
- * 200 au premier `PUT` (chemin « chaud », une seule écriture) ; un média absent
- * du catalogue répond 404 et déclenche la séquence d'amorçage
- * `POST` → `PUT` → `DELETE` (chemin « froid »).
+ * ── The catalogue trap ───────────────────────────────────────────────────────
+ * Floppy's media catalogue is **shared across the whole instance**, not specific
+ * to the user, and it only ever grows. An already-catalogued media answers 200
+ * to the first `PUT` (the "warm" path, a single write); a media absent from the
+ * catalogue answers 404 and triggers the bootstrap sequence
+ * `POST` → `PUT` → `DELETE` (the "cold" path).
  *
- * Les deux chemins sont couverts ici, et le chemin froid choisit son média
- * **dynamiquement** : figer un id le condamnerait à devenir chaud dès que
- * quelqu'un l'ajoute à l'instance, et le test passerait alors en silence sans
- * plus rien couvrir.
+ * Both paths are covered here, and the cold path picks its media
+ * **dynamically**: freezing an id would doom it to become warm as soon as
+ * somebody adds it to the instance, and the test would then silently pass
+ * without covering anything anymore.
  */
 const url = process.env.E2E_FLOPPY_URL?.replace(/\/+$/, '') ?? '';
 const apiKey = process.env.E2E_FLOPPY_API_KEY ?? '';
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 
-// Noms uniques par exécution : deux lancements concurrents ne se détruisent pas.
+// Unique names per run: two concurrent runs do not destroy each other.
 const runId = `${process.pid}-${Date.now().toString(36)}`;
 const listName = `e2e-probe-${runId}`;
 const coldListName = `e2e-cold-${runId}`;
@@ -37,12 +38,12 @@ const INCEPTION = '27205';
 const FIGHT_CLUB = '550';
 const BREAKING_BAD = '1396';
 
-// Requête large : elle fournit plusieurs dizaines de candidats, donc de vrais ids
-// TMDB amorçables, parmi lesquels chercher un média encore absent du catalogue.
-// Les candidats sont parcourus dans l'ordre de pertinence : les entrées
-// canoniques, les mieux renseignées côté TMDB, viennent en tête et sont donc les
-// plus sûres à amorcer. Chaque exécution en consomme définitivement une (le
-// catalogue ne rétrécit jamais), d'où la taille du vivier.
+// Broad query: it yields several dozen candidates, hence real bootstrappable
+// TMDB ids, among which to look for a media still absent from the catalogue.
+// The candidates are walked in relevance order: the canonical entries, the best
+// documented on the TMDB side, come first and are therefore the safest ones to
+// bootstrap. Each run consumes one of them for good (the catalogue never
+// shrinks), hence the size of the pool.
 const COLD_CANDIDATES_QUERY = 'The Godfather';
 const COLD_CANDIDATES_LIMIT = 100;
 
@@ -63,7 +64,7 @@ const asId = (value: unknown): string | null => {
   return null;
 };
 
-/** Appel direct à l'API, sans passer par l'adapter. Le statut est exposé, on en a besoin. */
+/** Direct call to the API, without going through the adapter. The status is exposed, we need it. */
 const request = async (
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
@@ -98,7 +99,7 @@ const createList = async (name: string): Promise<number> => {
   return payload.id;
 };
 
-/** Contenu réel de la liste, réduit au couple type + identifiant. */
+/** Real content of the list, reduced to the type + identifier pair. */
 const readListItemsById = async (listId: number): Promise<FloppyItem[]> => {
   const { payload } = await request('GET', `/api/v1/lists/${listId}/items/`);
   const items: FloppyItem[] = [];
@@ -118,8 +119,8 @@ const readListItems = async (name: string): Promise<FloppyItem[]> => {
 };
 
 /**
- * Les médias suivis par l'utilisateur. Une entrée ici après un simple ajout en
- * liste signifierait que l'adapter a laissé un statut « Planning » derrière lui.
+ * The media tracked by the user. An entry here after a plain list addition
+ * would mean the adapter left a "Planning" status behind it.
  */
 const readTrackedIds = async (type: 'movie' | 'tv'): Promise<string[]> => {
   const { payload } = await request('GET', `/api/v1/media/${type}/`);
@@ -138,14 +139,15 @@ const deleteListByName = async (name: string): Promise<void> => {
 };
 
 /**
- * Cherche un film encore absent du catalogue de l'instance.
+ * Looks for a movie still absent from the instance catalogue.
  *
- * Les candidats viennent de la recherche Floppy, donc ce sont de vrais ids TMDB
- * que l'amorçage saura résoudre. Et la recherche, elle, ne met rien en
- * catalogue : un `PUT` sur un candidat reste 404 après l'avoir cherché, c'est
- * vérifié sur l'instance. Le test de froideur est le `PUT` lui-même — 404
- * signifie « absent du catalogue » et n'a rien modifié côté serveur ; un
- * candidat déjà chaud atterrit dans la liste jetable, qui est détruite ensuite.
+ * The candidates come from the Floppy search, so they are real TMDB ids that
+ * the bootstrap will know how to resolve. And the search itself catalogues
+ * nothing: a `PUT` on a candidate still answers 404 after having searched for
+ * it, this is verified on the instance. The coldness test is the `PUT` itself —
+ * a 404 means "absent from the catalogue" and changed nothing server-side; an
+ * already-warm candidate lands in the throwaway list, which is destroyed
+ * afterwards.
  */
 const findUncataloguedMovie = async (scratchListId: number): Promise<string | null> => {
   const query = `search=${encodeURIComponent(COLD_CANDIDATES_QUERY)}&source=tmdb&limit=${COLD_CANDIDATES_LIMIT}`;
@@ -162,7 +164,7 @@ const findUncataloguedMovie = async (scratchListId: number): Promise<string | nu
 
 describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)('FloppyTarget (E2E)', () => {
   let target: FloppyTarget;
-  // Retenu pour que le nettoyage final purge aussi le média du chemin froid.
+  // Kept so that the final cleanup also purges the cold-path media.
   let coldMediaId: string | null = null;
 
   beforeAll(() => {
@@ -173,7 +175,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     for (const name of [listName, coldListName, scratchListName]) {
       await deleteListByName(name);
     }
-    // Filet de sécurité : ne purge que les médias que cette suite a pu suivre.
+    // Safety net: only purges the media this suite could have tracked.
     const ownMovies = [INCEPTION, FIGHT_CLUB, ...(coldMediaId === null ? [] : [coldMediaId])];
     for (const mediaId of ownMovies) {
       await request('DELETE', `/api/v1/media/movie/tmdb/${mediaId}/`);
@@ -209,13 +211,13 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
 
     const items = await readListItems(listName);
     expect(items.filter((i) => i.mediaType === 'movie')).toEqual([{ mediaType: 'movie', mediaId: FIGHT_CLUB }]);
-    // L'autre type n'est pas touché : un push de films ne purge pas les séries.
+    // The other type is untouched: a movie push does not purge the shows.
     expect(items.filter((i) => i.mediaType === 'tv')).toEqual([{ mediaType: 'tv', mediaId: BREAKING_BAD }]);
   });
 
   it('costs a single write request on the warm path, for an already-catalogued media', async () => {
-    // Chemin CHAUD : tmdb:550 vient d'être ajouté par le test précédent, il est
-    // donc au catalogue de l'instance et le premier PUT répondra 200.
+    // WARM path: tmdb:550 has just been added by the previous test, so it is in
+    // the instance catalogue and the first PUT will answer 200.
     const real = globalThis.fetch;
     const seen: { method: string; url: string }[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -235,7 +237,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     );
     const puts = seen.filter((c) => c.method === 'PUT');
 
-    // Ni POST d'amorçage au catalogue, ni DELETE de suivi : une seule écriture pour l'ajout.
+    // Neither a catalogue bootstrap POST nor a tracking DELETE: a single write for the addition.
     expect(bootstrap).toHaveLength(0);
     expect(untrack).toHaveLength(0);
     expect(puts).toHaveLength(1);
@@ -243,10 +245,10 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   it('bootstraps an uncatalogued media on the cold path and leaves no tracking entry', async (ctx) => {
-    // Chemin FROID : c'est le code le plus sensible de l'adapter. L'ordre
-    // PUT-d'abord garantit que le DELETE de nettoyage ne peut jamais effacer un
-    // statut saisi à la main, puisqu'il ne s'exécute que sur un média que
-    // l'utilisateur ne suivait pas — celui-ci n'était même pas au catalogue.
+    // COLD path: this is the most sensitive code in the adapter. The PUT-first
+    // order guarantees that the cleanup DELETE can never erase a hand-entered
+    // status, since it only runs on a media the user was not tracking — this
+    // one was not even in the catalogue.
     const scratchListId = await createList(scratchListName);
     coldMediaId = await findUncataloguedMovie(scratchListId);
 
@@ -258,11 +260,11 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
       return;
     }
 
-    // Journalisé : c'est la preuve, dans la sortie de test, que le chemin froid
-    // a bien porté sur un média réel et lequel.
+    // Logged: it is the proof, in the test output, that the cold path really did
+    // act on a real media, and on which one.
     console.info(`[E2E] cold path exercised with uncatalogued movie tmdb:${coldMediaId}`);
 
-    // État de départ prouvé : absent du catalogue, et non suivi par l'utilisateur.
+    // Proven starting state: absent from the catalogue, and not tracked by the user.
     expect(await readTrackedIds('movie')).not.toContain(coldMediaId);
 
     const real = globalThis.fetch;
@@ -278,8 +280,8 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
       globalThis.fetch = real;
     }
 
-    // La séquence d'amorçage a bien eu lieu, et dans cet ordre précis :
-    // PUT (404) → POST catalogue → PUT → DELETE du suivi créé au passage.
+    // The bootstrap sequence did happen, and in this precise order:
+    // PUT (404) → POST catalogue → PUT → DELETE of the tracking created along the way.
     const mediaRoute = `/api/v1/media/movie/tmdb/${coldMediaId}/`;
     const sequence = seen
       .filter((c) => c.url.includes(mediaRoute) || c.url.endsWith('/api/v1/media/movie/'))
@@ -288,9 +290,9 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     expect(seen.some((c) => c.method === 'POST' && c.url.endsWith('/api/v1/media/movie/'))).toBe(true);
     expect(seen.some((c) => c.method === 'DELETE' && c.url.endsWith(mediaRoute))).toBe(true);
 
-    // La garantie que les tests unitaires ne peuvent que postuler, vérifiée
-    // côté serveur : le média EST dans la liste, et il ne reste AUCUNE entrée
-    // de suivi « Planning » pour l'utilisateur E2E.
+    // The guarantee that unit tests can only assume, verified server-side: the
+    // media IS in the list, and NO "Planning" tracking entry is left for the
+    // E2E user.
     const coldListId = await findListId(coldListName);
     expect(coldListId).not.toBeNull();
     expect(await readListItemsById(coldListId as number))
