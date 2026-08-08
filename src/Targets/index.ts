@@ -4,3 +4,4 @@ export type {
 export { isPrivate } from './privacy';
 export { ResolutionCache } from './ResolutionCache';
 export { TraktTarget } from './adapters/TraktTarget';
+export { FloppyTarget } from './adapters/FloppyTarget';
