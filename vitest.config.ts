@@ -5,8 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    // Les suites E2E tapent de vrais services : elles ne doivent ni tourner
-    // dans `npm test`, ni peser sur les seuils de couverture.
+    // The E2E suites hit real services, so they must neither run as part of
+    // `npm test` nor weigh on the coverage thresholds.
     exclude: ['node_modules/**', 'build/**', 'tests/e2e/**'],
     coverage: {
       provider: 'v8',

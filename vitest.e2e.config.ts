@@ -5,8 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/e2e/**/*.e2e.test.ts'],
-    // Les appels réseau réels sont lents et ne doivent pas se marcher dessus :
-    // un seul fichier à la fois, timeout large.
+    // Real network calls are slow and must not step on each other: one file at
+    // a time, with a generous timeout.
     fileParallelism: false,
     testTimeout: 60000,
     hookTimeout: 60000,
