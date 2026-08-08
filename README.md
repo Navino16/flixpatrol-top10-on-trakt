@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  Scrape today's top 10 from FlixPatrol and sync them to Trakt.tv lists.<br/>
-  Supports 72+ streaming platforms, 200+ countries, and is compatible with <a href="https://kometa.wiki/">Kometa</a>.
+  Scrape today's top 10 from FlixPatrol and sync them to Trakt.tv, Floppy or mdblist lists.<br/>
+  Supports 74 streaming platforms, 199 countries/regions, and is compatible with <a href="https://kometa.wiki/">Kometa</a>.
 </p>
 
 <p align="center">
@@ -47,16 +47,20 @@
 > Running at your own risk of being IP banned from FlixPatrol.
 >
 > Due to FlixPatrol limitations, titles are matched on the target backend by name and release year. This may occasionally cause bad matching.
+>
+> When a FlixPatrol detail page exposes no usable premiere date, the year is reported as unknown
+> and the match falls back to the title alone. That is deliberate: a missing year degrades the
+> match, whereas a guessed one would silently select the wrong title.
 
 ## Features
 
-- Sync **Top 10 lists** from 72 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
+- Sync **Top 10 lists** from 74 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
 - Sync **Top 10 Kids lists** from Netflix (country-specific)
 - Sync **Popular lists** from 2 sources (Wikipedia and Youtube)
 - Sync **Netflix Most Watched** annual rankings
 - Sync **Netflix Most Hours** rankings (total, first week, first month)
-- Support for **200+ countries/regions**
-- Intelligent **caching** to reduce API calls (7-day TTL by default)
+- Support for **199 countries/regions**
+- Two-level **caching** to reduce scraping and API calls (7-day TTL by default)
 - Automatic list management (create, update, sync) on **Trakt**, **Floppy** or **mdblist**
 - **Dry-run mode** for safe testing
 - Compatible with [Kometa](https://kometa.wiki/) (formerly Plex Meta Manager)
@@ -210,7 +214,7 @@ Three more points:
 
 #### Dry-Run Mode
 
-Run the tool without modifying Trakt lists. Useful for testing your configuration:
+Run the tool without modifying any list on the configured backend. Useful for testing your configuration:
 
 ```bash
 # Linux/macOS
@@ -222,13 +226,14 @@ docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino1
 
 In dry-run mode:
 - FlixPatrol scraping runs normally
-- Trakt search for ID conversion runs normally
-- OAuth authentication runs normally
+- The backend search that converts titles to identifiers runs normally
+- Authentication runs normally (the OAuth device flow on Trakt, the API key on Floppy and mdblist)
 - List creation, item addition/removal, and updates are **logged but not executed**
+- Notifications are **not** suppressed, so you can test that setup too — see [Notifications](#notifications)
 
 #### List Name Prefix
 
-Prepend a fixed string to every list name. Useful when running the tool against your real Trakt account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
+Prepend a fixed string to every list name. Useful when running the tool against your real backend account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
 
 ```bash
 # Linux/macOS — produces lists like "[TEST]netflix-world-top10-without-fallback"
@@ -316,10 +321,10 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                          | Default                                    |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
-| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                                            |
-| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                                            |
-| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false                                      |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                  | private                                    |
+| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
+| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
+| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | false                                      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                  | private                                    |
 | limit           | How many movie/show to get                                                                 | Yes       | Number >= 1                                                                                                                                     | 10                                         |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                             | both                                       |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                                | A generated name based on the top10 config |
@@ -333,8 +338,8 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                         | Default                                      |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53)) |                                              |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                 | private                                      |
+| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) |                                              |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                 | private                                      |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100                                                                                                                       | 100                                          |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                            | both                                         |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                               | A generated name based on the popular config |
@@ -348,14 +353,14 @@ If there is any configuration error, the tool will exit with information about t
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                 | Default      |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------|--------------|
 | enabled         | Enable this most watched list?                                                             | Yes       | true, false                                                                                                                            | true         |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                         | private      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                         | private      |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                    | both         |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 50                                                                                                                | 50           |
 | year            | Year of the most watched list                                                              | Yes       | Number between 2023 and current year                                                                                                   | current year |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                       | most-watched |
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                            | true         |
 | premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
-| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | All          |
+| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | All          |
 | original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
 | orderByViews    | Order by views instead of hours?                                                           | No        | true, false                                                                                                                            | false        |
 
@@ -367,7 +372,7 @@ If there is any configuration error, the tool will exit with information about t
 | Name            | Description                                                                                | Mandatory | Values                          | Default                     |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|---------------------------------|-----------------------------|
 | enabled         | Enable this most hours list?                                                               | Yes       | true, false                     | true                        |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public  | private                     |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public  | private                     |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both             | both                        |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100        | 50                          |
 | period          | Which ranking period                                                                       | Yes       | total, first-week, first-month  | total                       |
@@ -762,7 +767,9 @@ The scheduler follows the system clock. There is no timezone field in the config
 - A failed run is logged and sent through the [Notifications](#notifications) system (the `error` event), but it does
   **not** stop the daemon — the scheduler keeps waiting for the next trigger.
 - On `SIGTERM` (e.g. `docker stop`) or `SIGINT` (Ctrl-C), the app performs a graceful shutdown: it stops accepting new
-  triggers and waits for the current run to finish its Trakt write before exiting, so lists are never left half-updated.
+  triggers and waits for the current run to finish its backend write before exiting, so lists are never left half-updated.
+  Because each list is written in a single call, the stop point always falls between two lists — never between the
+  movies and the shows of the same list.
 
 ### Docker Compose example
 
@@ -818,10 +825,68 @@ npm run lint
 # Lint and auto-fix
 npm run lint-and-fix
 
+# Run the test suite once
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage (reports in .reports/coverage)
+npm run test:coverage
+
+# Run the opt-in end-to-end suites against real services (see below)
+npm run test:e2e
+
 # Create cross-platform binaries
 npm run package
 ```
 
+### Tests
+
+`npm test` runs the unit and integration suites offline — no network, no credentials. Coverage
+(`npm run test:coverage`, which is what CI runs) is gated at **80%** for lines, functions,
+branches and statements. `src/app.ts` is deliberately excluded from coverage: it is
+process-level wiring (signal handlers, `process.exit` paths), so testing it would assert on the
+process lifecycle rather than on behaviour — the logic it orchestrates is covered through
+`Pipeline/` and `Scheduler/`.
+
+### End-to-end tests
+
+`npm run test:e2e` uses a separate config (`vitest.e2e.config.ts`) and runs only
+`tests/e2e/**/*.e2e.test.ts`. These suites talk to a **real Floppy instance** and a **real
+mdblist account**, so they are excluded from `npm test` and from the coverage numbers.
+
+They are opt-in through environment variables, and each suite **skips cleanly** when its own
+variables are missing — a CI without secrets stays green rather than failing:
+
+| Variable              | Enables                             |
+|-----------------------|-------------------------------------|
+| `E2E_FLOPPY_URL`      | the Floppy suite (both are required) |
+| `E2E_FLOPPY_API_KEY`  | the Floppy suite (both are required) |
+| `E2E_MDBLIST_API_KEY` | the mdblist suite                    |
+
+```bash
+# Floppy only
+E2E_FLOPPY_URL=http://localhost:8000 E2E_FLOPPY_API_KEY=your-token npm run test:e2e
+
+# mdblist only
+E2E_MDBLIST_API_KEY=your-key npm run test:e2e
+```
+
+Both suites check the end state by querying the service directly, never through the adapter, and
+they clean up after themselves. The mdblist suite in particular deletes the list it created,
+because a free account only tolerates four static lists.
+
+They run in their own workflow, `.github/workflows/e2e.yml`, and the two backends are triggered
+differently on purpose:
+
+- **Floppy** starts its own throwaway container (Redis + the upstream Floppy image) and mints an
+  API token inside it, so it needs **no secret**. That makes it safe on `pull_request`, including
+  from forks; a `paths` filter keeps it off doc-only PRs.
+- **mdblist** hits a **real hosted account on the metered free tier**, so running it on every push
+  would be hostile. It is limited to manual `workflow_dispatch` and a weekly schedule, and is
+  skipped entirely when the `E2E_MDBLIST_API_KEY` secret is absent.
+
 ## License
 
-[MIT License](LICENSE)
+[GNU General Public License v3.0](LICENSE)
