@@ -2,8 +2,7 @@ import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
 import { logger, FlixPatrolError } from '../Utils';
-import type { TraktTVId, TraktTVIds } from '../types';
-import { TraktAPI } from '../Trakt';
+import type { MediaItem } from '../Targets';
 import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
   FlixPatrolMostWatched,
@@ -34,9 +33,7 @@ type FlixPatrolMatchResult = string;
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
 
-  private readonly tvCache: FileSystemCache | null = null;
-
-  private readonly movieCache: FileSystemCache | null = null;
+  private readonly detailCache: FileSystemCache | null = null;
 
   private readonly impit: Impit;
 
@@ -52,17 +49,15 @@ export class FlixPatrol {
     this.impit = new Impit({ browser: 'chrome', timeout: 30000 });
     this.flareSolverr = flareSolverr;
     if (cacheOptions.enabled) {
-      this.tvCache = Cache({
-        basePath: `${cacheOptions.savePath}/tv-shows`, // (optional) Path where cache files are stored (default).
-        ns: 'flixpatrol-tv', // (optional) A grouping namespace for items.
-        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
-      });
-      this.movieCache = Cache({
-        basePath: `${cacheOptions.savePath}/movies`, // (optional) Path where cache files are stored (default).
-        ns: 'flixpatrol-movie', // (optional) A grouping namespace for items.
-        hash: 'sha1', // (optional) A hashing algorithm used within the cache key.
-        ttl: cacheOptions.ttl, // (optional) A time-to-live (in secs) on how long an item remains cached.
+      // A single, backend-agnostic cache: it stores what FlixPatrol says about the
+      // media (title + year), not the identifier of one given platform.
+      // New path and new namespace, so the 2.17 caches are ignored rather than
+      // overwritten — a rollback still finds its own caches intact.
+      this.detailCache = Cache({
+        basePath: `${cacheOptions.savePath}/details`,
+        ns: 'flixpatrol-detail',
+        hash: 'sha1',
+        ttl: cacheOptions.ttl,
       });
     }
   }
@@ -178,10 +173,9 @@ export class FlixPatrol {
 
   public async getTop10Sections(
     config: FlixPatrolTop10,
-    trakt: TraktAPI,
   ): Promise<{
-    movies: TraktTVIds;
-    shows: TraktTVIds;
+    movies: MediaItem[];
+    shows: MediaItem[];
     rawCounts: { movies: number; shows: number; }
   }> {
     // Validate kids configuration
@@ -201,29 +195,33 @@ export class FlixPatrol {
       throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
     }
 
-    let movies: TraktTVIds = [];
+    let movies: MediaItem[] = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'movies' || config.type === 'both') {
       moviesRaw = config.kids
         ? FlixPatrol.parseTop10KidsPage('Movies', html)
         : FlixPatrol.parseTop10Page('Movies', config.location, html);
-      movies = await this.convertResultsToIds(moviesRaw.slice(0, config.limit), 'Movies', trakt);
+      movies = await this.convertResultsToItems(moviesRaw.slice(0, config.limit));
     }
 
-    let shows: TraktTVIds = [];
+    let shows: MediaItem[] = [];
     let showsRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'shows' || config.type === 'both') {
       showsRaw = config.kids
         ? FlixPatrol.parseTop10KidsPage('TV Shows', html)
         : FlixPatrol.parseTop10Page('TV Shows', config.location, html);
-      shows = await this.convertResultsToIds(showsRaw.slice(0, config.limit), 'TV Shows', trakt);
+      shows = await this.convertResultsToItems(showsRaw.slice(0, config.limit));
     }
 
+    // Behaviour change vs. 2.17: the fallback now triggers when the page yields no
+    // result at all, no longer when no backend id could be resolved. A title listed
+    // by FlixPatrol but unknown to the backend is reported as unmatched instead of
+    // silently swapping the whole list for another location's.
     if (movies.length === 0 && shows.length === 0 && config.fallback !== false && !config.kids) {
       // Fallback to world if no match (not applicable for kids)
       logger.warn(`No items found for ${config.platform}, falling back to ${config.fallback} search`);
       const newConfig: FlixPatrolTop10 = { ...config, location: config.fallback, fallback: false };
-      return this.getTop10Sections(newConfig, trakt);
+      return this.getTop10Sections(newConfig);
     }
 
     return {
@@ -282,53 +280,36 @@ export class FlixPatrol {
     return results;
   }
 
-  // eslint-disable-next-line max-len
-  private async getTraktTVId(result: FlixPatrolMatchResult, type: FlixPatrolType, trakt: TraktAPI) : Promise<TraktTVId> {
-    if (this.tvCache !== null && this.movieCache !== null) {
-      const id = type === 'Movies' ? await this.movieCache.get(result, null) : await this.tvCache.get(result, null);
-      if (id) {
-        logger.silly(`Found ${result} in cache. Id: ${id}`);
-        return id;
-      }
-    }
-    const html = await this.getFlixPatrolHTMLPage(result);
-    if (html === null) {
-      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
-    }
-
-    const dom = new JSDOM(html);
+  /**
+   * Title as FlixPatrol prints it on a detail page.
+   * The two expressions and their order are load-bearing against the live site:
+   * do not touch them without re-checking a real detail page.
+   */
+  private static parseDetailTitle(dom: JSDOM): string {
     // Title with fallback (kept)
-    let title = dom.window.document.evaluate(
+    const title = dom.window.document.evaluate(
       '//div[contains(@class,"mb-6")]//h1[contains(@class,"mb-4")]/text()',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
     ).stringValue.trim();
-    if (!title) {
-      title = dom.window.document.evaluate(
-        '//h1/text()',
-        dom.window.document,
-        null,
-        dom.window.XPathResult.STRING_TYPE,
-        null,
-      ).stringValue.trim();
+    if (title) {
+      return title;
     }
-
-    // Flexible type detection
-    let flixType = dom.window.document.evaluate(
-      '//div[contains(@class,"mb-6")]//span[contains(. ,"Movie") or contains(. ,"TV Show")][1]/text()',
+    return dom.window.document.evaluate(
+      '//h1/text()',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
     ).stringValue.trim();
-    if (!flixType) {
-      const headerText = dom.window.document.querySelector('div.mb-6')?.textContent || '';
-      if (/Movie/i.test(headerText)) flixType = 'Movie';
-      else if (/TV Show/i.test(headerText)) flixType = 'TV Show';
-    }
+  }
 
+  /**
+   * Release year, or null when the detail page exposes nothing usable.
+   */
+  private static parseDetailYear(dom: JSDOM): number | null {
     // Year with regex fallback
     let yearStr = dom.window.document.evaluate(
       '//div[@class="mb-6"]//span[5]/span/text()',
@@ -343,47 +324,51 @@ export class FlixPatrol {
       if (match) yearStr = match[0];
     }
     const year = parseInt(yearStr, 10);
-
-    const tryLookup = async (searchType: 'movie' | 'show'): Promise<TraktTVId> => {
-      const looked = await trakt.getFirstItemByQuery(searchType, title, Number.isNaN(year) ? 0 : year);
-      if (!looked) return null;
-      return searchType === 'movie' ? looked.movie?.ids.trakt ?? null : looked.show?.ids.trakt ?? null;
-    };
-
-    // The caller already passed us the expected type (parseTop10Page targets a
-    // specific section heading). We previously tried to confirm against the
-    // detail page's flixType label, but FlixPatrol's markup drifted and that
-    // span now contains "Movie" on every detail page (see flixType log below),
-    // silently rejecting every legitimate TV-show match.
-    logger.silly(`Detected flixType="${flixType}" for ${result} (looking for ${type})`);
-    const id: TraktTVId = type === 'Movies'
-      ? await tryLookup('movie')
-      : await tryLookup('show');
-
-    if (id && this.tvCache !== null && this.movieCache !== null) {
-      if (type === 'Movies') await this.movieCache.set(result, id);
-      else await this.tvCache.set(result, id);
-    }
-    return id;
+    return Number.isNaN(year) ? null : year;
   }
 
-  private async convertResultsToIds(results: FlixPatrolMatchResult[], type: FlixPatrolType, trakt: TraktAPI) {
-    const traktTVIds: TraktTVIds = [];
-
-    for (const result of results) {
-      const id = await this.getTraktTVId(result, type, trakt);
-      if (id && !traktTVIds.includes(id)) {
-        traktTVIds.push(id);
+  private async getMediaItem(result: FlixPatrolMatchResult): Promise<MediaItem> {
+    if (this.detailCache !== null) {
+      const cached: unknown = await this.detailCache.get(result, null);
+      if (cached && typeof cached === 'object' && 'title' in cached) {
+        logger.silly(`Found ${result} in cache: ${JSON.stringify(cached)}`);
+        return cached as MediaItem;
       }
     }
-    return traktTVIds;
+
+    const html = await this.getFlixPatrolHTMLPage(result);
+    if (html === null) {
+      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
+    }
+
+    const dom = new JSDOM(html);
+    const title = FlixPatrol.parseDetailTitle(dom);
+    const year = FlixPatrol.parseDetailYear(dom);
+    const item: MediaItem = { title, year };
+
+    // Never cache a titleless scrape: it would pin a parsing accident for the
+    // whole TTL, while a re-scrape costs one page.
+    if (title.length > 0 && this.detailCache !== null) {
+      await this.detailCache.set(result, item);
+    }
+    return item;
+  }
+
+  private async convertResultsToItems(results: FlixPatrolMatchResult[]): Promise<MediaItem[]> {
+    const items: MediaItem[] = [];
+    for (const result of results) {
+      const item = await this.getMediaItem(result);
+      if (item.title.length > 0 && !items.some((i) => i.title === item.title && i.year === item.year)) {
+        items.push(item);
+      }
+    }
+    return items;
   }
 
   public async getPopular(
     type: FlixPatrolType,
     config: FlixPatrolPopular,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+  ): Promise<MediaItem[]> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
     if (html === null) {
@@ -391,14 +376,13 @@ export class FlixPatrol {
     }
     let results = FlixPatrol.parsePopularPage(html);
     results = results.slice(0, config.limit);
-    return this.convertResultsToIds(results, type, trakt);
+    return this.convertResultsToItems(results);
   }
 
   public async getMostWatched(
     type: FlixPatrolType,
     config: FlixPatrolMostWatched,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+  ): Promise<MediaItem[]> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
     let url = `/most-watched/${config.year}/${urlType}`;
     if (config.country !== undefined) {
@@ -420,7 +404,7 @@ export class FlixPatrol {
     }
     let results = FlixPatrol.parseMostWatchedPage(html, config);
     results = results.slice(0, config.limit);
-    return this.convertResultsToIds(results, type, trakt);
+    return this.convertResultsToItems(results);
   }
 
   private static parseMostHoursPage(
@@ -453,8 +437,7 @@ export class FlixPatrol {
   public async getMostHours(
     type: FlixPatrolType,
     config: FlixPatrolMostHours,
-    trakt: TraktAPI,
-  ): Promise<TraktTVIds> {
+  ): Promise<MediaItem[]> {
     const periodUrlMap: Record<string, string> = {
       'total': '/streaming-services/most-hours-total/netflix/',
       'first-week': '/streaming-services/most-hours-first-week/netflix/',
@@ -468,6 +451,6 @@ export class FlixPatrol {
     }
     let results = FlixPatrol.parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
-    return this.convertResultsToIds(results, type, trakt);
+    return this.convertResultsToItems(results);
   }
 }

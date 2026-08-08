@@ -20,22 +20,113 @@ const mockHtmlResponse = (input: { status: number; data: unknown; headers?: Reco
   text: async () => (input.data as string) ?? '',
 });
 
-// Mock file-system-cache
+// Mock file-system-cache with a real in-memory store, one per Cache() call, so the
+// detail-cache behaviour is observable instead of being stubbed to a permanent miss.
 vi.mock('file-system-cache', () => ({
-  default: vi.fn(() => ({
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue(undefined),
-  })),
-  FileSystemCache: vi.fn(),
+  default: () => {
+    const store = new Map<string, unknown>();
+    return {
+      get: async (key: string, fallback: unknown = null) => (store.has(key) ? store.get(key) : fallback),
+      set: async (key: string, value: unknown) => { store.set(key, value); },
+    };
+  },
+  FileSystemCache: class MockFileSystemCache {},
 }));
 
-// Mock TraktAPI
-const mockGetFirstItemByQuery = vi.fn();
-vi.mock('../../src/Trakt/TraktAPI', () => ({
-  TraktAPI: class MockTraktAPI {
-    getFirstItemByQuery = mockGetFirstItemByQuery;
-  },
-}));
+// Shared fixtures for the fallback-semantics tests. `detailPage` mirrors the real
+// markup: h1.mb-4 for the title, the 5th span of div.mb-6 for the year.
+const detailPage = (title: string, year: number) => `
+  <html>
+    <body>
+      <div class="mb-6">
+        <h1 class="mb-4">${title}</h1>
+        <span>Movie</span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span><span>${year}</span></span>
+      </div>
+    </body>
+  </html>
+`;
+
+// A detail page whose header block carries no usable year at all.
+const NO_YEAR_DETAIL_HTML = '<div class="mb-6"><h1 class="mb-4">Sans Annee</h1></div>';
+
+// Regional (h3) top10 markup listing two movies.
+const TOP10_REGIONAL_HTML = `
+  <html>
+    <body>
+      <div>
+        <div><h3>TOP 10 Movies</h3></div>
+        <div>
+          <a class="hover:underline" href="/title/inception">Inception</a>
+          <a class="hover:underline" href="/title/fight-club">Fight Club</a>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
+// World (h2/span) top10 markup listing the same two movies.
+const TOP10_WORLD_HTML = `
+  <html>
+    <body>
+      <div>
+        <div><h2><span>TOP Movies</span></h2></div>
+        <div>
+          <a class="hover:underline" href="/title/inception">Inception</a>
+          <a class="hover:underline" href="/title/fight-club">Fight Club</a>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
+// A valid regional top10 page whose movies section is empty.
+const EMPTY_TOP10_HTML = `
+  <html>
+    <body>
+      <div>
+        <div><h3>TOP 10 Movies</h3></div>
+        <div></div>
+      </div>
+    </body>
+  </html>
+`;
+
+const POPULAR_LIST_HTML = `
+  <html>
+    <body>
+      <table class="card-table">
+        <tr><td><a class="flex gap-2 group items-center" href="/title/inception">Inception</a></td></tr>
+        <tr><td><a class="flex gap-2 group items-center" href="/title/fight-club">Fight Club</a></td></tr>
+      </table>
+    </body>
+  </html>
+`;
+
+const DETAIL_PAGES: Record<string, string> = {
+  '/title/inception': detailPage('Inception', 2010),
+  '/title/fight-club': detailPage('Fight Club', 1999),
+};
+
+/**
+ * Route every fetch by URL instead of by call order: the tests below assert on how
+ * many pages are downloaded, which a `mockResolvedValueOnce` chain cannot express.
+ */
+const routeFetch = (listHtml: string | ((path: string) => string), detailHtml?: string) => {
+  mockFetch.mockImplementation(async (url: string) => {
+    const path = url.replace('https://flixpatrol.com', '');
+    if (path.startsWith('/title/')) {
+      return mockHtmlResponse({ status: 200, data: detailHtml ?? DETAIL_PAGES[path] ?? '' });
+    }
+    return mockHtmlResponse({
+      status: 200,
+      data: typeof listHtml === 'function' ? listHtml(path) : listHtml,
+    });
+  });
+};
 
 describe('FlixPatrol', () => {
   describe('Type guards', () => {
@@ -363,7 +454,6 @@ describe('FlixPatrol', () => {
 
   describe('getTop10Sections', () => {
     let flixpatrol: FlixPatrol;
-    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
     beforeEach(() => {
       flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
@@ -382,7 +472,7 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await expect(flixpatrol.getTop10Sections(config, mockTrakt as never))
+      await expect(flixpatrol.getTop10Sections(config))
         .rejects.toThrow('Unable to get FlixPatrol top10 page');
     });
 
@@ -421,10 +511,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'world',
@@ -434,11 +520,12 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      expect(result.movies.length).toBeGreaterThanOrEqual(0);
+      // Both detail pages describe the same media, so the two entries collapse into one.
+      expect(result.movies).toEqual([{ title: 'Test Movie', year: 2024 }]);
       expect(result.shows).toEqual([]);
-      expect(result.rawCounts).toBeDefined();
+      expect(result.rawCounts).toEqual({ movies: 2, shows: 0 });
     });
 
     it('should parse shows from world page', async () => {
@@ -475,10 +562,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'world',
@@ -488,10 +571,11 @@ describe('FlixPatrol', () => {
         type: 'shows',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
       expect(result.movies).toEqual([]);
-      expect(result.rawCounts).toBeDefined();
+      expect(result.shows).toEqual([{ title: 'Test Show', year: 2024 }]);
+      expect(result.rawCounts).toEqual({ movies: 0, shows: 1 });
     });
 
     it('should parse both movies and shows', async () => {
@@ -536,10 +620,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'world',
@@ -549,11 +629,11 @@ describe('FlixPatrol', () => {
         type: 'both',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      expect(result.rawCounts).toBeDefined();
-      expect(result.rawCounts.movies).toBeDefined();
-      expect(result.rawCounts.shows).toBeDefined();
+      expect(result.movies).toEqual([{ title: 'Test Content', year: 2024 }]);
+      expect(result.shows).toEqual([{ title: 'Test Content', year: 2024 }]);
+      expect(result.rawCounts).toEqual({ movies: 1, shows: 1 });
     });
 
     it('should fallback to another location when no results found', async () => {
@@ -592,10 +672,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: fallbackHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Fallback Movie', year: 2024, ids: { trakt: 789 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'france',
@@ -605,10 +681,11 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
       // Fallback should have been triggered
       expect(mockFetch).toHaveBeenCalledTimes(3); // Initial + fallback + detail
+      expect(result.movies).toEqual([{ title: 'Fallback Movie', year: 2024 }]);
     });
 
     it('should respect the limit configuration', async () => {
@@ -649,10 +726,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'world',
@@ -662,10 +735,13 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      // Should only process 2 movies due to limit
-      expect(result.movies.length).toBeLessThanOrEqual(2);
+      // Should only process 2 movies due to limit: 1 list page + 2 detail pages.
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result.rawCounts.movies).toBe(2);
+      // Both detail pages describe the same media, so they collapse into one item.
+      expect(result.movies).toEqual([{ title: 'Test Movie', year: 2024 }]);
     });
 
     it('should parse regional top10 page', async () => {
@@ -673,7 +749,7 @@ describe('FlixPatrol', () => {
         <html>
           <body>
             <div>
-              <h3>TOP 10 Movies</h3>
+              <div><h3>TOP 10 Movies</h3></div>
               <div>
                 <a class="hover:underline" href="/title/movie-1">Movie 1</a>
               </div>
@@ -700,10 +776,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Regional Movie', year: 2024, ids: { trakt: 999 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'france',
@@ -713,9 +785,10 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      expect(result.rawCounts).toBeDefined();
+      expect(result.movies).toEqual([{ title: 'Regional Movie', year: 2024 }]);
+      expect(result.rawCounts).toEqual({ movies: 1, shows: 0 });
     });
 
     it('should parse kids movies from regional page', async () => {
@@ -755,10 +828,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Kids Movie', year: 2024, ids: { trakt: 1001 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'italy',
@@ -769,9 +838,10 @@ describe('FlixPatrol', () => {
         kids: true,
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      expect(result.rawCounts).toBeDefined();
+      expect(result.movies).toEqual([{ title: 'Kids Movie', year: 2024 }]);
+      expect(result.rawCounts).toEqual({ movies: 2, shows: 0 });
       expect(result.shows).toEqual([]);
     });
 
@@ -809,10 +879,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: top10Html }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Kids Show', year: 2024, ids: { trakt: 1002 } },
-      });
-
       const config: FlixPatrolTop10 = {
         platform: 'netflix',
         location: 'italy',
@@ -823,9 +889,10 @@ describe('FlixPatrol', () => {
         kids: true,
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
-      expect(result.rawCounts).toBeDefined();
+      expect(result.shows).toEqual([{ title: 'Kids Show', year: 2024 }]);
+      expect(result.rawCounts).toEqual({ movies: 0, shows: 1 });
       expect(result.movies).toEqual([]);
     });
 
@@ -840,7 +907,7 @@ describe('FlixPatrol', () => {
         kids: true,
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
       expect(result.movies).toEqual([]);
       expect(result.shows).toEqual([]);
@@ -861,7 +928,7 @@ describe('FlixPatrol', () => {
         kids: true,
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
       expect(result.movies).toEqual([]);
       expect(result.shows).toEqual([]);
@@ -887,18 +954,55 @@ describe('FlixPatrol', () => {
         kids: true,
       };
 
-      const result = await flixpatrol.getTop10Sections(config, mockTrakt as never);
+      const result = await flixpatrol.getTop10Sections(config);
 
       // Fallback should NOT be triggered for kids
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.movies).toEqual([]);
       expect(result.shows).toEqual([]);
     });
+
+    it('falls back to another location only when the page yields no result at all', async () => {
+      routeFetch((path) => (path.endsWith('/france') ? EMPTY_TOP10_HTML : TOP10_WORLD_HTML));
+
+      const result = await flixpatrol.getTop10Sections({
+        platform: 'netflix',
+        location: 'france',
+        fallback: 'world',
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      });
+
+      expect(result.movies).toEqual([
+        { title: 'Inception', year: 2010 },
+        { title: 'Fight Club', year: 1999 },
+      ]);
+    });
+
+    it('does not fall back when the page yields results that simply have no year', async () => {
+      // Guard rail for the semantics change: present-but-poor results must no longer
+      // trigger a silent fallback to another location.
+      routeFetch(TOP10_REGIONAL_HTML, NO_YEAR_DETAIL_HTML);
+
+      const result = await flixpatrol.getTop10Sections({
+        platform: 'netflix',
+        location: 'france',
+        fallback: 'world',
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      });
+
+      expect(result.movies[0].year).toBeNull();
+      // a single list page downloaded: no fallback
+      const listPages = mockFetch.mock.calls.filter((c) => `${c[0]}`.includes('/top10/'));
+      expect(listPages).toHaveLength(1);
+    });
   });
 
   describe('getPopular', () => {
     let flixpatrol: FlixPatrol;
-    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
     beforeEach(() => {
       flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
@@ -915,7 +1019,7 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await expect(flixpatrol.getPopular('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getPopular('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol popular page');
     });
 
@@ -957,10 +1061,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Popular Movie', year: 2024, ids: { trakt: 111 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -968,7 +1068,7 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
     });
@@ -1006,10 +1106,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Popular Show', year: 2024, ids: { trakt: 222 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1017,7 +1113,7 @@ describe('FlixPatrol', () => {
         type: 'shows',
       };
 
-      const result = await flixpatrol.getPopular('TV Shows', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('TV Shows', config);
 
       expect(Array.isArray(result)).toBe(true);
     });
@@ -1055,10 +1151,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1066,7 +1158,7 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
       expect(result.length).toBeLessThanOrEqual(2);
     });
@@ -1074,7 +1166,6 @@ describe('FlixPatrol', () => {
 
   describe('getMostWatched', () => {
     let flixpatrol: FlixPatrol;
-    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
     beforeEach(() => {
       flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
@@ -1092,7 +1183,7 @@ describe('FlixPatrol', () => {
         year: 2024,
       };
 
-      await expect(flixpatrol.getMostWatched('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getMostWatched('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol most-watched page');
     });
 
@@ -1129,10 +1220,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Most Watched Movie', year: 2024, ids: { trakt: 333 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1141,7 +1228,7 @@ describe('FlixPatrol', () => {
         year: 2024,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
     });
@@ -1179,10 +1266,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Most Watched Show', year: 2024, ids: { trakt: 444 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1191,7 +1274,7 @@ describe('FlixPatrol', () => {
         year: 2024,
       };
 
-      const result = await flixpatrol.getMostWatched('TV Shows', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('TV Shows', config);
 
       expect(Array.isArray(result)).toBe(true);
       // TV shows URL should include -grouped
@@ -1231,10 +1314,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Movie', year: 2024, ids: { trakt: 555 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1244,7 +1323,7 @@ describe('FlixPatrol', () => {
         country: 'france',
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-from-france'));
     });
@@ -1282,10 +1361,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Movie', year: 2024, ids: { trakt: 666 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1295,7 +1370,7 @@ describe('FlixPatrol', () => {
         premiere: 2023,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-2023'));
     });
@@ -1333,10 +1408,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Movie', year: 2024, ids: { trakt: 777 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1346,7 +1417,7 @@ describe('FlixPatrol', () => {
         orderByViews: true,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/by-views'));
     });
@@ -1392,10 +1463,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Original Movie', year: 2024, ids: { trakt: 888 } },
-      });
-
       const config: FlixPatrolMostWatched = {
         enabled: true,
         privacy: 'private',
@@ -1405,15 +1472,14 @@ describe('FlixPatrol', () => {
         original: true,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
     });
   });
 
-  describe('getTraktTVId (via integration)', () => {
+  describe('detail page extraction (via integration)', () => {
     let flixpatrol: FlixPatrol;
-    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
     beforeEach(() => {
       flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
@@ -1453,10 +1519,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'The Matrix', year: 1999, ids: { trakt: 999 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1464,12 +1526,12 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
-      expect(mockGetFirstItemByQuery).toHaveBeenCalledWith('movie', 'The Matrix', 1999);
+      expect(result).toEqual([{ title: 'The Matrix', year: 1999 }]);
     });
 
-    it('should handle missing year by using 0', async () => {
+    it('should return a null year when the detail page exposes no usable year', async () => {
       const popularHtml = `
         <html>
           <body>
@@ -1498,10 +1560,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Unknown Movie', year: 0, ids: { trakt: 1000 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1509,12 +1567,12 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
-      expect(mockGetFirstItemByQuery).toHaveBeenCalledWith('movie', 'Unknown Movie', 0);
+      expect(result).toEqual([{ title: 'Unknown Movie', year: null }]);
     });
 
-    it('should handle null result from Trakt search', async () => {
+    it('should drop an item whose detail page yields no title at all', async () => {
       const popularHtml = `
         <html>
           <body>
@@ -1528,11 +1586,11 @@ describe('FlixPatrol', () => {
           </body>
         </html>
       `;
+      // No h1 anywhere: neither the primary nor the fallback title XPath matches.
       const detailHtml = `
         <html>
           <body>
             <div class="mb-6">
-              <h1 class="mb-4">Unknown Movie</h1>
               <span>Movie</span>
               <span></span>
               <span></span>
@@ -1547,8 +1605,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue(null);
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1556,9 +1612,8 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      const result = await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
-      // Should return empty array when no Trakt ID found
       expect(result).toEqual([]);
     });
 
@@ -1588,11 +1643,11 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await expect(flixpatrol.getPopular('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getPopular('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol detail page');
     });
 
-    it('should handle TV Show type detection', async () => {
+    it('should extract a TV show detail page the same way as a movie', async () => {
       const popularHtml = `
         <html>
           <body>
@@ -1625,10 +1680,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Breaking Bad', year: 2008, ids: { trakt: 1388 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1636,9 +1687,9 @@ describe('FlixPatrol', () => {
         type: 'shows',
       };
 
-      await flixpatrol.getPopular('TV Shows', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('TV Shows', config);
 
-      expect(mockGetFirstItemByQuery).toHaveBeenCalledWith('show', 'Breaking Bad', 2008);
+      expect(result).toEqual([{ title: 'Breaking Bad', year: 2008 }]);
     });
 
     it('should use fallback title extraction from h1', async () => {
@@ -1670,10 +1721,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Fallback Title', year: 2024, ids: { trakt: 2000 } },
-      });
-
       const config: FlixPatrolPopular = {
         platform: 'wikipedia',
         privacy: 'private',
@@ -1681,15 +1728,39 @@ describe('FlixPatrol', () => {
         type: 'movies',
       };
 
-      await flixpatrol.getPopular('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getPopular('Movies', config);
 
-      expect(mockGetFirstItemByQuery).toHaveBeenCalledWith('movie', 'Fallback Title', 2024);
+      expect(result).toEqual([{ title: 'Fallback Title', year: 2024 }]);
+    });
+
+    it('serves the second lookup of the same detail page from the cache', async () => {
+      // `cacheOptions.enabled` is true here, unlike the rest of the file: the cache
+      // behaviour itself is what this test measures.
+      const cached = new FlixPatrol({ enabled: true, savePath: './config/.cache', ttl: 604800 });
+      routeFetch(POPULAR_LIST_HTML);
+
+      const config: FlixPatrolPopular = {
+        platform: 'wikipedia',
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      };
+
+      const before = mockFetch.mock.calls.length;
+      await cached.getPopular('Movies', config);
+      const afterFirst = mockFetch.mock.calls.length;
+      await cached.getPopular('Movies', config);
+      const afterSecond = mockFetch.mock.calls.length;
+
+      // First pass downloads the list page plus one detail page per item.
+      expect(afterFirst - before).toBe(3);
+      // Second pass only re-downloads the list page: details come from the cache.
+      expect(afterSecond - afterFirst).toBe(1);
     });
   });
 
   describe('getMostHours', () => {
     let flixpatrol: FlixPatrol;
-    const mockTrakt = { getFirstItemByQuery: mockGetFirstItemByQuery };
 
     beforeEach(() => {
       flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
@@ -1708,7 +1779,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getMostHours('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol most-hours-total page');
     });
 
@@ -1761,10 +1832,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Test Movie', year: 2024, ids: { trakt: 123 } },
-      });
-
       const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
@@ -1774,7 +1841,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/streaming-services/most-hours-total/netflix/'));
@@ -1829,10 +1896,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        show: { title: 'Test Show', year: 2024, ids: { trakt: 456 } },
-      });
-
       const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
@@ -1842,7 +1905,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      const result = await flixpatrol.getMostHours('TV Shows', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('TV Shows', config);
 
       expect(Array.isArray(result)).toBe(true);
     });
@@ -1882,10 +1945,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostHoursTotalHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'Movie', year: 2024, ids: { trakt: 100 } },
-      });
-
       const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
@@ -1895,7 +1954,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config);
 
       expect(result.length).toBeLessThanOrEqual(2);
     });
@@ -1933,7 +1992,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config);
 
       expect(result).toEqual([]);
     });
@@ -1950,7 +2009,7 @@ describe('FlixPatrol', () => {
         language: 'all',
       };
 
-      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getMostHours('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol most-hours-first-week page');
     });
 
@@ -1966,7 +2025,7 @@ describe('FlixPatrol', () => {
         language: 'english',
       };
 
-      await expect(flixpatrol.getMostHours('Movies', config, mockTrakt as never))
+      await expect(flixpatrol.getMostHours('Movies', config))
         .rejects.toThrow('Unable to get FlixPatrol most-hours-first-month page');
     });
 
@@ -2007,10 +2066,6 @@ describe('FlixPatrol', () => {
         .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: firstWeekHtml }))
         .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
 
-      mockGetFirstItemByQuery.mockResolvedValue({
-        movie: { title: 'English Movie', year: 2024, ids: { trakt: 789 } },
-      });
-
       const config: FlixPatrolMostHours = {
         enabled: true,
         privacy: 'private',
@@ -2020,7 +2075,7 @@ describe('FlixPatrol', () => {
         language: 'english',
       };
 
-      const result = await flixpatrol.getMostHours('Movies', config, mockTrakt as never);
+      const result = await flixpatrol.getMostHours('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/streaming-services/most-hours-first-week/netflix/'));
