@@ -594,11 +594,19 @@ Floppy's native `latest_update` field instead of a "Last Updated" description.
 > A free mdblist account is capped at **4 static lists**. Configure more entries than that
 > and list creation will start failing — trim your configuration or take a paid plan.
 
-The API budget is **1 000 requests per day**, and mdblist bills roughly **2 units per HTTP
-call**, so a run costs about twice the number of calls it makes. Resolution results are
-cached (see `Cache.ttl`), which keeps repeat runs cheap: only titles the tool has never
-resolved before consume search calls. The remaining budget is logged after every list
-write, and reported by `x-ratelimit-remaining` on any API response.
+The API budget is **1 000 requests per day**, billed **one unit per HTTP call**. Two things
+keep a run cheap:
+
+- **Writes scale per list, not per item.** mdblist accepts bulk add and remove, and both
+  media types are written in a single call, so a list of 100 items costs the same as a list
+  of 3 — about four calls, plus one shared index lookup per run.
+- **Resolution is cached** (see `Cache.ttl`). Only titles the tool has never resolved before
+  consume a search call, so the first run carries the cost and later runs do not.
+
+In practice a 10-entry configuration costs a few hundred units on its first run and a few
+dozen afterwards — comfortably inside the free tier, whose real ceiling is the 4-list cap
+above rather than the request budget. The remaining budget is logged after every list write,
+and any API response reports it in `x-ratelimit-remaining`.
 
 ## Supported Platforms
 
