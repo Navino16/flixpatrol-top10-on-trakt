@@ -284,11 +284,12 @@ export class FlixPatrol {
    * Title as FlixPatrol prints it on a detail page.
    * The two expressions and their order are load-bearing against the live site:
    * do not touch them without re-checking a real detail page.
+   * The title lives in `div.info-grid-header`, a direct child of `div.info-grid`.
    */
   private static parseDetailTitle(dom: JSDOM): string {
     // Title with fallback (kept)
     const title = dom.window.document.evaluate(
-      '//div[contains(@class,"mb-6")]//h1[contains(@class,"mb-4")]/text()',
+      '//div[contains(@class,"info-grid-header")]//h1/text()',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
@@ -308,22 +309,32 @@ export class FlixPatrol {
 
   /**
    * Release year, or null when the detail page exposes nothing usable.
+   *
+   * The year is read only from the premiere block inside `div.info-grid-header`
+   * (`<div title="Premiere">`), whose date is formatted MM/DD/YYYY. Only the year is
+   * needed, so the day/month ambiguity never has to be resolved: a four-digit run
+   * starting with 19 or 20 cannot appear before the year in that format.
+   *
+   * There is deliberately NO fallback. A previous version scanned the text of
+   * `div.mb-6`, which the site now uses for a marketing blurb ending in
+   * "the most popular TV shows in 2021" — that stamped 2021 onto every single title
+   * and made the "exact title AND year" branch of the backend match cascade select
+   * the wrong film with full confidence. A missing year degrades the cascade to
+   * title-only and is not cached; a wrong year is silently destructive. Never guess.
    */
   private static parseDetailYear(dom: JSDOM): number | null {
-    // Year with regex fallback
-    let yearStr = dom.window.document.evaluate(
-      '//div[@class="mb-6"]//span[5]/span/text()',
+    const premiereBlock = dom.window.document.evaluate(
+      '//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]',
       dom.window.document,
       null,
       dom.window.XPathResult.STRING_TYPE,
       null,
-    ).stringValue.trim();
-    if (!/^(19|20)\d{2}$/.test(yearStr)) {
-      const headerBlock = dom.window.document.querySelector('div.mb-6')?.textContent || '';
-      const match = headerBlock.match(/(19|20)\d{2}/);
-      if (match) yearStr = match[0];
+    ).stringValue;
+    const match = premiereBlock.match(/(19|20)\d{2}/);
+    if (match === null) {
+      return null;
     }
-    const year = parseInt(yearStr, 10);
+    const year = parseInt(match[0], 10);
     return Number.isNaN(year) ? null : year;
   }
 

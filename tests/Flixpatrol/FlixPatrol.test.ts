@@ -34,24 +34,35 @@ vi.mock('file-system-cache', () => ({
 }));
 
 // Shared fixtures for the fallback-semantics tests. `detailPage` mirrors the real
-// markup: h1.mb-4 for the title, the 5th span of div.mb-6 for the year.
+// markup: div.info-grid > div.info-grid-header holding the h1 and, among the metadata
+// blocks, a `title="Premiere"` block whose date is formatted MM/DD/YYYY.
 const detailPage = (title: string, year: number) => `
   <html>
     <body>
-      <div class="mb-6">
-        <h1 class="mb-4">${title}</h1>
-        <span>Movie</span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span><span>${year}</span></span>
+      <div class="info-grid">
+        <div class="info-grid-header">
+          <div class="md:flex items-baseline justify-between">
+            <h1 class="mb-4 text-h1">${title}</h1>
+          </div>
+          <div class="flex flex-wrap">
+            <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+            <div class="flex gap-x-1" title="Premiere"><div><span>06/18/${year}</span></div>|</div>
+          </div>
+        </div>
       </div>
     </body>
   </html>
 `;
 
-// A detail page whose header block carries no usable year at all.
-const NO_YEAR_DETAIL_HTML = '<div class="mb-6"><h1 class="mb-4">Sans Annee</h1></div>';
+// A detail page whose header carries a title but no premiere block at all.
+const NO_YEAR_DETAIL_HTML = '<div class="info-grid"><div class="info-grid-header">'
+  + '<h1 class="mb-4 text-h1">Sans Annee</h1></div></div>';
+
+// The site-wide marketing blurb that lives in `div.mb-6` on every detail page. It ends
+// in a hardcoded "2021", which a text-scanning year fallback would happily pick up and
+// stamp onto every single title. Fixtures below embed it to keep that regression fenced.
+const MARKETING_BLURB_HTML = '<div class="mb-6">FlixPatrol tracks the most popular '
+  + 'TV shows in 2021 across all streaming platforms.</div>';
 
 // Regional (h3) top10 markup listing two movies.
 const TOP10_REGIONAL_HTML = `
@@ -495,13 +506,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -546,13 +560,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Show</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Show</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -604,13 +621,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Content</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Content</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -655,13 +675,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Fallback Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Fallback Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -710,13 +733,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -760,13 +786,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Regional Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Regional Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -812,13 +841,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Kids Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Kids Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -863,13 +895,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Kids Show</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Kids Show</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1045,13 +1080,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Popular Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Popular Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1090,13 +1128,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Popular Show</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Popular Show</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1135,13 +1176,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1204,13 +1248,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Most Watched Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Most Watched Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1250,13 +1297,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Most Watched Show</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Most Watched Show</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1298,13 +1348,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1345,13 +1398,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1392,13 +1448,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1447,13 +1506,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Original Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Original Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1503,13 +1565,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">The Matrix</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>1999</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">The Matrix</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/1999</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1545,12 +1610,21 @@ describe('FlixPatrol', () => {
           </body>
         </html>
       `;
+      // Header present, but no premiere block: the year must come back null rather than
+      // being guessed from the surrounding marketing copy.
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Unknown Movie</h1>
-              <span>Movie</span>
+            ${MARKETING_BLURB_HTML}
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Unknown Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1590,12 +1664,13 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1664,13 +1739,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Breaking Bad</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2008</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Breaking Bad</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2008</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1706,12 +1784,118 @@ describe('FlixPatrol', () => {
           </body>
         </html>
       `;
+      // No info-grid-header at all: the title still resolves through the //h1 fallback,
+      // but the year has no source and must stay null instead of being scavenged from
+      // the marketing blurb's "2021".
       const detailHtml = `
         <html>
           <body>
             <h1>Fallback Title</h1>
-            <div class="mb-6">
-              Movie 2024
+            ${MARKETING_BLURB_HTML}
+          </body>
+        </html>
+      `;
+
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
+
+      const config: FlixPatrolPopular = {
+        platform: 'wikipedia',
+        privacy: 'private',
+        limit: 1,
+        type: 'movies',
+      };
+
+      const result = await flixpatrol.getPopular('Movies', config);
+
+      expect(result).toEqual([{ title: 'Fallback Title', year: null }]);
+    });
+
+    // Regression: FlixPatrol's markup drifted and the year XPath went dead. The old code
+    // fell back to a regex over `div.mb-6`, which had become a site-wide marketing blurb
+    // ending in "the most popular TV shows in 2021" — so every scraped title was dated
+    // 2021, and the "exact title AND year" branch of the match cascade confidently
+    // selected homonyms (Paulette 2012 resolved to an unrelated 2021 film).
+    it('extracts the real premiere year even when the 2021 marketing blurb is present', async () => {
+      const popularHtml = `
+        <html>
+          <body>
+            <table class="card-table">
+              <tr>
+                <td>
+                  <a class="flex gap-2 group items-center" href="/title/paulette">Paulette</a>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            ${MARKETING_BLURB_HTML}
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Paulette</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1"><span>France</span></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>10/03/2012</span></div>|</div>
+                </div>
+              </div>
+            </div>
+            ${MARKETING_BLURB_HTML}
+          </body>
+        </html>
+      `;
+
+      mockFetch
+        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: popularHtml }))
+        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
+
+      const config: FlixPatrolPopular = {
+        platform: 'wikipedia',
+        privacy: 'private',
+        limit: 1,
+        type: 'movies',
+      };
+
+      const result = await flixpatrol.getPopular('Movies', config);
+
+      expect(result).toEqual([{ title: 'Paulette', year: 2012 }]);
+    });
+
+    // The premiere date is MM/DD/YYYY. A day above 12 removes any doubt about which
+    // component the parser reads: only the trailing year may ever be picked up.
+    it('reads the year from an MM/DD/YYYY premiere date whose day exceeds 12', async () => {
+      const popularHtml = `
+        <html>
+          <body>
+            <table class="card-table">
+              <tr>
+                <td>
+                  <a class="flex gap-2 group items-center" href="/title/turbulence">Turbulence</a>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `;
+      const detailHtml = `
+        <html>
+          <body>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Turbulence</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="Premiere"><div><span>05/18/2025</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1730,7 +1914,7 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getPopular('Movies', config);
 
-      expect(result).toEqual([{ title: 'Fallback Title', year: 2024 }]);
+      expect(result).toEqual([{ title: 'Turbulence', year: 2025 }]);
     });
 
     it('serves the second lookup of the same detail page from the cache', async () => {
@@ -1841,13 +2025,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1905,13 +2092,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Test Show</h1>
-              <span>TV Show</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Test Show</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>TV Show</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -1954,13 +2144,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
@@ -2075,13 +2268,16 @@ describe('FlixPatrol', () => {
       const detailHtml = `
         <html>
           <body>
-            <div class="mb-6">
-              <h1 class="mb-4">English Movie</h1>
-              <span>Movie</span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span><span>2024</span></span>
+            <div class="info-grid">
+              <div class="info-grid-header">
+                <div class="md:flex items-baseline justify-between">
+                  <h1 class="mb-4 text-h1">English Movie</h1>
+                </div>
+                <div class="flex flex-wrap">
+                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
+                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
+                </div>
+              </div>
             </div>
           </body>
         </html>
