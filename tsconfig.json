@@ -111,6 +111,7 @@
     "build",
     "eslint.config.mjs",
     "tests",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.e2e.config.ts"
   ],
 }

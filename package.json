@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "package": "npm run build && rm -rf bin/ && mkdir -p bin/ && bash scripts/install-native-bindings.sh && npx ncc build build/app.js -o build/tmp && bash scripts/patch-ncc-bundle.sh && npx pkg --no-bytecode --public --config=package.json build/tmp/index.js && mv bin/flixpatrol-top10-linux-x64 bin/flixpatrol-top10-linux-amd64"
   },
   "keywords": [
