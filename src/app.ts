@@ -98,9 +98,13 @@ async function bootstrapConfigs(): Promise<{
 }> {
   try {
     logger.info('Loading all configurations values');
+    const cacheOptions = GetAndValidateConfigs.getCacheOptions();
+    // Built exactly once per process: the daemon auth gate below and every
+    // scheduled run then share one adapter, and one resolution cache.
+    const target = createTarget(GetAndValidateConfigs.getTargetOptions(), cacheOptions, dryRun);
     const deps: Omit<RunPipelineDeps, 'signal'> = {
-      cacheOptions: GetAndValidateConfigs.getCacheOptions(),
-      targetOptions: GetAndValidateConfigs.getTargetOptions(),
+      cacheOptions,
+      target,
       flixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
       flixPatrolPopulars: GetAndValidateConfigs.getFlixPatrolPopular(),
       flixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
@@ -125,7 +129,7 @@ async function main(): Promise<void> {
   // Backends whose credentials come straight from the config (floppy, mdblist)
   // report requiresInteractiveAuth === false, so the daemon starts immediately.
   // Only Trakt's device flow needs a one-shot run to complete first.
-  const target = createTarget(deps.targetOptions, deps.cacheOptions, deps.dryRun);
+  const { target } = deps;
   const authenticated = !target.requiresInteractiveAuth || target.isAuthenticated();
   if (schedule.enabled && !authenticated) {
     logger.warn(`Schedule is enabled but ${target.backend} has no usable credentials yet — running once so the initial authentication can complete, then exiting. The scheduler will start on the next launch.`);

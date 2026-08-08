@@ -1,5 +1,4 @@
 import { FlixPatrol } from '../Flixpatrol';
-import { createTarget } from '../Targets';
 import type {
   ListPrivacy, ListTarget, MediaItem, MediaKind,
 } from '../Targets';
@@ -10,12 +9,16 @@ import type {
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolMostWatched, FlixPatrolMostHours,
-  FlixPatrolPopular, FlixPatrolTop10, TargetOptions,
+  FlixPatrolPopular, FlixPatrolTop10,
 } from '../types';
 
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
-  targetOptions: TargetOptions;
+  /**
+   * Built once by the caller (app.ts) so the daemon auth gate and every run
+   * share a single adapter instance — and therefore a single resolution cache.
+   */
+  target: ListTarget;
   flixPatrolTop10: FlixPatrolTop10[];
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
@@ -80,16 +83,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
-  // Only the backend name is logged: every other field of targetOptions is a
+  // Only the backend name is logged: every other field of the target config is a
   // credential (token, apiKey, clientSecret) or an internal url.
-  logger.silly(`targetOptions: ${JSON.stringify({ type: deps.targetOptions.type })}`);
+  logger.silly(`target: ${JSON.stringify({ backend: deps.target.backend })}`);
   logger.silly(`flixPatrolTop10: ${JSON.stringify(deps.flixPatrolTop10)}`);
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
   logger.silly(`flixPatrolMostHours: ${JSON.stringify(deps.flixPatrolMostHours)}`);
 
   const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
-  const target: ListTarget = createTarget(deps.targetOptions, deps.cacheOptions, deps.dryRun);
+  const { target } = deps;
 
   const totalLists = deps.flixPatrolTop10.length
     + deps.flixPatrolPopulars.length
@@ -121,6 +124,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     privacy: ListPrivacy,
   ): Promise<boolean> => {
     const ids = await target.resolveMany(items, kind);
+    // pushToList REPLACES the list content, so writing an empty array wipes it.
+    // A scrape that produced items but resolved to nothing means the backend is
+    // failing (outage, expired key, bad search day), not that the list should be
+    // emptied — so leave it alone. A genuinely empty scrape is a different case
+    // and keeps its previous behaviour.
+    if (items.length > 0 && ids.length === 0) {
+      logger.warn(`None of the ${items.length} ${kind}s scraped from FlixPatrol could be matched on `
+        + `${target.backend} — list "${listName}" left unchanged`);
+      return false;
+    }
     if (items.length > ids.length) {
       logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${target.backend} `
         + `(${items.length} found, ${ids.length} matched)`);

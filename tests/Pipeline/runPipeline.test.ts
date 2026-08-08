@@ -23,19 +23,13 @@ const h = vi.hoisted(() => {
     createSession: vi.fn(),
     destroySession: vi.fn(),
     target: targetMock,
-    createTarget: vi.fn(() => targetMock),
   };
 });
 
 const {
-  pushToList, connect, resolveMany, getTop10Sections, createSession, destroySession,
-  target, createTarget,
+  pushToList, connect, resolveMany, getTop10Sections, createSession, destroySession, target,
 } = h;
 
-vi.mock('../../src/Targets', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/Targets')>();
-  return { ...actual, createTarget: h.createTarget };
-});
 vi.mock('../../src/Flixpatrol', () => ({
   FlixPatrol: vi.fn().mockImplementation(function FlixPatrolMock() {
     return { getTop10Sections: h.getTop10Sections };
@@ -69,7 +63,7 @@ const top10Config = [{
 function baseDeps(overrides: Partial<RunPipelineDeps> = {}): RunPipelineDeps {
   return {
     cacheOptions: { enabled: false, savePath: '/tmp', ttl: 1 },
-    targetOptions: { type: 'trakt', trakt: { saveFile: '/tmp/t', clientId: 'id', clientSecret: 'secret' } },
+    target: target as unknown as RunPipelineDeps['target'],
     flixPatrolTop10: [],
     flixPatrolPopulars: [],
     flixPatrolMostWatched: [],
@@ -140,11 +134,10 @@ describe('runPipeline target wiring', () => {
     });
   });
 
-  it('builds the target from the configured target options', async () => {
-    const deps = baseDeps({ flixPatrolTop10: top10Config });
-    await runPipeline(deps);
-    expect(createTarget).toHaveBeenCalledWith(deps.targetOptions, deps.cacheOptions, false);
+  it('connects the injected target instead of building its own', async () => {
+    await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
     expect(connect).toHaveBeenCalledOnce();
+    expect(pushToList).toHaveBeenCalledOnce();
   });
 
   it('resolves scraped items through the target before pushing them', async () => {
@@ -189,12 +182,56 @@ describe('runPipeline target wiring', () => {
     expect(messages.some((m) => m.includes('trakt') && m.includes('1 matched'))).toBe(true);
   });
 
+  // Regression guard: pushToList REPLACES a list's content, so writing an empty
+  // array on a total resolution failure (backend outage, expired key) would wipe
+  // a list the user has accumulated. Guard on the RESOLVED count, never the
+  // scraped one — restoring an `items.length > 0` guard here must fail this test.
+  it('leaves the list untouched when the scrape yielded items but none resolved', async () => {
+    target.backend = 'mdblist';
+    resolveMany.mockResolvedValueOnce([]);
+    const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(summary.moviesAdded).toBe(0);
+    const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('mdblist');
+    expect(messages[0]).toContain('left unchanged');
+  });
+
+  it('still processes the rest of the run after a total resolution failure', async () => {
+    getTop10Sections.mockResolvedValue({
+      movies: [{ title: 'Inception', year: 2010 }],
+      shows: [{ title: 'Dark', year: 2017 }],
+      rawCounts: { movies: 1, shows: 1 },
+    });
+    resolveMany.mockResolvedValueOnce([]); // movies fail
+    const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+    expect(pushToList).toHaveBeenCalledOnce();
+    expect(pushToList).toHaveBeenCalledWith(['id-0'], expect.any(String), 'show', expect.any(String));
+    expect(summary.moviesAdded).toBe(0);
+    expect(summary.showsAdded).toBe(1);
+    expect(summary.listsProcessed).toBe(1);
+  });
+
+  // A genuinely empty scrape is NOT a resolution failure: the Top10 block skips it
+  // entirely, so neither a write nor the "left unchanged" warning happens.
+  it('does not warn about resolution when the scrape itself returned nothing', async () => {
+    getTop10Sections.mockResolvedValue({
+      movies: [], shows: [], rawCounts: { movies: 0, shows: 0 },
+    });
+    await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+    expect(resolveMany).not.toHaveBeenCalled();
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it('never logs target credentials, only the backend type', async () => {
     await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
     const sillyOutput = sillySpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(sillyOutput).toContain('trakt');
-    expect(sillyOutput).not.toContain('secret');
-    expect(sillyOutput).not.toContain('/tmp/t');
+    for (const secretish of ['secret', 'clientSecret', 'apiKey', 'token', 'saveFile', 'http']) {
+      expect(sillyOutput).not.toContain(secretish);
+    }
   });
 });
 
