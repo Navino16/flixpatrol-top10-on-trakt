@@ -13,9 +13,22 @@ export default defineConfig({
       reportsDirectory: '.reports/coverage',
       reporter: ['text', 'json', 'html', 'cobertura'],
       include: ['src/**/*.ts'],
-      exclude: ['src/types/**'],
+      exclude: [
+        'src/types/**',
+        // Process-level entry point: signal handlers, `process.exit` paths and
+        // bootstrap wiring. Unit-testing it would mean asserting on the process
+        // lifecycle rather than on behaviour, so it is deliberately excluded —
+        // the logic it orchestrates is covered through Pipeline/ and Scheduler/.
+        'src/app.ts',
+      ],
+      // Vitest reads threshold keys as glob patterns; a `global` key (the Jest
+      // spelling) matches no file and silently disables the gate. Top-level keys
+      // apply to the whole project.
       thresholds: {
-        global: { lines: 80, functions: 80, branches: 80, statements: 80 },
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
       },
     },
     reporters: ['default', 'junit'],
