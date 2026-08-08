@@ -1757,6 +1757,31 @@ describe('FlixPatrol', () => {
       // Second pass only re-downloads the list page: details come from the cache.
       expect(afterSecond - afterFirst).toBe(1);
     });
+
+    it('does not cache a detail page whose year could not be parsed', async () => {
+      // A null year is what degrades the later backend search, so a partial parse must
+      // never be persisted: the second lookup has to re-fetch the detail page.
+      const cached = new FlixPatrol({ enabled: true, savePath: './config/.cache', ttl: 604800 });
+      routeFetch(POPULAR_LIST_HTML, NO_YEAR_DETAIL_HTML);
+
+      const config: FlixPatrolPopular = {
+        platform: 'wikipedia',
+        privacy: 'private',
+        limit: 10,
+        type: 'movies',
+      };
+
+      const before = mockFetch.mock.calls.length;
+      const first = await cached.getPopular('Movies', config);
+      const afterFirst = mockFetch.mock.calls.length;
+      await cached.getPopular('Movies', config);
+      const afterSecond = mockFetch.mock.calls.length;
+
+      expect(first).toEqual([{ title: 'Sans Annee', year: null }]);
+      expect(afterFirst - before).toBe(3);
+      // Same cost again: nothing was cached, so both detail pages are re-fetched.
+      expect(afterSecond - afterFirst).toBe(3);
+    });
   });
 
   describe('getMostHours', () => {

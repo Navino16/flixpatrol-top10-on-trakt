@@ -327,12 +327,24 @@ export class FlixPatrol {
     return Number.isNaN(year) ? null : year;
   }
 
+  /**
+   * Narrows an arbitrary cached payload to a MediaItem. Validates the shape it is
+   * about to trust rather than casting on the presence of one key: a hand-edited or
+   * half-written cache file must miss, not poison every run until the TTL expires.
+   */
+  private static isMediaItem(value: unknown): value is MediaItem {
+    if (value === null || typeof value !== 'object') return false;
+    const candidate = value as Partial<Record<keyof MediaItem, unknown>>;
+    if (typeof candidate.title !== 'string' || candidate.title.length === 0) return false;
+    return candidate.year === null || typeof candidate.year === 'number';
+  }
+
   private async getMediaItem(result: FlixPatrolMatchResult): Promise<MediaItem> {
     if (this.detailCache !== null) {
       const cached: unknown = await this.detailCache.get(result, null);
-      if (cached && typeof cached === 'object' && 'title' in cached) {
+      if (FlixPatrol.isMediaItem(cached)) {
         logger.silly(`Found ${result} in cache: ${JSON.stringify(cached)}`);
-        return cached as MediaItem;
+        return cached;
       }
     }
 
@@ -346,9 +358,11 @@ export class FlixPatrol {
     const year = FlixPatrol.parseDetailYear(dom);
     const item: MediaItem = { title, year };
 
-    // Never cache a titleless scrape: it would pin a parsing accident for the
-    // whole TTL, while a re-scrape costs one page.
-    if (title.length > 0 && this.detailCache !== null) {
+    // Only cache a fully successful parse. A missing year is not a benign gap: it is
+    // exactly what disambiguates the later backend search, so persisting one would
+    // degrade every match for the whole TTL (7 days by default) after a single
+    // transient markup drift or half-rendered detail page. A miss costs one re-scrape.
+    if (title.length > 0 && year !== null && this.detailCache !== null) {
       await this.detailCache.set(result, item);
     }
     return item;
