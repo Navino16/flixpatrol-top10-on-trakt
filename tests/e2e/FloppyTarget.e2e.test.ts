@@ -190,8 +190,8 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   it('creates the list and holds movies and shows together', async () => {
-    await target.pushToList([`tmdb:${INCEPTION}`], listName, 'movie', 'public');
-    await target.pushToList([`tmdb:${BREAKING_BAD}`], listName, 'show', 'public');
+    await target.pushToList({ movie: [`tmdb:${INCEPTION}`] }, listName, 'public');
+    await target.pushToList({ show: [`tmdb:${BREAKING_BAD}`] }, listName, 'public');
 
     const items = await readListItems(listName);
     expect(items).toEqual(expect.arrayContaining([
@@ -207,7 +207,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   it('replaces the content on a second push instead of appending', async () => {
-    await target.pushToList([`tmdb:${FIGHT_CLUB}`], listName, 'movie', 'public');
+    await target.pushToList({ movie: [`tmdb:${FIGHT_CLUB}`] }, listName, 'public');
 
     const items = await readListItems(listName);
     expect(items.filter((i) => i.mediaType === 'movie')).toEqual([{ mediaType: 'movie', mediaId: FIGHT_CLUB }]);
@@ -226,7 +226,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     }) as typeof fetch;
 
     try {
-      await target.pushToList([`tmdb:${FIGHT_CLUB}`], listName, 'movie', 'public');
+      await target.pushToList({ movie: [`tmdb:${FIGHT_CLUB}`] }, listName, 'public');
     } finally {
       globalThis.fetch = real;
     }
@@ -275,7 +275,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     }) as typeof fetch;
 
     try {
-      await target.pushToList([`tmdb:${coldMediaId}`], coldListName, 'movie', 'public');
+      await target.pushToList({ movie: [`tmdb:${coldMediaId}`] }, coldListName, 'public');
     } finally {
       globalThis.fetch = real;
     }

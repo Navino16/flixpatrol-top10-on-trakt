@@ -70,6 +70,21 @@ function listNameOfWrite(index: number): string {
   return String(pushToList.mock.calls[index][1]);
 }
 
+/** ListContent passed to pushToList on the nth write (0-indexed). */
+function contentOfWrite(index: number): Record<string, string[]> {
+  return pushToList.mock.calls[index][0] as Record<string, string[]>;
+}
+
+/** Media kinds actually written on the nth write; an absent key means "left untouched". */
+function kindsOfWrite(index: number): string[] {
+  return Object.keys(contentOfWrite(index));
+}
+
+/** Privacy passed to pushToList on the nth write (0-indexed). */
+function privacyOfWrite(index: number): string {
+  return String(pushToList.mock.calls[index][2]);
+}
+
 /** Payload of the most recent `event` notification. */
 function lastPayload(
   dispatch: RunPipelineDeps['dispatch'],
@@ -202,7 +217,7 @@ describe('runPipeline target wiring', () => {
       [{ title: 'Inception', year: 2010 }, { title: 'Fight Club', year: 1999 }],
       'movie',
     );
-    expect(pushToList).toHaveBeenCalledWith(['1', '2'], expect.any(String), 'movie', expect.any(String));
+    expect(pushToList).toHaveBeenCalledWith({ movie: ['1', '2'] }, expect.any(String), expect.any(String));
   });
 
   it('warns with the backend name when some items could not be matched', async () => {
@@ -261,8 +276,12 @@ describe('runPipeline target wiring', () => {
     });
     resolveMany.mockResolvedValueOnce([]); // movies fail
     const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+    // ONE fused write, carrying the shows only: the movie key is ABSENT, which is
+    // how "write the shows, leave the movies exactly as they are" is expressed.
+    // A `movie: []` here would wipe the movies the backend simply failed to match.
     expect(pushToList).toHaveBeenCalledOnce();
-    expect(pushToList).toHaveBeenCalledWith(['id-0'], expect.any(String), 'show', expect.any(String));
+    expect(pushToList).toHaveBeenCalledWith({ show: ['id-0'] }, expect.any(String), expect.any(String));
+    expect(kindsOfWrite(0)).toEqual(['show']);
     expect(summary.moviesAdded).toBe(0);
     expect(summary.showsAdded).toBe(1);
     expect(summary.listsProcessed).toBe(1);
@@ -335,7 +354,7 @@ describe('runPipeline Popular section', () => {
     expect(getPopular).toHaveBeenCalledOnce();
     expect(getPopular).toHaveBeenCalledWith('Movies', expect.objectContaining({ platform: 'wikipedia' }));
     expect(pushToList).toHaveBeenCalledOnce();
-    expect(pushToList.mock.calls[0][2]).toBe('movie');
+    expect(kindsOfWrite(0)).toEqual(['movie']);
     expect(summary.moviesAdded).toBe(1);
     expect(summary.showsAdded).toBe(0);
   });
@@ -346,19 +365,64 @@ describe('runPipeline Popular section', () => {
 
     expect(getPopular).toHaveBeenCalledOnce();
     expect(getPopular).toHaveBeenCalledWith('TV Shows', expect.objectContaining({ platform: 'wikipedia' }));
-    expect(pushToList.mock.calls[0][2]).toBe('show');
+    expect(kindsOfWrite(0)).toEqual(['show']);
     expect(summary.moviesAdded).toBe(0);
     expect(summary.showsAdded).toBe(1);
   });
 
-  it('writes both media kinds into the same list when type is "both"', async () => {
+  // The fused write, seen from the pipeline: a `type: "both"` entry costs ONE
+  // pushToList call, not two. Everything the backends do per list — list lookup,
+  // items read, description stamp — is therefore paid once.
+  it('writes both media kinds of a list in a single push', async () => {
     const deps = baseDeps({ flixPatrolPopulars: popularConfig() });
     const summary = await runPipeline(deps);
 
-    expect(pushToList).toHaveBeenCalledTimes(2);
-    expect(pushToList.mock.calls.map((c) => c[2])).toEqual(['movie', 'show']);
-    expect(listNameOfWrite(0)).toBe(listNameOfWrite(1));
+    expect(pushToList).toHaveBeenCalledOnce();
+    expect(contentOfWrite(0)).toEqual({ movie: ['id-0'], show: ['id-0'] });
     expect(summary.listsProcessed).toBe(1);
+    expect(summary.moviesAdded).toBe(1);
+    expect(summary.showsAdded).toBe(1);
+  });
+
+  // Two `type: "both"` lists are still two writes: the fusion is per list, never
+  // across lists.
+  it('still writes once per list, never merging two lists into one call', async () => {
+    const deps = baseDeps({
+      flixPatrolPopulars: [
+        ...popularConfig({ name: 'first' }),
+        ...popularConfig({ name: 'second' }),
+      ],
+    });
+    await runPipeline(deps);
+
+    expect(pushToList).toHaveBeenCalledTimes(2);
+    expect(listNameOfWrite(0)).toBe('first');
+    expect(listNameOfWrite(1)).toBe('second');
+  });
+
+  // Leave-untouched semantics on a fused write: the shows failed to resolve, the
+  // movies did. The single call must carry the movies and OMIT the shows.
+  it('omits the failing kind from the fused write and still writes the other', async () => {
+    resolveMany
+      .mockResolvedValueOnce(['m-1']) // movies resolve
+      .mockResolvedValueOnce([]); // shows resolve to nothing
+    const summary = await runPipeline(baseDeps({ flixPatrolPopulars: popularConfig() }));
+
+    expect(pushToList).toHaveBeenCalledOnce();
+    expect(contentOfWrite(0)).toEqual({ movie: ['m-1'] });
+    expect('show' in contentOfWrite(0)).toBe(false);
+    expect(summary.showsAdded).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('left unchanged'));
+  });
+
+  // A genuinely empty scrape is NOT a failure: the key is present and empty, which
+  // asks the backend to clear that kind.
+  it('sends an empty array for a kind the scrape returned empty', async () => {
+    getPopular.mockResolvedValueOnce([]).mockResolvedValueOnce(oneItem);
+    await runPipeline(baseDeps({ flixPatrolPopulars: popularConfig() }));
+
+    expect(pushToList).toHaveBeenCalledOnce();
+    expect(contentOfWrite(0)).toEqual({ movie: [], show: ['id-0'] });
   });
 
   it('derives the default list name from the platform and applies the prefix', async () => {
@@ -383,7 +447,7 @@ describe('runPipeline Popular section', () => {
       flixPatrolPopulars: popularConfig({ type: 'movies', privacy: 'public' }),
     }));
 
-    expect(pushToList.mock.calls[0][3]).toBe('public');
+    expect(privacyOfWrite(0)).toBe('public');
   });
 });
 
@@ -590,27 +654,33 @@ describe('runPipeline dry-run reporting', () => {
 });
 
 describe('runPipeline abort between lists', () => {
-  it('completes the in-flight write, then stops before the next one', async () => {
+  it('completes the in-flight list write, then stops before the next list', async () => {
     const controller = new AbortController();
-    // Abort as soon as the first list write lands: the checkpoint sits *before*
-    // each write, so the first one must still complete and the second must not.
+    // Abort as soon as the first LIST write lands. With one write per list the
+    // checkpoint can only sit between two lists, so the first list is written
+    // WHOLE — both kinds in the same call — and the second is not written at all.
+    // A stop can no longer land between the movie half and the show half.
     pushToList.mockImplementationOnce(() => {
       controller.abort();
       return Promise.resolve();
     });
     const deps = baseDeps({
-      flixPatrolPopulars: popularConfig({ type: 'both' }),
+      flixPatrolPopulars: [
+        ...popularConfig({ type: 'both', name: 'first' }),
+        ...popularConfig({ type: 'both', name: 'second' }),
+      ],
       signal: controller.signal,
     });
 
     const summary = await runPipeline(deps);
 
     expect(pushToList).toHaveBeenCalledOnce();
-    expect(pushToList.mock.calls[0][2]).toBe('movie');
+    expect(listNameOfWrite(0)).toBe('first');
+    expect(contentOfWrite(0)).toEqual({ movie: ['id-0'], show: ['id-0'] });
     expect(summary.moviesAdded).toBe(1);
-    expect(summary.showsAdded).toBe(0);
-    // The list never finished, so it is not counted as processed.
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.showsAdded).toBe(1);
+    // The first list completed, so it counts; the second was never written.
+    expect(summary.listsProcessed).toBe(1);
   });
 
   it('does not dispatch run_end when the run was interrupted', async () => {

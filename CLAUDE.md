@@ -95,20 +95,20 @@ src/
 1. Creates the FlareSolverr session, if enabled (before any list, so a dead container fails fast)
 2. Initializes `FlixPatrol`. The `ListTarget` is **not** built here: `app.ts` builds it once per process and passes it in, so the daemon auth gate and every scheduled run share one adapter and one resolution cache
 3. Calls `target.connect()` (a no-op for floppy/mdblist, the OAuth device flow for trakt)
-4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially. For each section: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` for backend ids → `target.pushToList()` to replace the list content
+4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially. For each list: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` per kind for backend ids → **one** `target.pushToList()` carrying both kinds, so everything a backend does per list (list lookup, items read, description stamp) is paid once even for `type: "both"`
 5. Dispatches `run_end` with a summary (lists processed, movies/shows added, duration)
 6. Destroys the FlareSolverr session in a `finally` block, so it also covers the early abort paths and thrown errors
 
 `FlixPatrol` no longer knows about any backend: it returns `MediaItem[]` and nothing else. All id resolution lives behind `ListTarget`.
 
-Guard in `syncSection`: `pushToList` **replaces** the list content, so a scrape that produced items but resolved to zero ids leaves the list untouched instead of wiping it — that combination means the backend is failing, not that the list should be emptied. A genuinely empty scrape keeps its previous behaviour.
+Guard in `resolveSection`: `pushToList` **replaces** the content of every kind whose key is present, so a scrape that produced items but resolved to zero ids returns `null` and the caller OMITS that kind's key — the kind is left untouched while the other one is still written in the same call. That combination means the backend is failing, not that the list should be emptied. A genuinely empty scrape keeps its previous behaviour: a present, empty array, hence a wipe of that kind.
 
 Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current list write, never mid-write.
 
 **`src/Targets/`** - Backend abstraction:
-- `ListTarget` is the only interface the pipeline knows: `connect()`, `resolveMany(items, kind)` → opaque backend ids, `pushToList(ids, listName, kind, privacy)` which replaces the list content for that kind
+- `ListTarget` is the only interface the pipeline knows: `connect()`, `resolveMany(items, kind)` → opaque backend ids, `pushToList(ids, listName, privacy)` where `ids` is a `ListContent` = `Partial<Record<MediaKind, string[]>>`. The three states of a key are all meaningful: **absent** → that kind is left untouched; **present and non-empty** → that kind is replaced; **present and empty** → that kind is cleared
 - `createTarget(TargetOptions, CacheOptions, dryRun)` picks the adapter from `Target.type`
-- `TraktTarget` wraps the existing `TraktAPI` (device flow, `requiresInteractiveAuth: true`); `FloppyTarget` uses `X-API-Key` with `movie`/`tv` media types and item-by-item writes; `MdblistTarget` uses `?apikey=` with `movie`/`show` and bulk add/remove
+- `TraktTarget` wraps the existing `TraktAPI` (device flow, `requiresInteractiveAuth: true`); `FloppyTarget` uses `X-API-Key` with `movie`/`tv` media types and item-by-item writes (its API has no bulk write; only the list lookup and the items read are shared between kinds); `MdblistTarget` uses `?apikey=` with `movie`/`show` and sends both buckets in a single bulk add and a single bulk remove, each skipped when its payload would be empty
 - `ResolutionCache` is a second cache layer, namespaced per backend (`resolution-<backend>/`), so switching backends never re-scrapes a FlixPatrol detail page
 - Adapter-specific behaviour worth remembering: Floppy ignores `privacy` (its API cannot set list visibility) and writes no description (it exposes `latest_update` natively); mdblist writes no description either (`last_updated_at` is native) and forces `sort_by_score=true` on search because the default ranking is poor
 - In `FloppyTarget.addItem`, the `PUT` is attempted **first, before any catalogue creation**. This is a data-safety guarantee, not an optimisation: the cleanup `DELETE` can then only ever remove a tracking row this run created, never a status or rating the user entered by hand
@@ -291,6 +291,12 @@ Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `Fl
 - List creation
 - Item removal/addition
 - List updates
+
+Every one of those sleeps still guards a call that still happens; the rate-limit protection is
+unchanged. What disappeared with the fused write is the *duplicated* per-list work of a
+`type: "both"` list: `users.list.get` and the "Last Updated" description now run once instead of
+twice, which removes two wasted seconds per list. `users.list.items.get` is genuinely filtered by
+type on the Trakt side, so it legitimately stays one call per kind.
 
 The other two backends do not sleep. Floppy is self-hosted, so a per-item delay would make a
 ten-item list absurdly slow. mdblist writes in bulk instead, and reports its remaining daily

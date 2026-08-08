@@ -1,9 +1,10 @@
 import fs from 'fs';
 import { TraktAPI } from '../../Trakt';
+import type { TraktListContent } from '../../Trakt';
 import { logger } from '../../Utils';
 import type { CacheOptions, TraktAPIOptions } from '../../types';
 import type {
-  ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
+  ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
 } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
 
@@ -62,11 +63,16 @@ export class TraktTarget implements ListTarget {
   }
 
   public async pushToList(
-    ids: string[],
+    ids: ListContent,
     listName: string,
-    kind: MediaKind,
     privacy: ListPrivacy,
   ): Promise<void> {
-    await this.trakt.pushToList(ids.map(Number), listName, kind, privacy);
+    // The absent/present distinction is preserved on the way down: a kind the
+    // caller omitted must stay omitted, never become an empty array, or the
+    // Trakt layer would wipe it.
+    const content: TraktListContent = {};
+    if (ids.movie !== undefined) content.movie = ids.movie.map(Number);
+    if (ids.show !== undefined) content.show = ids.show.map(Number);
+    await this.trakt.pushToList(content, listName, privacy);
   }
 }

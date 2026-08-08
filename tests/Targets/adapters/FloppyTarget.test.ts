@@ -108,7 +108,7 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] })) // GET /lists/
       .mockResolvedValueOnce(json({ results: [] })) // GET /lists/7/items/
       .mockResolvedValueOnce(json([{ list_id: 7 }])); // PUT
-    await target.pushToList(['tmdb:27205'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['tmdb:27205'] }, 'my-list', 'public');
     expect(methodOf(fetchMock, 2)).toBe('PUT');
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/27205/lists/7/');
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -122,7 +122,7 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ id: 1 }, 201)) // POST /media/movie/
       .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT retry
       .mockResolvedValueOnce(json({}, 204)); // DELETE tracking
-    await target.pushToList(['tmdb:550'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['tmdb:550'] }, 'my-list', 'public');
     expect(methodOf(fetchMock, 3)).toBe('POST');
     expect(urlOf(fetchMock, 3)).toBe('http://floppy:8000/api/v1/media/movie/');
     expect(methodOf(fetchMock, 5)).toBe('DELETE');
@@ -141,7 +141,7 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ id: 1 }, 201)) // POST /media/movie/
       .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT retry
       .mockResolvedValue(json({}, 204)); // DELETE tracking, and anything after
-    await target.pushToList(['tmdb:27205'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['tmdb:27205'] }, 'my-list', 'public');
     const deletes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE');
     expect(deletes).toHaveLength(0);
   });
@@ -152,7 +152,7 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ id: 9, name: 'my-list' }, 201))
       .mockResolvedValueOnce(json({ results: [] }))
       .mockResolvedValueOnce(json([{ list_id: 9 }]));
-    await target.pushToList(['tmdb:1'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
     expect(methodOf(fetchMock, 1)).toBe('POST');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ name: 'my-list' });
   });
@@ -168,7 +168,7 @@ describe('FloppyTarget', () => {
       }))
       .mockResolvedValueOnce(json({}, 204)) // DELETE of the only movie
       .mockResolvedValueOnce(json([{ list_id: 7 }]));
-    await target.pushToList(['tmdb:3'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/');
     expect(methodOf(fetchMock, 2)).toBe('DELETE');
   });
@@ -178,20 +178,86 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
       .mockResolvedValueOnce(json({ results: [] }))
       .mockResolvedValueOnce(json([{ list_id: 7 }]));
-    await target.pushToList(['tmdb:1'], 'my-list', 'movie', 'private');
+    await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'private');
     expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'PATCH')).toBe(false);
+  });
+
+  /**
+   * Regression guard on the fused write. A `type: "both"` list used to be pushed
+   * TWICE, so the list lookup and the items read each ran twice — 6 requests for
+   * one movie and one show where 4 suffice. The per-item PUTs are inherent to
+   * Floppy, which exposes no bulk write, and are deliberately NOT what this
+   * asserts on.
+   */
+  it('looks the list up and reads its items once for a "both" write', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] })) // GET /lists/?search=
+      .mockResolvedValueOnce(json({ results: [] })) // GET /lists/7/items/
+      .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT movie
+      .mockResolvedValueOnce(json([{ list_id: 7 }])); // PUT show
+
+    await target.pushToList({ movie: ['tmdb:1'], show: ['tmdb:2'] }, 'my-list', 'public');
+
+    const listLookups = fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/api/v1/lists/?search='));
+    const itemReads = fetchMock.mock.calls.filter((c) => (c[0] as string).endsWith('/api/v1/lists/7/items/'));
+    expect(listLookups).toHaveLength(1);
+    expect(itemReads).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/');
+    expect(urlOf(fetchMock, 3)).toBe('http://floppy:8000/api/v1/media/tv/tmdb/2/lists/7/');
+  });
+
+  // Leave-untouched semantics: an absent key must produce neither a DELETE nor a
+  // PUT for that kind, so its existing items survive.
+  it('never removes the items of a kind whose key is absent', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
+      .mockResolvedValueOnce(json({
+        results: [
+          { item: { media_id: '1', source: 'tmdb', media_type: 'movie' } },
+          { item: { media_id: '2', source: 'tmdb', media_type: 'tv' } },
+        ],
+      }))
+      .mockResolvedValueOnce(json({}, 204)) // DELETE of the only movie
+      .mockResolvedValue(json([{ list_id: 7 }])); // PUT of the replacement movie
+
+    await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
+
+    const deletes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE').map((c) => c[0] as string);
+    expect(deletes).toEqual(['http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/']);
+  });
+
+  // An empty array is a deliberate wipe: the DELETE happens, no PUT follows.
+  it('removes the items of a kind handed an empty array', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
+      .mockResolvedValueOnce(json({
+        results: [{ item: { media_id: '1', source: 'tmdb', media_type: 'movie' } }],
+      }))
+      .mockResolvedValue(json({}, 204));
+
+    await target.pushToList({ movie: [] }, 'my-list', 'public');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(methodOf(fetchMock, 2)).toBe('DELETE');
+    expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'PUT')).toBe(false);
+  });
+
+  it('issues no request at all when no kind is given', async () => {
+    await target.pushToList({}, 'my-list', 'public');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('writes nothing in dry-run mode', async () => {
     const dry = new FloppyTarget(options, cacheOptions, true);
     fetchMock.mockResolvedValue(json({ results: [{ id: 7, name: 'my-list' }] }));
-    await dry.pushToList(['tmdb:1'], 'my-list', 'movie', 'public');
+    await dry.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
     const writes = fetchMock.mock.calls.filter((c) => ['PUT', 'POST', 'DELETE'].includes(c[1]?.method));
     expect(writes).toHaveLength(0);
   });
 
   it('raises a FloppyError when the server fails', async () => {
     fetchMock.mockResolvedValueOnce(json({ detail: 'boom' }, 500));
-    await expect(target.pushToList(['tmdb:1'], 'my-list', 'movie', 'public')).rejects.toThrow(FloppyError);
+    await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
   });
 });

@@ -107,7 +107,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json({ id: 42, slug: 'my-list' }, 201))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList(['27205'], 'my-list', 'movie', 'private');
+    await target.pushToList({ movie: ['27205'] }, 'my-list', 'private');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ name: 'my-list', private: true });
   });
 
@@ -117,7 +117,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json({ id: 42, slug: 'my-list' }, 201))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList(['27205'], 'my-list', 'movie', privacy);
+    await target.pushToList({ movie: ['27205'] }, 'my-list', privacy);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ name: 'my-list', private: false });
   });
 
@@ -126,7 +126,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 0, shows: 2 } }));
-    await target.pushToList(['1396', '1399'], 'my-list', 'show', 'public');
+    await target.pushToList({ show: ['1396', '1399'] }, 'my-list', 'public');
     expect(JSON.parse(fetchMock.mock.calls[2][1].body as string))
       .toEqual({ shows: [{ tmdb: 1396 }, { tmdb: 1399 }] });
   });
@@ -137,7 +137,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json({ movies: [{ id: 1 }, { id: 2 }], shows: [{ id: 9 }] }))
       .mockResolvedValueOnce(json({ removed: { movies: 2, shows: 0 } }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList(['3'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
     expect(urlOf(fetchMock, 2)).toContain('/lists/42/items/remove');
     expect(JSON.parse(fetchMock.mock.calls[2][1].body as string))
       .toEqual({ movies: [{ tmdb: 1 }, { tmdb: 2 }] });
@@ -148,7 +148,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList(['3'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
     expect(fetchMock.mock.calls.some((c) => (c[0] as string).includes('items/remove'))).toBe(false);
   });
 
@@ -157,7 +157,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList(['27205'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['27205'] }, 'my-list', 'public');
     const bodies = fetchMock.mock.calls
       .map((c) => c[1]?.body)
       .filter((b): b is string => typeof b === 'string');
@@ -167,14 +167,74 @@ describe('MdblistTarget', () => {
   it('writes nothing in dry-run mode', async () => {
     const dry = new MdblistTarget({ apiKey: 'key' }, cacheOptions, true);
     fetchMock.mockResolvedValue(json([{ id: 42, name: 'my-list' }]));
-    await dry.pushToList(['27205'], 'my-list', 'movie', 'public');
+    await dry.pushToList({ movie: ['27205'] }, 'my-list', 'public');
     const writes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST');
     expect(writes).toHaveLength(0);
   });
 
   it('raises an MdblistError on a failing response', async () => {
     fetchMock.mockResolvedValueOnce(json({ error: 'boom' }, 500));
-    await expect(target.pushToList(['1'], 'my-list', 'movie', 'public')).rejects.toThrow(MdblistError);
+    await expect(target.pushToList({ movie: ['1'] }, 'my-list', 'public')).rejects.toThrow(MdblistError);
+  });
+
+  /**
+   * Regression guard on the fused write. A `type: "both"` list used to be pushed
+   * TWICE: `GET /lists/user` and `GET /lists/{id}/items` ran twice — and the
+   * items endpoint already returns BOTH buckets, so half of each response was
+   * discarded — plus one remove and one add per kind. That is 8 requests where 4
+   * suffice, on an API that meters a daily quota.
+   */
+  it('writes a "both" list with one lookup, one items read and one bulk call per direction', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValueOnce(json({ movies: [{ id: 1 }], shows: [{ id: 9 }] }))
+      .mockResolvedValueOnce(json({ removed: { movies: 1, shows: 1 } }))
+      .mockResolvedValueOnce(json({ added: { movies: 1, shows: 1 } }));
+
+    await target.pushToList({ movie: ['3'], show: ['4'] }, 'my-list', 'public');
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/lists/user'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/lists/42/items?'))).toHaveLength(1);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body as string))
+      .toEqual({ movies: [{ tmdb: 1 }], shows: [{ tmdb: 9 }] });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body as string))
+      .toEqual({ movies: [{ tmdb: 3 }], shows: [{ tmdb: 4 }] });
+  });
+
+  // Leave-untouched semantics: an absent key must appear in NEITHER payload, so
+  // mdblist keeps that bucket as it is.
+  it('never mentions a bucket whose key is absent', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValueOnce(json({ movies: [{ id: 1 }], shows: [{ id: 9 }] }))
+      .mockResolvedValueOnce(json({ removed: { movies: 1, shows: 0 } }))
+      .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
+
+    await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
+
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body as string)).toEqual({ movies: [{ tmdb: 1 }] });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body as string)).toEqual({ movies: [{ tmdb: 3 }] });
+  });
+
+  // An empty array is a deliberate wipe: the removal happens, and the add call is
+  // skipped rather than sent with an empty payload.
+  it('removes a bucket handed an empty array and skips the pointless add', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValueOnce(json({ movies: [{ id: 1 }], shows: [] }))
+      .mockResolvedValueOnce(json({ removed: { movies: 1, shows: 0 } }));
+
+    await target.pushToList({ movie: [] }, 'my-list', 'public');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body as string)).toEqual({ movies: [{ tmdb: 1 }] });
+    expect(fetchMock.mock.calls.some((c) => (c[0] as string).includes('items/add'))).toBe(false);
+  });
+
+  it('issues no request at all when no kind is given', async () => {
+    await target.pushToList({}, 'my-list', 'public');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('logs the remaining daily quota at the end of a push', async () => {
@@ -183,7 +243,7 @@ describe('MdblistTarget', () => {
       .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }, 200, { 'x-ratelimit-remaining': '987' }));
-    await target.pushToList(['27205'], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['27205'] }, 'my-list', 'public');
     expect(info).toHaveBeenCalledWith(expect.stringContaining('987'));
   });
 });

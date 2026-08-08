@@ -1,8 +1,9 @@
 import { FloppyError, logger } from '../../Utils';
 import type { CacheOptions, FloppyOptions } from '../../types';
 import type {
-  ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
+  ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
 } from '../ListTarget';
+import { MEDIA_KINDS } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
 
 /** A single result of `GET /api/v1/search/{media_type}`. */
@@ -284,42 +285,65 @@ export class FloppyTarget implements ListTarget {
     await this.request('DELETE', `/api/v1/media/${type}/${source}/${mediaId}/`, undefined, [204, 404]);
   }
 
+  /**
+   * Writes both media kinds in a single pass over the list.
+   *
+   * Floppy exposes no bulk write, so adds and removes stay one HTTP request per
+   * item — that is inherent to the API. What is fused here is the per-LIST work:
+   * the list lookup/creation and the items read now happen once instead of once
+   * per kind.
+   *
+   * A kind whose key is absent from `ids` is never looked at, so its existing
+   * items are left in place.
+   */
   public async pushToList(
-    ids: string[],
+    ids: ListContent,
     listName: string,
-    kind: MediaKind,
     privacy: ListPrivacy,
   ): Promise<void> {
     // `privacy` is deliberately unused: the Floppy API exposes no way to set the
     // visibility of a list. See the spec, "Floppy special case" section.
     void privacy;
 
-    const listId = await this.getOrCreateList(listName);
-    if (this.dryRun) {
-      logger.info(`[DRY-RUN] Would replace ${kind}s of Floppy list "${listName}" with ${ids.length} item(s)`);
+    const kinds = MEDIA_KINDS.filter((kind) => ids[kind] !== undefined);
+    if (kinds.length === 0) {
       return;
     }
 
-    const type = FloppyTarget.mediaType(kind);
+    const listId = await this.getOrCreateList(listName);
+    if (this.dryRun) {
+      for (const kind of kinds) {
+        const count = (ids[kind] as string[]).length;
+        logger.info(`[DRY-RUN] Would replace ${kind}s of Floppy list "${listName}" with ${count} item(s)`);
+      }
+      return;
+    }
+
     const existing = await this.request(
       'GET', `/api/v1/lists/${listId}/items/`, undefined, [200],
     );
-    const toRemove = FloppyTarget.readListItems(existing.payload).filter((r) => r.item.media_type === type);
-    if (toRemove.length > 0) {
-      logger.info(`Floppy list "${listName}" contains ${toRemove.length} ${kind}, removing them`);
-      for (const { item } of toRemove) {
-        await this.request(
-          'DELETE',
-          `/api/v1/media/${type}/${item.source}/${item.media_id}/lists/${listId}/`,
-          undefined,
-          [204, 404],
-        );
-      }
-    }
+    const existingItems = FloppyTarget.readListItems(existing.payload);
 
-    logger.info(`Adding ${ids.length} ${kind} into Floppy list "${listName}"`);
-    for (const id of ids) {
-      await this.addItem(id, listId, kind);
+    for (const kind of kinds) {
+      const type = FloppyTarget.mediaType(kind);
+      const toRemove = existingItems.filter((r) => r.item.media_type === type);
+      if (toRemove.length > 0) {
+        logger.info(`Floppy list "${listName}" contains ${toRemove.length} ${kind}, removing them`);
+        for (const { item } of toRemove) {
+          await this.request(
+            'DELETE',
+            `/api/v1/media/${type}/${item.source}/${item.media_id}/lists/${listId}/`,
+            undefined,
+            [204, 404],
+          );
+        }
+      }
+
+      const toAdd = ids[kind] as string[];
+      logger.info(`Adding ${toAdd.length} ${kind} into Floppy list "${listName}"`);
+      for (const id of toAdd) {
+        await this.addItem(id, listId, kind);
+      }
     }
   }
 }

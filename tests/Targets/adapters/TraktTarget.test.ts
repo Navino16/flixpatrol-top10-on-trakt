@@ -70,7 +70,31 @@ describe('TraktTarget', () => {
   });
 
   it('converts ids back to numbers when delegating the push', async () => {
-    await target.pushToList(['16662', '1388'], 'my-list', 'movie', 'public');
-    expect(pushToList).toHaveBeenCalledWith([16662, 1388], 'my-list', 'movie', 'public');
+    await target.pushToList({ movie: ['16662'], show: ['1388'] }, 'my-list', 'public');
+    expect(pushToList).toHaveBeenCalledWith({ movie: [16662], show: [1388] }, 'my-list', 'public');
+  });
+
+  // Both kinds of the same list travel in ONE delegated call: a `type: "both"`
+  // entry must not pay the per-list Trakt work twice.
+  it('delegates a single push for a list carrying both kinds', async () => {
+    await target.pushToList({ movie: ['1'], show: ['2'] }, 'my-list', 'public');
+    expect(pushToList).toHaveBeenCalledTimes(1);
+  });
+
+  // The absent/present distinction is the whole point of the Partial: a kind the
+  // caller omitted must reach the Trakt layer omitted, never as an empty array,
+  // which would wipe it.
+  it('keeps an omitted kind omitted instead of turning it into an empty array', async () => {
+    await target.pushToList({ movie: ['16662'] }, 'my-list', 'public');
+    const content = pushToList.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(content)).toEqual(['movie']);
+    expect('show' in content).toBe(false);
+  });
+
+  // An empty array is NOT the same thing: it means "this kind scraped empty,
+  // remove what is there" and must be forwarded as such.
+  it('forwards an explicitly empty kind as an empty array', async () => {
+    await target.pushToList({ movie: [], show: ['2'] }, 'my-list', 'public');
+    expect(pushToList).toHaveBeenCalledWith({ movie: [], show: [2] }, 'my-list', 'public');
   });
 });

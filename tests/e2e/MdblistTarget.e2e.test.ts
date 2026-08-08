@@ -117,8 +117,8 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   });
 
   it('creates a private list holding movies and shows together', async () => {
-    await target.pushToList([`${INCEPTION}`], listName, 'movie', 'private');
-    await target.pushToList([`${BREAKING_BAD}`], listName, 'show', 'private');
+    await target.pushToList({ movie: [`${INCEPTION}`] }, listName, 'private');
+    await target.pushToList({ show: [`${BREAKING_BAD}`] }, listName, 'private');
 
     const list = await findList(listName);
     expect(list).not.toBeNull();
@@ -136,7 +136,7 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
 
   it('replaces the content on a second push and advances last_updated_at', async () => {
     expect(listId).toBeGreaterThan(0);
-    await target.pushToList([`${FIGHT_CLUB}`], listName, 'movie', 'private');
+    await target.pushToList({ movie: [`${FIGHT_CLUB}`] }, listName, 'private');
 
     const items = await readListItems(listId);
     expect(items.movies).toEqual([FIGHT_CLUB]);

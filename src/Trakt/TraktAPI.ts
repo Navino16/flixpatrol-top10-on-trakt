@@ -18,6 +18,17 @@ interface TraktAPIRuntimeOptions extends TraktAPIOptions {
   dryRun?: boolean;
 }
 
+/** The two Trakt item types this project writes; the others are never pushed. */
+export type TraktMediaType = Extract<TraktType, 'movie' | 'show'>;
+
+/**
+ * Ids to write per media type. An ABSENT key means "leave that type untouched",
+ * a present key (even empty) means "replace that type's content".
+ */
+export type TraktListContent = Partial<Record<TraktMediaType, TraktTVIds>>;
+
+const TRAKT_MEDIA_TYPES: readonly TraktMediaType[] = ['movie', 'show'];
+
 export class TraktAPI {
   private trakt: Trakt;
 
@@ -238,7 +249,38 @@ export class TraktAPI {
     }
   }
 
-  public async pushToList(traktTVIDs: TraktTVIds, listName: string, type: TraktType, privacy: TraktPrivacy) {
+  private async touchDescription(list: TraktList): Promise<void> {
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
+    };
+    const currentDate = new Date().toLocaleString(undefined, dateOptions);
+    const updatedString = `Last Updated: ${currentDate}`;
+    if (this.dryRun) {
+      logger.info(`[DRY-RUN] Would update list description to: "${updatedString}"`);
+      return;
+    }
+    // Avoid Trakt rate limit
+    await Utils.sleep(1000);
+    logger.info(`Updating list description: "${updatedString}"`);
+    await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+  }
+
+  /**
+   * Writes both media types in a single pass over the list.
+   *
+   * The list lookup/creation, the privacy alignment and the "Last Updated"
+   * description are per-LIST and happen exactly once, whatever the number of
+   * types written — the previous per-type signature paid them twice, including
+   * two rate-limit sleeps and a description write that overwrote its twin.
+   * `users.list.items.get` is genuinely filtered by type on the Trakt side, so
+   * it necessarily stays per-type.
+   */
+  public async pushToList(content: TraktListContent, listName: string, privacy: TraktPrivacy) {
+    const types = TRAKT_MEDIA_TYPES.filter((type) => content[type] !== undefined);
+    if (types.length === 0) {
+      return;
+    }
+
     let list = await this.getList(listName, privacy);
     if (list.privacy !== privacy) {
       if (this.dryRun) {
@@ -250,24 +292,22 @@ export class TraktAPI {
         list = await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, privacy });
       }
     }
-    const items = await this.getListItems(list, type);
-    if (items.length > 0) {
-      await this.removeListItems(list, items, type);
-    }
-    if (traktTVIDs.length > 0) {
-      await this.addItemsToList(list, traktTVIDs, type);
-      const dateOptions: Intl.DateTimeFormatOptions = {
-        weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
-      };
-      const currentDate = new Date().toLocaleString(undefined, dateOptions);
-      const updatedString = `Last Updated: ${currentDate}`;
-      if (this.dryRun) {
-        logger.info(`[DRY-RUN] Would update list description to: "${updatedString}"`);
-      } else {
-        await Utils.sleep(1000);
-        logger.info(`Updating list description: "${updatedString}"`);
-        await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+
+    let added = false;
+    for (const type of types) {
+      const traktTVIDs = content[type] as TraktTVIds;
+      const items = await this.getListItems(list, type);
+      if (items.length > 0) {
+        await this.removeListItems(list, items, type);
       }
+      if (traktTVIDs.length > 0) {
+        await this.addItemsToList(list, traktTVIDs, type);
+        added = true;
+      }
+    }
+
+    if (added) {
+      await this.touchDescription(list);
     }
   }
 

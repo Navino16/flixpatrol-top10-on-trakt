@@ -1,8 +1,9 @@
 import { logger, MdblistError } from '../../Utils';
 import type { CacheOptions, MdblistOptions } from '../../types';
 import type {
-  ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
+  ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
 } from '../ListTarget';
+import { MEDIA_KINDS } from '../ListTarget';
 import { isPrivate } from '../privacy';
 import { ResolutionCache } from '../ResolutionCache';
 
@@ -19,7 +20,7 @@ interface MdblistList {
   name: string;
 }
 
-/** The content of `GET /lists/{id}/items`: only the bucket concerned by `kind` is read. */
+/** The content of `GET /lists/{id}/items`: both buckets come back, both are used. */
 interface MdblistItems {
   movies: { id: number }[];
   shows: { id: number }[];
@@ -270,29 +271,61 @@ export class MdblistTarget implements ListTarget {
     return id;
   }
 
+  /**
+   * Writes both buckets in a single pass: `GET /lists/user` and
+   * `GET /lists/{id}/items` are per-LIST and happen once — the items endpoint
+   * already returns the `movies` AND `shows` buckets, so the previous per-kind
+   * call threw half of each response away — and both bulk writes carry the two
+   * buckets at once, which is exactly what the API expects.
+   *
+   * A bucket whose key is absent from `ids` is never mentioned in either
+   * payload, so mdblist leaves its items alone.
+   */
   public async pushToList(
-    ids: string[],
+    ids: ListContent,
     listName: string,
-    kind: MediaKind,
     privacy: ListPrivacy,
   ): Promise<void> {
-    const bucket = MdblistTarget.bucketOf(kind);
-    const listId = await this.getOrCreateList(listName, privacy);
-    if (this.dryRun) {
-      logger.info(`[DRY-RUN] Would replace ${bucket} of mdblist list "${listName}" with ${ids.length} item(s)`);
+    const kinds = MEDIA_KINDS.filter((kind) => ids[kind] !== undefined);
+    if (kinds.length === 0) {
       return;
     }
 
-    const existing = await this.request('GET', `/lists/${listId}/items`, undefined, [200]);
-    const stale = readItems(existing.payload)[bucket].map((i) => ({ tmdb: i.id }));
-    if (stale.length > 0) {
-      logger.info(`mdblist list "${listName}" contains ${stale.length} ${kind}, removing them`);
-      await this.request('POST', `/lists/${listId}/items/remove`, { [bucket]: stale }, [200]);
+    const listId = await this.getOrCreateList(listName, privacy);
+    if (this.dryRun) {
+      for (const kind of kinds) {
+        const count = (ids[kind] as string[]).length;
+        const bucket = MdblistTarget.bucketOf(kind);
+        logger.info(`[DRY-RUN] Would replace ${bucket} of mdblist list "${listName}" with ${count} item(s)`);
+      }
+      return;
     }
 
-    logger.info(`Adding ${ids.length} ${kind} into mdblist list "${listName}"`);
-    const payload = { [bucket]: ids.map((id) => ({ tmdb: Number(id) })) };
-    const added = await this.request('POST', `/lists/${listId}/items/add`, payload, [200]);
-    this.logRemainingQuota(added.headers);
+    const existing = readItems((await this.request('GET', `/lists/${listId}/items`, undefined, [200])).payload);
+
+    const toRemove: Partial<Record<Bucket, { tmdb: number }[]>> = {};
+    const toAdd: Partial<Record<Bucket, { tmdb: number }[]>> = {};
+    for (const kind of kinds) {
+      const bucket = MdblistTarget.bucketOf(kind);
+      const stale = existing[bucket].map((i) => ({ tmdb: i.id }));
+      if (stale.length > 0) {
+        logger.info(`mdblist list "${listName}" contains ${stale.length} ${kind}, removing them`);
+        toRemove[bucket] = stale;
+      }
+      const fresh = (ids[kind] as string[]).map((id) => ({ tmdb: Number(id) }));
+      if (fresh.length > 0) {
+        logger.info(`Adding ${fresh.length} ${kind} into mdblist list "${listName}"`);
+        toAdd[bucket] = fresh;
+      }
+    }
+
+    // An empty payload would burn a request — and a daily quota unit — for nothing.
+    if (Object.keys(toRemove).length > 0) {
+      await this.request('POST', `/lists/${listId}/items/remove`, toRemove, [200]);
+    }
+    if (Object.keys(toAdd).length > 0) {
+      const added = await this.request('POST', `/lists/${listId}/items/add`, toAdd, [200]);
+      this.logRemainingQuota(added.headers);
+    }
   }
 }

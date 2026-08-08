@@ -1,7 +1,8 @@
 import { FlixPatrol } from '../Flixpatrol';
 import type {
-  ListPrivacy, ListTarget, MediaItem, MediaKind,
+  ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind,
 } from '../Targets';
+import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils } from '../Utils';
 import type {
@@ -108,31 +109,32 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   };
 
   /**
-   * Resolves the scraped items to backend ids, then replaces the list content.
+   * Resolves the scraped items of one kind to backend ids.
    *
    * The gap between `items` and `ids` is the *resolution* loss (the backend has no
    * match for a title): it is distinct from the scraping loss reported by the
    * callers from `rawCounts`, so both are warned about separately.
    *
-   * Returns true when a shutdown signal was seen before the write, in which case
-   * nothing was written and the caller must stop the run.
+   * Returns null when the kind must be LEFT UNTOUCHED, which the caller expresses
+   * by omitting its key from the ListContent it hands to pushToList.
    */
-  const syncSection = async (
+  const resolveSection = async (
     items: MediaItem[],
     kind: MediaKind,
     listName: string,
-    privacy: ListPrivacy,
-  ): Promise<boolean> => {
+  ): Promise<string[] | null> => {
     const ids = await target.resolveMany(items, kind);
-    // pushToList REPLACES the list content, so writing an empty array wipes it.
-    // A scrape that produced items but resolved to nothing means the backend is
-    // failing (outage, expired key, bad search day), not that the list should be
-    // emptied — so leave it alone. A genuinely empty scrape is a different case
-    // and keeps its previous behaviour.
+    // pushToList REPLACES the content of every kind whose key is present, so
+    // handing it an empty array wipes that kind. A scrape that produced items but
+    // resolved to nothing means the backend is failing (outage, expired key, bad
+    // search day), not that the list should be emptied — hence null, so the key
+    // is omitted and the kind survives untouched while the other one is still
+    // written. A genuinely empty scrape is a different case and keeps its
+    // previous behaviour: an empty array, hence a wipe of that kind.
     if (items.length > 0 && ids.length === 0) {
       logger.warn(`None of the ${items.length} ${kind}s scraped from FlixPatrol could be matched on `
         + `${target.backend} — list "${listName}" left unchanged`);
-      return false;
+      return null;
     }
     if (items.length > ids.length) {
       logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${target.backend} `
@@ -140,15 +142,40 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     }
     logger.info(`Saving ${kind}s for "${listName}"`);
     logger.debug(`${listName} ${kind}s: ${describeItems(items)}`);
+    return ids;
+  };
+
+  /**
+   * Writes a list ONCE, both kinds included, so everything the backend does per
+   * list rather than per kind is paid a single time.
+   *
+   * Returns true when a shutdown signal was seen before the write, in which case
+   * nothing was written and the caller must stop the run.
+   */
+  const writeList = async (
+    content: ListContent,
+    listName: string,
+    privacy: ListPrivacy,
+  ): Promise<boolean> => {
+    const kinds = MEDIA_KINDS.filter((kind) => content[kind] !== undefined);
+    if (kinds.length === 0) {
+      return false;
+    }
+    // With a single write per list the abort checkpoint naturally sits between
+    // two lists: a stop can no longer land between the movie half and the show
+    // half of the same list.
     if (await abortedBeforeWrite()) {
       return true;
     }
-    await target.pushToList(ids, listName, kind, privacy);
-    logger.info(`List ${listName} updated with ${ids.length} new ${kind}s`);
-    if (kind === 'movie') {
-      summary.moviesAdded += ids.length;
-    } else {
-      summary.showsAdded += ids.length;
+    await target.pushToList(content, listName, privacy);
+    for (const kind of kinds) {
+      const count = (content[kind] as string[]).length;
+      logger.info(`List ${listName} updated with ${count} new ${kind}s`);
+      if (kind === 'movie') {
+        summary.moviesAdded += count;
+      } else {
+        summary.showsAdded += count;
+      }
     }
     return false;
   };
@@ -173,6 +200,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
     const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
 
+    const content: ListContent = {};
     if (movies.length > 0) {
       logger.info('==============================');
       // Scraping loss: a detail page without a usable title, or a duplicate
@@ -180,15 +208,18 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       if (rawCounts.movies > movies.length) {
         logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
-      if (await syncSection(movies, 'movie', baseListName, top10.privacy)) return summary;
+      const ids = await resolveSection(movies, 'movie', baseListName);
+      if (ids !== null) content.movie = ids;
     }
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
         logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
-      if (await syncSection(shows, 'show', baseListName, top10.privacy)) return summary;
+      const ids = await resolveSection(shows, 'show', baseListName);
+      if (ids !== null) content.show = ids;
     }
+    if (await writeList(content, baseListName, top10.privacy)) return summary;
     summary.listsProcessed++;
   }
 
@@ -198,19 +229,23 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     const listName = Utils.getListName(popular, `${popular.platform}-popular`, deps.listNamePrefix);
     logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
+    const content: ListContent = {};
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting movies for "${listName}"`);
       const popularMovies = await flixpatrol.getPopular('Movies', popular);
-      if (await syncSection(popularMovies, 'movie', listName, popular.privacy)) return summary;
+      const ids = await resolveSection(popularMovies, 'movie', listName);
+      if (ids !== null) content.movie = ids;
     }
 
     if (popular.type === 'shows' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting shows for "${listName}"`);
       const popularShows = await flixpatrol.getPopular('TV Shows', popular);
-      if (await syncSection(popularShows, 'show', listName, popular.privacy)) return summary;
+      const ids = await resolveSection(popularShows, 'show', listName);
+      if (ids !== null) content.show = ids;
     }
+    if (await writeList(content, listName, popular.privacy)) return summary;
     summary.listsProcessed++;
   }
 
@@ -224,19 +259,23 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       const listName = Utils.getListName(mostWatched, defaultName, deps.listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
+      const content: ListContent = {};
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
         const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched);
-        if (await syncSection(mostWatchedMovies, 'movie', listName, mostWatched.privacy)) return summary;
+        const ids = await resolveSection(mostWatchedMovies, 'movie', listName);
+        if (ids !== null) content.movie = ids;
       }
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
         const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched);
-        if (await syncSection(mostWatchedShows, 'show', listName, mostWatched.privacy)) return summary;
+        const ids = await resolveSection(mostWatchedShows, 'show', listName);
+        if (ids !== null) content.show = ids;
       }
+      if (await writeList(content, listName, mostWatched.privacy)) return summary;
       summary.listsProcessed++;
     }
   }
@@ -251,19 +290,23 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       const listName = Utils.getListName(mostHours, defaultName, deps.listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
 
+      const content: ListContent = {};
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
         const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours);
-        if (await syncSection(mostHoursMovies, 'movie', listName, mostHours.privacy)) return summary;
+        const ids = await resolveSection(mostHoursMovies, 'movie', listName);
+        if (ids !== null) content.movie = ids;
       }
 
       if (mostHours.type === 'shows' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
         const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours);
-        if (await syncSection(mostHoursShows, 'show', listName, mostHours.privacy)) return summary;
+        const ids = await resolveSection(mostHoursShows, 'show', listName);
+        if (ids !== null) content.show = ids;
       }
+      if (await writeList(content, listName, mostHours.privacy)) return summary;
       summary.listsProcessed++;
     }
   }

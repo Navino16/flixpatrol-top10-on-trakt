@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TraktAPI } from '../../src/Trakt/TraktAPI';
 import { TraktError } from '../../src/Utils/Errors';
+import { Utils } from '../../src/Utils/Utils';
 import fs from 'fs';
 
 // Mock fs module
@@ -235,7 +236,7 @@ describe('TraktAPI', () => {
       traktInstance.users.lists.create.mockResolvedValue(mockList);
       traktInstance.users.list.items.get.mockResolvedValue([]);
 
-      await trakt.pushToList([], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
 
       expect(traktInstance.users.lists.create).toHaveBeenCalled();
     });
@@ -263,7 +264,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.update.mockResolvedValue(updatedList);
       traktInstance.users.list.items.get.mockResolvedValue([]);
 
-      await trakt.pushToList([], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.update).toHaveBeenCalled();
     });
@@ -291,7 +292,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123, 456], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [123, 456] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.add).toHaveBeenCalled();
     });
@@ -323,7 +324,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
       expect(traktInstance.users.list.items.add).toHaveBeenCalled();
@@ -356,7 +357,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123], 'Test List', 'show', 'private');
+      await trakt.pushToList({ show: [123] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
     });
@@ -386,12 +387,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList(
-        [123],
-        '[TEST]netflix-france-top10-with-world-fallback',
-        'movie',
-        'private',
-      );
+      await trakt.pushToList({ movie: [123] }, '[TEST]netflix-france-top10-with-world-fallback', 'private');
 
       expect(traktInstance.users.list.get).toHaveBeenCalledWith({
         username: 'me',
@@ -426,7 +422,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList([123], '[TEST]new-list', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, '[TEST]new-list', 'private');
 
       expect(traktInstance.users.lists.create).toHaveBeenCalledWith({
         username: 'me',
@@ -448,7 +444,7 @@ describe('TraktAPI', () => {
       traktInstance.users.lists.create.mockResolvedValue('');
 
       await expect(
-        trakt.pushToList([123], '[TEST]borked', 'movie', 'private'),
+        trakt.pushToList({ movie: [123] }, '[TEST]borked', 'private'),
       ).rejects.toThrow(/malformed response/);
     });
 
@@ -473,12 +469,103 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList([123], 'Foo (Bar) & Baz!', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, 'Foo (Bar) & Baz!', 'private');
 
       expect(traktInstance.users.list.get).toHaveBeenCalledWith({
         username: 'me',
         id: 'foo-bar-baz',
       });
+    });
+  });
+
+  describe('pushToList call budget', () => {
+    const foundList = {
+      name: 'Test List',
+      privacy: 'private',
+      ids: { trakt: 1, slug: 'test-list' },
+    };
+
+    const armHappyPath = () => {
+      mockListGet.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue([]);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListItemsRemove.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+    };
+
+    /**
+     * Regression guard on the fused write. A `type: "both"` list used to be
+     * pushed TWICE, so the per-list work was paid twice: two `users.list.get`,
+     * two description updates (the second silently overwriting the first) and
+     * four rate-limit sleeps — two of which were pure waste, i.e. two seconds
+     * per list. Reintroducing a per-kind call must break these numbers.
+     */
+    it('pays the per-list work once when both kinds are written together', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123], show: [456] }, 'Test List', 'private');
+
+      // Per LIST: once each (was twice).
+      expect(mockListGet).toHaveBeenCalledTimes(1);
+      expect(mockListUpdate).toHaveBeenCalledTimes(1);
+      // Per KIND: `users.list.items.get` is genuinely type-filtered by Trakt, so
+      // it legitimately stays at one call per kind, and so does the add.
+      expect(mockListItemsGet).toHaveBeenCalledTimes(2);
+      expect(mockListItemsAdd).toHaveBeenCalledTimes(2);
+      // Two adds + one description update; the two sleeps that guarded the
+      // duplicated list read and description write are gone.
+      expect(Utils.sleep).toHaveBeenCalledTimes(3);
+    });
+
+    it('writes the description exactly once, so it is never overwritten by a twin', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123], show: [456] }, 'Test List', 'private');
+
+      const descriptionUpdates = mockListUpdate.mock.calls
+        .filter((c) => typeof (c[0] as { description?: string }).description === 'string');
+      expect(descriptionUpdates).toHaveLength(1);
+    });
+
+    // Leave-untouched semantics, backend side: an absent key must never reach
+    // the items read nor the remove call for that kind.
+    it('never touches a kind whose key is absent', async () => {
+      armHappyPath();
+      mockListItemsGet.mockResolvedValue([{ type: 'show', show: { ids: { trakt: 789 } } }]);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
+
+      expect(mockListItemsGet).toHaveBeenCalledTimes(1);
+      expect(mockListItemsGet).toHaveBeenCalledWith(expect.objectContaining({ type: 'movie' }));
+      const removedTypes = mockListItemsRemove.mock.calls
+        .map((c) => c[0] as { movies: unknown[]; shows: unknown[] });
+      expect(removedTypes.every((body) => body.shows.length === 0)).toBe(true);
+    });
+
+    // An empty array is a deliberate wipe, not an absent key: the removal must happen.
+    it('removes a kind handed an explicitly empty array', async () => {
+      armHappyPath();
+      mockListItemsGet.mockResolvedValue([{ type: 'movie', movie: { ids: { trakt: 789 } } }]);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
+
+      expect(mockListItemsRemove).toHaveBeenCalledTimes(1);
+      expect(mockListItemsAdd).not.toHaveBeenCalled();
+      // Nothing was added, so there is nothing to date-stamp.
+      expect(mockListUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not even look the list up when no kind is given', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({}, 'Test List', 'private');
+
+      expect(mockListGet).not.toHaveBeenCalled();
     });
   });
 });
