@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { AppError, ConfigurationError, FlixPatrolError, TraktError } from '../../src/Utils/Errors';
+import {
+  AppError, ConfigurationError, FlixPatrolError, TraktError, TargetError, FloppyError, MdblistError,
+} from '../../src/Utils/Errors';
 
 describe('Error classes', () => {
   describe('AppError', () => {
@@ -43,5 +45,30 @@ describe('Error classes', () => {
       expect(error).toBeInstanceOf(AppError);
       expect(error).toBeInstanceOf(TraktError);
     });
+  });
+});
+
+describe('target errors', () => {
+  it('TargetError carries the backend name and derives from AppError', () => {
+    const err = new TargetError('floppy', 'boom');
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.backend).toBe('floppy');
+    expect(err.message).toBe('boom');
+    expect(err.name).toBe('TargetError');
+  });
+
+  it('TraktError stays a TargetError so existing catches keep working', () => {
+    const err = new TraktError('boom');
+    expect(err).toBeInstanceOf(TargetError);
+    expect(err).toBeInstanceOf(AppError);
+    expect(err.backend).toBe('trakt');
+    expect(err.name).toBe('TraktError');
+  });
+
+  it('FloppyError and MdblistError set their own backend', () => {
+    expect(new FloppyError('x').backend).toBe('floppy');
+    expect(new MdblistError('x').backend).toBe('mdblist');
+    expect(new FloppyError('x').name).toBe('FloppyError');
+    expect(new MdblistError('x').name).toBe('MdblistError');
   });
 });
