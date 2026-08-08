@@ -116,6 +116,13 @@ export class MdblistTarget implements ListTarget {
 
   private readonly cache: ResolutionCache;
 
+  /**
+   * `GET /lists/user` returns the WHOLE list collection, so one call answers
+   * every list lookup of a run. Memoised here as name -> id, and null while no
+   * call has been made yet in the current run.
+   */
+  private listIndex: Map<string, number> | null = null;
+
   constructor(options: MdblistOptions, cacheOptions: CacheOptions, dryRun: boolean) {
     this.apiKey = options.apiKey;
     this.dryRun = dryRun;
@@ -130,6 +137,16 @@ export class MdblistTarget implements ListTarget {
 
   public async connect(): Promise<void> {
     // Nothing to negotiate: authentication is a static key in the query string.
+    //
+    // What DOES happen here is dropping the list index memo. The adapter is
+    // built once per process and shared by every scheduled run of the daemon,
+    // so a memo living for the instance lifetime would go stale between two
+    // ticks hours apart: a list deleted from the mdblist web UI in the meantime
+    // would still look present and the adapter would write to a dead id.
+    // `runPipeline` calls `connect()` once at the start of every run, which
+    // scopes the memo to exactly one run without touching the ListTarget
+    // interface.
+    this.listIndex = null;
   }
 
   // mdblist names shows `show`, unlike Floppy which names them `tv`.
@@ -250,10 +267,38 @@ export class MdblistTarget implements ListTarget {
     return id;
   }
 
-  private async getOrCreateList(listName: string, privacy: ListPrivacy): Promise<number> {
+  /**
+   * Fetches the full list collection and (re)builds the memo from it. The
+   * lookup is a strict name equality, so the map key is the raw name; the first
+   * occurrence wins, which keeps the chosen id stable if mdblist ever holds two
+   * lists sharing a name.
+   */
+  private async fetchListIndex(): Promise<Map<string, number>> {
     const found = await this.request('GET', '/lists/user', undefined, [200]);
-    const exact = readLists(found.payload).find((l) => l.name === listName);
-    if (exact) return exact.id;
+    const index = new Map<string, number>();
+    for (const list of readLists(found.payload)) {
+      if (!index.has(list.name)) index.set(list.name, list.id);
+    }
+    this.listIndex = index;
+    return index;
+  }
+
+  private async getOrCreateList(listName: string, privacy: ListPrivacy): Promise<number> {
+    let index = this.listIndex;
+    if (index === null) {
+      index = await this.fetchListIndex();
+    } else if (!index.has(listName)) {
+      // A miss on an ALREADY POPULATED memo is not proof the list is absent:
+      // the index may predate a list created since. Re-fetch once before
+      // concluding, because creating a duplicate would be a visibly wrong
+      // outcome on a backend capped at four static lists on the free tier.
+      // A miss on a freshly fetched index needs no such confirmation, hence
+      // the branch.
+      index = await this.fetchListIndex();
+    }
+
+    const known = index.get(listName);
+    if (known !== undefined) return known;
 
     if (this.dryRun) {
       logger.info(`[DRY-RUN] Would create mdblist list "${listName}"`);
@@ -268,15 +313,19 @@ export class MdblistTarget implements ListTarget {
     );
     const id = readCreatedListId(created.payload);
     if (id === null) throw new MdblistError(`Failed to create list "${listName}"`);
+    // Record the new list so a later lookup in the same run hits the memo
+    // instead of paying another index fetch — or, worse, creating it twice.
+    index.set(listName, id);
     return id;
   }
 
   /**
-   * Writes both buckets in a single pass: `GET /lists/user` and
-   * `GET /lists/{id}/items` are per-LIST and happen once — the items endpoint
-   * already returns the `movies` AND `shows` buckets, so the previous per-kind
-   * call threw half of each response away — and both bulk writes carry the two
-   * buckets at once, which is exactly what the API expects.
+   * Writes both buckets in a single pass: `GET /lists/{id}/items` is per-LIST
+   * and happens once — the items endpoint already returns the `movies` AND
+   * `shows` buckets, so the previous per-kind call threw half of each response
+   * away — and both bulk writes carry the two buckets at once, which is exactly
+   * what the API expects. `GET /lists/user` is not even per-list: it returns
+   * the whole collection, so it is fetched once per RUN and memoised.
    *
    * A bucket whose key is absent from `ids` is never mentioned in either
    * payload, so mdblist leaves its items alone.

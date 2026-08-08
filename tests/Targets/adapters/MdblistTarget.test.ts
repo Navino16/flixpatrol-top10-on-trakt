@@ -247,3 +247,139 @@ describe('MdblistTarget', () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining('987'));
   });
 });
+
+/**
+ * The memo over `GET /lists/user`. That endpoint returns the user's WHOLE list
+ * collection, so re-fetching it per config entry means N identical round trips
+ * on an API that meters a daily quota.
+ *
+ * These tests drive a stateful fake server rather than a queue of canned
+ * responses: the point is which requests are NOT made, and what the server ends
+ * up holding, neither of which a fixed response sequence can express.
+ */
+describe('MdblistTarget list index memo', () => {
+  interface FakeList { id: number; name: string }
+  interface FakeInit { method: string; headers: Record<string, string>; body?: string }
+
+  const BASE = 'https://api.mdblist.com';
+
+  /** A fake mdblist holding a mutable list collection, so a run can observe a change. */
+  const fakeServer = (initial: FakeList[]) => {
+    const state = { lists: [...initial], nextId: 100 };
+    const handler = vi.fn(async (url: string, init?: FakeInit) => {
+      const path = url.slice(BASE.length);
+      if (path.startsWith('/lists/user?')) return json(state.lists);
+      if (path.startsWith('/lists/user/add')) {
+        const body = JSON.parse(init?.body ?? '{}') as { name: string };
+        const created = { id: state.nextId, name: body.name };
+        state.nextId += 1;
+        state.lists.push(created);
+        return json({ id: created.id, slug: created.name }, 201);
+      }
+      if (/^\/lists\/\d+\/items\?/.test(path)) return json({ movies: [], shows: [] });
+      if (path.includes('/items/add') || path.includes('/items/remove')) return json({});
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    return { handler, state };
+  };
+
+  type Handler = ReturnType<typeof fakeServer>['handler'];
+
+  const urls = (handler: Handler) => handler.mock.calls.map((c) => c[0]);
+  // `/lists/user?` matches the index only: the creation route is `/lists/user/add?`.
+  const indexFetches = (handler: Handler) => urls(handler).filter((u) => u.includes('/lists/user?')).length;
+  const creations = (handler: Handler) => urls(handler).filter((u) => u.includes('/lists/user/add')).length;
+  const wroteTo = (handler: Handler, id: number) => urls(handler).some((u) => u.includes(`/lists/${id}/items/add`));
+
+  const build = (handler: Handler) => {
+    vi.stubGlobal('fetch', handler);
+    return new MdblistTarget(options, cacheOptions, false);
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('fetches the user list index once for two lists written in the same run', async () => {
+    const { handler } = fakeServer([{ id: 42, name: 'list-a' }, { id: 43, name: 'list-b' }]);
+    const t = build(handler);
+
+    await t.connect();
+    await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
+    await t.pushToList({ movie: ['2'] }, 'list-b', 'public');
+
+    expect(indexFetches(handler)).toBe(1);
+    // Both lists were still written, to their own id.
+    expect(wroteTo(handler, 42)).toBe(true);
+    expect(wroteTo(handler, 43)).toBe(true);
+  });
+
+  /**
+   * The daemon-staleness guarantee. The adapter is built once per process and
+   * shared by every scheduled run, so an instance-lifetime memo would keep
+   * serving a list the user deleted from the web UI hours earlier, and the
+   * adapter would write to a dead id.
+   */
+  it('drops the memo on connect(), so the next run re-reads the index instead of trusting a dead id', async () => {
+    const { handler, state } = fakeServer([{ id: 42, name: 'list-a' }]);
+    const t = build(handler);
+
+    await t.connect();
+    await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
+    expect(indexFetches(handler)).toBe(1);
+    expect(wroteTo(handler, 42)).toBe(true);
+
+    // Between two daemon ticks the user deletes the list from the mdblist web UI.
+    state.lists = [];
+
+    await t.connect();
+    await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
+
+    expect(indexFetches(handler)).toBe(2);
+    // The run noticed the deletion: it recreated the list and wrote to the NEW id.
+    expect(creations(handler)).toBe(1);
+    expect(wroteTo(handler, 100)).toBe(true);
+  });
+
+  /**
+   * Belt and braces: a miss on a populated memo is not proof of absence. On a
+   * backend capped at four static lists on the free tier, creating a duplicate
+   * is a visible mistake, so the index is re-read before any creation.
+   */
+  it('re-fetches the index on a memo miss and creates nothing when the list does exist', async () => {
+    const { handler, state } = fakeServer([{ id: 42, name: 'list-a' }]);
+    const t = build(handler);
+
+    await t.connect();
+    await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
+    // "list-b" appears after the index was taken — another process, or a run
+    // that created it just now.
+    state.lists.push({ id: 43, name: 'list-b' });
+
+    await t.pushToList({ movie: ['2'] }, 'list-b', 'public');
+
+    expect(indexFetches(handler)).toBe(2);
+    expect(creations(handler)).toBe(0);
+    expect(wroteTo(handler, 43)).toBe(true);
+    expect(state.lists).toHaveLength(2);
+  });
+
+  it('serves a list created earlier in the run from the memo, without a second index fetch', async () => {
+    const { handler, state } = fakeServer([]);
+    const t = build(handler);
+
+    await t.connect();
+    await t.pushToList({ movie: ['1'] }, 'new-list', 'public');
+    expect(indexFetches(handler)).toBe(1);
+    expect(creations(handler)).toBe(1);
+
+    await t.pushToList({ show: ['2'] }, 'new-list', 'public');
+
+    // The creation registered the id in the memo: no re-read, and above all no
+    // second list of the same name.
+    expect(indexFetches(handler)).toBe(1);
+    expect(creations(handler)).toBe(1);
+    expect(state.lists).toEqual([{ id: 100, name: 'new-list' }]);
+  });
+});
