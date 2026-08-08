@@ -1,5 +1,5 @@
-import fs from 'fs';
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
+import { createTarget } from './Targets';
 import { NotificationManager } from './Notifications';
 import type {
   NotificationEvent,
@@ -26,7 +26,7 @@ const dryRunTag = dryRun ? '[DRY-RUN] ' : '';
 if (dryRun) {
   logger.info('========================================');
   logger.info('DRY-RUN MODE ENABLED');
-  logger.info('No changes will be made to Trakt lists.');
+  logger.info('No changes will be made to the configured lists.');
   logger.info('========================================');
 }
 
@@ -100,7 +100,7 @@ async function bootstrapConfigs(): Promise<{
     logger.info('Loading all configurations values');
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions: GetAndValidateConfigs.getCacheOptions(),
-      traktOptions: GetAndValidateConfigs.getTraktOptions(),
+      targetOptions: GetAndValidateConfigs.getTargetOptions(),
       flixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
       flixPatrolPopulars: GetAndValidateConfigs.getFlixPatrolPopular(),
       flixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
@@ -122,9 +122,13 @@ async function bootstrapConfigs(): Promise<{
 async function main(): Promise<void> {
   const { deps, schedule } = await bootstrapConfigs();
 
-  const authenticated = fs.existsSync(deps.traktOptions.saveFile);
+  // Backends whose credentials come straight from the config (floppy, mdblist)
+  // report requiresInteractiveAuth === false, so the daemon starts immediately.
+  // Only Trakt's device flow needs a one-shot run to complete first.
+  const target = createTarget(deps.targetOptions, deps.cacheOptions, deps.dryRun);
+  const authenticated = !target.requiresInteractiveAuth || target.isAuthenticated();
   if (schedule.enabled && !authenticated) {
-    logger.warn(`Schedule is enabled but no Trakt token file (${deps.traktOptions.saveFile}) exists yet — running once to complete Trakt authentication. The scheduler will start on the next launch, once a token has been saved.`);
+    logger.warn(`Schedule is enabled but ${target.backend} has no usable credentials yet — running once so the initial authentication can complete, then exiting. The scheduler will start on the next launch.`);
   }
 
   if (!schedule.enabled || !authenticated) {

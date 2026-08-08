@@ -1,5 +1,8 @@
 import { FlixPatrol } from '../Flixpatrol';
-import { TraktAPI } from '../Trakt';
+import { createTarget } from '../Targets';
+import type {
+  ListPrivacy, ListTarget, MediaItem, MediaKind,
+} from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils } from '../Utils';
 import type {
@@ -7,12 +10,12 @@ import type {
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolMostWatched, FlixPatrolMostHours,
-  FlixPatrolPopular, FlixPatrolTop10, TraktAPIOptions,
+  FlixPatrolPopular, FlixPatrolTop10, TargetOptions,
 } from '../types';
 
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
-  traktOptions: TraktAPIOptions;
+  targetOptions: TargetOptions;
   flixPatrolTop10: FlixPatrolTop10[];
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
@@ -51,6 +54,10 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
   }
 }
 
+function describeItems(items: MediaItem[]): string {
+  return items.map((item) => (item.year === null ? item.title : `${item.title} (${item.year})`)).join(', ');
+}
+
 async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClient): Promise<RunSummary> {
   const dryRunTag = deps.dryRun ? '[DRY-RUN] ' : '';
 
@@ -58,7 +65,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     if (!deps.signal?.aborted) {
       return false;
     }
-    logger.info('System: Graceful stop requested — halting after current Trakt write');
+    logger.info('System: Graceful stop requested — halting after current list write');
     await deps.dispatch('error', {
       title: `${dryRunTag}${deps.appName} run interrupted`,
       body: 'The run was interrupted by a shutdown signal (SIGTERM/SIGINT)',
@@ -73,14 +80,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
-  logger.silly(`traktOptions: ${JSON.stringify({...deps.traktOptions, clientId: 'REDACTED', clientSecret: 'REDACTED'})}`);
+  // Only the backend name is logged: every other field of targetOptions is a
+  // credential (token, apiKey, clientSecret) or an internal url.
+  logger.silly(`targetOptions: ${JSON.stringify({ type: deps.targetOptions.type })}`);
   logger.silly(`flixPatrolTop10: ${JSON.stringify(deps.flixPatrolTop10)}`);
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
   logger.silly(`flixPatrolMostHours: ${JSON.stringify(deps.flixPatrolMostHours)}`);
 
   const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
-  const trakt = new TraktAPI({ ...deps.traktOptions, dryRun: deps.dryRun });
+  const target: ListTarget = createTarget(deps.targetOptions, deps.cacheOptions, deps.dryRun);
 
   const totalLists = deps.flixPatrolTop10.length
     + deps.flixPatrolPopulars.length
@@ -95,7 +104,43 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     durationMs: 0,
   };
 
-  await trakt.connect();
+  /**
+   * Resolves the scraped items to backend ids, then replaces the list content.
+   *
+   * The gap between `items` and `ids` is the *resolution* loss (the backend has no
+   * match for a title): it is distinct from the scraping loss reported by the
+   * callers from `rawCounts`, so both are warned about separately.
+   *
+   * Returns true when a shutdown signal was seen before the write, in which case
+   * nothing was written and the caller must stop the run.
+   */
+  const syncSection = async (
+    items: MediaItem[],
+    kind: MediaKind,
+    listName: string,
+    privacy: ListPrivacy,
+  ): Promise<boolean> => {
+    const ids = await target.resolveMany(items, kind);
+    if (items.length > ids.length) {
+      logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${target.backend} `
+        + `(${items.length} found, ${ids.length} matched)`);
+    }
+    logger.info(`Saving ${kind}s for "${listName}"`);
+    logger.debug(`${listName} ${kind}s: ${describeItems(items)}`);
+    if (await abortedBeforeWrite()) {
+      return true;
+    }
+    await target.pushToList(ids, listName, kind, privacy);
+    logger.info(`List ${listName} updated with ${ids.length} new ${kind}s`);
+    if (kind === 'movie') {
+      summary.moviesAdded += ids.length;
+    } else {
+      summary.showsAdded += ids.length;
+    }
+    return false;
+  };
+
+  await target.connect();
 
   // Fire-and-forget: do not block the pipeline on the notification round-trip.
   // The dispatch is tracked by the caller so it gets flushed before any process.exit
@@ -113,31 +158,23 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
 
-    const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10, trakt);
+    const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
 
     if (movies.length > 0) {
       logger.info('==============================');
+      // Scraping loss: a detail page without a usable title, or a duplicate
+      // (title, year) already collected from another row of the same page.
       if (rawCounts.movies > movies.length) {
-        logger.warn(`Some movies from FlixPatrol could not be matched on Trakt (${rawCounts.movies} found, ${movies.length} matched)`);
+        logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
-      logger.info(`Saving movies for "${baseListName}"`);
-      logger.debug(`${top10.platform} movies: ${movies}`);
-      if (await abortedBeforeWrite()) return summary;
-      await trakt.pushToList(movies, baseListName, 'movie', top10.privacy);
-      logger.info(`List ${baseListName} updated with ${movies.length} new movies`);
-      summary.moviesAdded += movies.length;
+      if (await syncSection(movies, 'movie', baseListName, top10.privacy)) return summary;
     }
     if (shows.length > 0) {
       logger.info('==============================');
       if (rawCounts.shows > shows.length) {
-        logger.warn(`Some shows from FlixPatrol could not be matched on Trakt (${rawCounts.shows} found, ${shows.length} matched)`);
+        logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
-      logger.info(`Saving shows for "${baseListName}"`);
-      logger.debug(`${top10.platform} shows: ${shows}`);
-      if (await abortedBeforeWrite()) return summary;
-      await trakt.pushToList(shows, baseListName, 'show', top10.privacy);
-      logger.info(`List ${baseListName} updated with ${shows.length} new shows`);
-      summary.showsAdded += shows.length;
+      if (await syncSection(shows, 'show', baseListName, top10.privacy)) return summary;
     }
     summary.listsProcessed++;
   }
@@ -151,23 +188,15 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     if (popular.type === 'movies' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting movies for "${listName}"`);
-      const popularMovies = await flixpatrol.getPopular('Movies', popular, trakt);
-      logger.debug(`${popular.platform} movies: ${popularMovies}`);
-      if (await abortedBeforeWrite()) return summary;
-      await trakt.pushToList(popularMovies, listName, 'movie', popular.privacy);
-      logger.info(`List ${listName} updated with ${popularMovies.length} new movies`);
-      summary.moviesAdded += popularMovies.length;
+      const popularMovies = await flixpatrol.getPopular('Movies', popular);
+      if (await syncSection(popularMovies, 'movie', listName, popular.privacy)) return summary;
     }
 
     if (popular.type === 'shows' || popular.type === 'both') {
       logger.info('==============================');
       logger.info(`Getting shows for "${listName}"`);
-      const popularShows = await flixpatrol.getPopular('TV Shows', popular, trakt);
-      logger.debug(`${popular.platform} shows: ${popularShows}`);
-      if (await abortedBeforeWrite()) return summary;
-      await trakt.pushToList(popularShows, listName, 'show', popular.privacy);
-      logger.info(`List ${listName} updated with ${popularShows.length} new shows`);
-      summary.showsAdded += popularShows.length;
+      const popularShows = await flixpatrol.getPopular('TV Shows', popular);
+      if (await syncSection(popularShows, 'show', listName, popular.privacy)) return summary;
     }
     summary.listsProcessed++;
   }
@@ -185,23 +214,15 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
-        const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched, trakt);
-        logger.debug(`most-watched movies: ${mostWatchedMovies}`);
-        if (await abortedBeforeWrite()) return summary;
-        await trakt.pushToList(mostWatchedMovies, listName, 'movie', mostWatched.privacy);
-        logger.info(`List ${listName} updated with ${mostWatchedMovies.length} new movies`);
-        summary.moviesAdded += mostWatchedMovies.length;
+        const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched);
+        if (await syncSection(mostWatchedMovies, 'movie', listName, mostWatched.privacy)) return summary;
       }
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
-        const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched, trakt);
-        logger.debug(`most-watched shows: ${mostWatchedShows}`);
-        if (await abortedBeforeWrite()) return summary;
-        await trakt.pushToList(mostWatchedShows, listName, 'show', mostWatched.privacy);
-        logger.info(`List ${listName} updated with ${mostWatchedShows.length} new shows`);
-        summary.showsAdded += mostWatchedShows.length;
+        const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched);
+        if (await syncSection(mostWatchedShows, 'show', listName, mostWatched.privacy)) return summary;
       }
       summary.listsProcessed++;
     }
@@ -220,23 +241,15 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting movies for "${listName}"`);
-        const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours, trakt);
-        logger.debug(`most-hours-${mostHours.period} movies: ${mostHoursMovies}`);
-        if (await abortedBeforeWrite()) return summary;
-        await trakt.pushToList(mostHoursMovies, listName, 'movie', mostHours.privacy);
-        logger.info(`List ${listName} updated with ${mostHoursMovies.length} new movies`);
-        summary.moviesAdded += mostHoursMovies.length;
+        const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours);
+        if (await syncSection(mostHoursMovies, 'movie', listName, mostHours.privacy)) return summary;
       }
 
       if (mostHours.type === 'shows' || mostHours.type === 'both') {
         logger.info('==============================');
         logger.info(`Getting shows for "${listName}"`);
-        const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours, trakt);
-        logger.debug(`most-hours-${mostHours.period} shows: ${mostHoursShows}`);
-        if (await abortedBeforeWrite()) return summary;
-        await trakt.pushToList(mostHoursShows, listName, 'show', mostHours.privacy);
-        logger.info(`List ${listName} updated with ${mostHoursShows.length} new shows`);
-        summary.showsAdded += mostHoursShows.length;
+        const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours);
+        if (await syncSection(mostHoursShows, 'show', listName, mostHours.privacy)) return summary;
       }
       summary.listsProcessed++;
     }
