@@ -3,6 +3,7 @@ import {
 } from 'vitest';
 import { FloppyTarget } from '../../../src/Targets/adapters/FloppyTarget';
 import { FloppyError } from '../../../src/Utils/Errors';
+import { logger } from '../../../src/Utils';
 
 const options = { url: 'http://floppy:8000', apiKey: 'token' };
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
@@ -67,6 +68,41 @@ describe('FloppyTarget', () => {
     expect(await target.resolveMany([{ title: 'Nope', year: 2000 }], 'movie')).toEqual([]);
   });
 
+  it('matches on the title alone when the year differs', async () => {
+    fetchMock.mockResolvedValueOnce(json({
+      results: [{ media_id: 27205, source: 'tmdb', title: 'Inception', year: 2011 }],
+    }));
+    expect(await target.resolveMany([{ title: 'Inception', year: 2010 }], 'movie')).toEqual(['tmdb:27205']);
+  });
+
+  it('matches on the year alone when the title differs', async () => {
+    fetchMock.mockResolvedValueOnce(json({
+      results: [{ media_id: 27205, source: 'tmdb', title: 'Inception (Remastered)', year: 2010 }],
+    }));
+    expect(await target.resolveMany([{ title: 'Inception', year: 2010 }], 'movie')).toEqual(['tmdb:27205']);
+  });
+
+  it('drops and warns when no result matches the title nor the year', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    fetchMock.mockResolvedValueOnce(json({
+      results: [
+        { media_id: 999, source: 'tmdb', title: 'Inception: The Cobol Job', year: 2010 },
+        { media_id: 888, source: 'tmdb', title: 'Insomnia', year: 2002 },
+      ],
+    }));
+    expect(await target.resolveMany([{ title: 'Inception', year: 1999 }], 'movie')).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('No Floppy match'));
+  });
+
+  it('drops and warns when the item has no year and no title matches', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    fetchMock.mockResolvedValueOnce(json({
+      results: [{ media_id: 999, source: 'tmdb', title: 'Something Else', year: 2010 }],
+    }));
+    expect(await target.resolveMany([{ title: 'Inception', year: null }], 'movie')).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown year'));
+  });
+
   it('adds a known media with a single PUT', async () => {
     fetchMock
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] })) // GET /lists/
@@ -97,7 +133,14 @@ describe('FloppyTarget', () => {
     fetchMock
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
       .mockResolvedValueOnce(json({ results: [] }))
-      .mockResolvedValueOnce(json([{ list_id: 7 }]));
+      .mockResolvedValueOnce(json([{ list_id: 7 }]))
+      // The three calls above are all this test expects. The responses below
+      // exist only so a regression that reaches the bootstrap gets valid
+      // responses instead of undefined: the assertion on DELETE must be what
+      // trips, not a TypeError from an exhausted mock.
+      .mockResolvedValueOnce(json({ id: 1 }, 201)) // POST /media/movie/
+      .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT retry
+      .mockResolvedValue(json({}, 204)); // DELETE tracking, and anything after
     await target.pushToList(['tmdb:27205'], 'my-list', 'movie', 'public');
     const deletes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE');
     expect(deletes).toHaveLength(0);

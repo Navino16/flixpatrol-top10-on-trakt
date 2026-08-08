@@ -5,7 +5,7 @@ import type {
 } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
 
-/** Un résultat de `GET /api/v1/search/{media_type}`. */
+/** A single result of `GET /api/v1/search/{media_type}`. */
 interface FloppySearchResult {
   media_id: number | string;
   source: string;
@@ -14,13 +14,13 @@ interface FloppySearchResult {
   year: number | null;
 }
 
-/** Une liste utilisateur telle que `GET`/`POST /api/v1/lists/` la retourne. */
+/** A user list as `GET`/`POST /api/v1/lists/` returns it. */
 interface FloppyList {
   id: number;
   name: string;
 }
 
-/** Une entrée de `GET /api/v1/lists/{id}/items/` : les champs utiles sont imbriqués sous `item`. */
+/** An entry of `GET /api/v1/lists/{id}/items/`: the useful fields are nested under `item`. */
 interface FloppyListItem {
   item: { media_id: string; source: string; media_type: string };
 }
@@ -29,24 +29,24 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-/** Extrait le tableau `results` d'une réponse paginée, sans rien supposer du reste de l'enveloppe. */
+/** Extracts the `results` array of a paginated response, assuming nothing about the rest of the envelope. */
 const readResults = (payload: unknown): unknown[] => {
   if (!isRecord(payload)) return [];
   return Array.isArray(payload.results) ? payload.results : [];
 };
 
 /**
- * Adapter Floppy, tracker de médias auto-hébergé exposant une API REST sur `/api/v1`.
+ * Floppy adapter, a self-hosted media tracker exposing a REST API under `/api/v1`.
  *
- * Deux particularités de cette API dictent la forme de l'adapter :
- * - les séries y sont des `tv`, pas des `show` ;
- * - la visibilité et la description d'une liste ne sont pas pilotables, donc
- *   aucun `PATCH` n'est émis et l'argument `privacy` est volontairement ignoré.
+ * Two peculiarities of this API dictate the shape of the adapter:
+ * - shows are `tv` there, not `show`;
+ * - a list's visibility and description cannot be driven, so no `PATCH` is ever
+ *   emitted and the `privacy` argument is deliberately ignored.
  */
 export class FloppyTarget implements ListTarget {
   public readonly backend: TargetBackend = 'floppy';
 
-  /** La clé d'API suffit : aucun device flow, aucune interaction humaine. */
+  /** The API key is enough: no device flow, no human interaction. */
   public readonly requiresInteractiveAuth = false;
 
   private readonly url: string;
@@ -65,17 +65,17 @@ export class FloppyTarget implements ListTarget {
   }
 
   public isAuthenticated(): boolean {
-    // La clé d'API est validée par le schéma de configuration : si l'adapter
-    // existe, il a de quoi travailler.
+    // The API key is validated by the configuration schema: if the adapter
+    // exists, it has what it needs to work.
     return true;
   }
 
   public async connect(): Promise<void> {
-    // Rien à négocier : l'authentification est un en-tête statique.
+    // Nothing to negotiate: authentication is a static header.
   }
 
-  // Encodage d'identifiant : `${source}:${media_id}` — Floppy a besoin des deux
-  // pour construire ses routes. Seul cet adapter encode et décode cette forme.
+  // Identifier encoding: `${source}:${media_id}` — Floppy needs both to build
+  // its routes. Only this adapter encodes and decodes that form.
   private static encodeId(source: string, mediaId: string | number): string {
     return `${source}:${mediaId}`;
   }
@@ -86,7 +86,7 @@ export class FloppyTarget implements ListTarget {
     return { source: id.slice(0, separator), mediaId: id.slice(separator + 1) };
   }
 
-  // Floppy nomme les séries `tv`, la configuration les nomme `show`.
+  // Floppy names shows `tv`, the configuration names them `show`.
   private static mediaType(kind: MediaKind): string {
     return kind === 'movie' ? 'movie' : 'tv';
   }
@@ -141,19 +141,24 @@ export class FloppyTarget implements ListTarget {
       .filter((entry): entry is FloppyListItem => entry !== null);
   }
 
+  /**
+   * There is deliberately no last-resort fallback on the first result: falling
+   * through the whole cascade means neither the title nor the year matched, so
+   * any result left is a mismatch by definition. Returning null lets the caller
+   * warn and drop the item rather than write a confidently wrong entry.
+   */
   private static pickBest(results: FloppySearchResult[], item: MediaItem): FloppySearchResult | null {
     const sameTitle = (r: FloppySearchResult) => r.title.trim().toLowerCase() === item.title.trim().toLowerCase();
     const sameYear = (r: FloppySearchResult) => item.year !== null && r.year === item.year;
     return results.find((r) => sameTitle(r) && sameYear(r))
       ?? results.find(sameTitle)
       ?? results.find(sameYear)
-      ?? results[0]
       ?? null;
   }
 
   private static async readPayload(response: Response): Promise<unknown> {
-    // Un 204 n'a pas de corps, et une erreur d'infrastructure peut renvoyer du
-    // HTML : dans les deux cas l'absence de JSON n'est pas une erreur en soi.
+    // A 204 has no body, and an infrastructure error can return HTML: in both
+    // cases the absence of JSON is not an error in itself.
     try {
       return await response.json();
     } catch {
@@ -167,12 +172,12 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Point de passage unique vers l'API : en-tête d'authentification, construction
-   * d'URL, en-tête de contenu quand il y a un corps. Tout statut hors de `expected`
-   * lève une FloppyError mentionnant la méthode, le chemin et le statut.
+   * Single point of passage to the API: authentication header, URL building,
+   * content header when there is a body. Any status outside `expected` throws a
+   * FloppyError mentioning the method, the path and the status.
    *
-   * Aucune temporisation entre deux appels : le serveur est auto-hébergé, une
-   * seconde par item rendrait une liste de dix éléments absurdement lente.
+   * No delay between two calls: the server is self-hosted, one second per item
+   * would make a list of ten elements absurdly slow.
    */
   private async request(
     method: HttpMethod,
@@ -236,8 +241,8 @@ export class FloppyTarget implements ListTarget {
     const found = await this.request(
       'GET', `/api/v1/lists/?search=${encodeURIComponent(listName)}`, undefined, [200],
     );
-    // `search` est une correspondance partielle côté Floppy : on exige l'égalité stricte
-    // pour ne pas réutiliser "netflix-france-top10-kids" à la place de "netflix-france-top10".
+    // `search` is a partial match on the Floppy side: we require strict equality
+    // so "netflix-france-top10-kids" is not reused instead of "netflix-france-top10".
     const exact = FloppyTarget.readLists(found.payload).find((l) => l.name === listName);
     if (exact) return exact.id;
 
@@ -253,13 +258,12 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Ajoute un média à une liste. Le PUT est tenté EN PREMIER, et ce n'est pas
-   * une optimisation : il ne déclenche la séquence de création que sur un 404,
-   * donc pour un média absent du catalogue, donc forcément non suivi par
-   * l'utilisateur. Le DELETE de l'étape 3 ne peut ainsi jamais effacer un statut
-   * ou une note saisis à la main. Si une version future de Floppy purgeait les
-   * entrées de catalogue orphelines, ce chemin se contenterait de repasser par
-   * la séquence complète.
+   * Adds a media to a list. The PUT is tried FIRST, and this is not an
+   * optimisation: it only triggers the creation sequence on a 404, hence for a
+   * media absent from the catalogue, hence necessarily not tracked by the
+   * user. The DELETE of step 3 can therefore never erase a status or a rating
+   * entered by hand. Should a future version of Floppy purge orphan catalogue
+   * entries, this path would simply go through the full sequence again.
    */
   private async addItem(id: string, listId: number, kind: MediaKind): Promise<void> {
     const { source, mediaId } = FloppyTarget.decodeId(id);
@@ -267,10 +271,14 @@ export class FloppyTarget implements ListTarget {
     const listRoute = `/api/v1/media/${type}/${source}/${mediaId}/lists/${listId}/`;
 
     const first = await this.request('PUT', listRoute, undefined, [200, 404, 409]);
-    if (first.status === 200 || first.status === 409) return; // 409 = déjà dans la liste
+    // Only a 404 proves the media is absent from the catalogue (200 = added,
+    // 409 = already in the list). Any other status means the media is known to
+    // Floppy, and the bootstrap below — which ends on a DELETE that would wipe
+    // the user's watch status, rating and history — must never run for it.
+    if (first.status !== 404) return;
 
-    // Le média est inconnu du catalogue : on l'y crée, ce qui crée aussi un
-    // suivi au statut Planning dont on ne veut pas.
+    // The media is unknown to the catalogue: we create it there, which also
+    // creates a tracking entry with a Planning status that we do not want.
     await this.request('POST', `/api/v1/media/${type}/`, { source, media_id: mediaId }, [200, 201]);
     await this.request('PUT', listRoute, undefined, [200, 409]);
     await this.request('DELETE', `/api/v1/media/${type}/${source}/${mediaId}/`, undefined, [204, 404]);
@@ -282,8 +290,8 @@ export class FloppyTarget implements ListTarget {
     kind: MediaKind,
     privacy: ListPrivacy,
   ): Promise<void> {
-    // `privacy` est volontairement inutilisé : l'API Floppy n'expose aucun moyen de
-    // régler la visibilité d'une liste. Voir la spec, section « Cas particulier de Floppy ».
+    // `privacy` is deliberately unused: the Floppy API exposes no way to set the
+    // visibility of a list. See the spec, "Floppy special case" section.
     void privacy;
 
     const listId = await this.getOrCreateList(listName);

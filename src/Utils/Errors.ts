@@ -30,8 +30,8 @@ export class FlixPatrolError extends AppError {
 }
 
 /**
- * Erreur d'une plateforme de destination. Porte le backend concerné pour que
- * les messages restent lisibles quand plusieurs adapters coexistent.
+ * Error thrown by a destination platform. Carries the backend concerned so that
+ * messages stay readable when several adapters coexist.
  */
 export class TargetError extends AppError {
   public readonly backend: string;
@@ -44,8 +44,9 @@ export class TargetError extends AppError {
 }
 
 /**
- * Conservée pour ne rien casser dans le code et les tests existants, qui
- * l'attrapent par son nom. Elle est désormais un cas particulier de TargetError.
+ * Error thrown when Trakt API operations fail. Kept so nothing breaks in the
+ * existing code and tests, which catch it by its name. It is now a special case
+ * of TargetError.
  */
 export class TraktError extends TargetError {
   constructor(message: string) {

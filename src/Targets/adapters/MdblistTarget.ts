@@ -6,20 +6,20 @@ import type {
 import { isPrivate } from '../privacy';
 import { ResolutionCache } from '../ResolutionCache';
 
-/** Un résultat de `GET /search/{media_type}`. */
+/** A single result of `GET /search/{media_type}`. */
 interface MdblistSearchResult {
   title: string;
   year: number | null;
   ids: { tmdbid: number | null; imdbid: string | null };
 }
 
-/** Une liste utilisateur telle que `GET /lists/user`/`POST /lists/user/add` la retourne. */
+/** A user list as `GET /lists/user`/`POST /lists/user/add` returns it. */
 interface MdblistList {
   id: number;
   name: string;
 }
 
-/** Le contenu de `GET /lists/{id}/items` : seul le bucket concerné par `kind` est lu. */
+/** The content of `GET /lists/{id}/items`: only the bucket concerned by `kind` is read. */
 interface MdblistItems {
   movies: { id: number }[];
   shows: { id: number }[];
@@ -66,8 +66,9 @@ const readLists = (payload: unknown): MdblistList[] => {
   return payload.map((entry) => readList(entry)).filter((entry): entry is MdblistList => entry !== null);
 };
 
-// `POST /lists/user/add` répond `{ id, slug, url }`, sans `name` : un lecteur
-// distinct de `readList`, qui exige `name` pour la recherche d'égalité stricte.
+// `POST /lists/user/add` answers `{ id, slug, url }`, without `name`: hence a
+// reader distinct from `readList`, which requires `name` for the strict
+// equality lookup.
 const readCreatedListId = (value: unknown): number | null => {
   if (!isRecord(value)) return null;
   return typeof value.id === 'number' ? value.id : null;
@@ -86,24 +87,24 @@ const readItems = (payload: unknown): MdblistItems => {
 };
 
 /**
- * Adapter mdblist, service de listes hébergé exposant une API REST authentifiée
- * par clé d'API en paramètre de requête (`?apikey=`), jamais en en-tête.
+ * mdblist adapter, a hosted list service exposing a REST API authenticated by
+ * an API key in the query string (`?apikey=`), never in a header.
  *
- * Deux particularités de cette API dictent la forme de l'adapter :
- * - le classement par défaut de la recherche est mauvais (« Breaking Bad »
- *   n'arrive qu'en 4e position sans `sort_by_score=true`), d'où ce paramètre
- *   systématique et l'exigence d'une correspondance exacte titre + année ;
- * - les écritures sont en masse (`POST .../items/add|remove` avec un tableau
- *   `{ tmdb }` par média), à la différence de Floppy qui écrit item par item.
+ * Two peculiarities of this API dictate the shape of the adapter:
+ * - the default ranking of the search is bad ("Breaking Bad" only comes 4th
+ *   without `sort_by_score=true`), hence that parameter on every call and the
+ *   requirement of an exact title + year match;
+ * - writes are done in bulk (`POST .../items/add|remove` with one `{ tmdb }`
+ *   array per media), unlike Floppy which writes item by item.
  *
- * `description` n'est jamais envoyée : l'API l'ignore silencieusement sur un
- * `PUT` combiné à `name`/`private`, et la rejette en 400 seule. Le besoin
- * qu'elle aurait servi est couvert nativement par `last_updated_at`.
+ * `description` is never sent: the API silently ignores it on a `PUT` combined
+ * with `name`/`private`, and rejects it with a 400 on its own. The need it
+ * would have served is covered natively by `last_updated_at`.
  */
 export class MdblistTarget implements ListTarget {
   public readonly backend: TargetBackend = 'mdblist';
 
-  /** La clé d'API suffit : aucun device flow, aucune interaction humaine. */
+  /** The API key is enough: no device flow, no human interaction. */
   public readonly requiresInteractiveAuth = false;
 
   private static readonly BASE = 'https://api.mdblist.com';
@@ -121,16 +122,16 @@ export class MdblistTarget implements ListTarget {
   }
 
   public isAuthenticated(): boolean {
-    // La clé d'API est validée par le schéma de configuration : si l'adapter
-    // existe, il a de quoi travailler.
+    // The API key is validated by the configuration schema: if the adapter
+    // exists, it has what it needs to work.
     return true;
   }
 
   public async connect(): Promise<void> {
-    // Rien à négocier : l'authentification est une clé statique en query string.
+    // Nothing to negotiate: authentication is a static key in the query string.
   }
 
-  // mdblist nomme les séries `show`, à la différence de Floppy qui les nomme `tv`.
+  // mdblist names shows `show`, unlike Floppy which names them `tv`.
   private static mediaType(kind: MediaKind): string {
     return kind === 'movie' ? 'movie' : 'show';
   }
@@ -140,10 +141,15 @@ export class MdblistTarget implements ListTarget {
   }
 
   /**
-   * Le classement par défaut de la recherche est mauvais — « Breaking Bad »
-   * n'arrive qu'en 4e position — d'où `sort_by_score=true` et l'exigence d'une
-   * correspondance exacte. Un résultat sans `tmdbid` est écarté : sans lui,
-   * l'écriture serait impossible.
+   * The default ranking of the search is bad — "Breaking Bad" only comes 4th —
+   * hence `sort_by_score=true` and the requirement of an exact match. A result
+   * without a `tmdbid` is discarded: without it, the write would be impossible.
+   *
+   * There is deliberately no last-resort fallback on the first usable result:
+   * falling through the whole cascade means neither the title nor the year
+   * matched, so any result left is a mismatch by definition. Returning null
+   * lets the caller warn and drop the item rather than write a confidently
+   * wrong entry.
    */
   private static pickBest(results: MdblistSearchResult[], item: MediaItem): number | null {
     const usable = results.filter((r) => r.ids.tmdbid !== null);
@@ -151,14 +157,13 @@ export class MdblistTarget implements ListTarget {
     const sameYear = (r: MdblistSearchResult) => item.year !== null && r.year === item.year;
     const best = usable.find((r) => sameTitle(r) && sameYear(r))
       ?? usable.find(sameTitle)
-      ?? usable.find(sameYear)
-      ?? usable[0];
+      ?? usable.find(sameYear);
     return best?.ids.tmdbid ?? null;
   }
 
   private static async readPayload(response: Response): Promise<unknown> {
-    // Un statut d'erreur d'infrastructure peut renvoyer du HTML : dans ce cas
-    // l'absence de JSON n'est pas une erreur en soi, elle sera signalée par le statut.
+    // An infrastructure error status can return HTML: in that case the absence
+    // of JSON is not an error in itself, it will be reported by the status.
     try {
       return await response.json();
     } catch {
@@ -172,10 +177,10 @@ export class MdblistTarget implements ListTarget {
   }
 
   /**
-   * Point de passage unique vers l'API : clé d'API en query, construction
-   * d'URL, en-tête de contenu quand il y a un corps. Tout statut hors de
-   * `expected` lève une MdblistError mentionnant la méthode, le chemin et le
-   * statut.
+   * Single point of passage to the API: API key in the query string, URL
+   * building, content header when there is a body. Any status outside
+   * `expected` throws an MdblistError mentioning the method, the path and the
+   * status.
    */
   private async request(
     method: HttpMethod,

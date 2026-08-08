@@ -66,6 +66,41 @@ describe('MdblistTarget', () => {
     expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
   });
 
+  it('matches on the title alone when the year differs', async () => {
+    fetchMock.mockResolvedValueOnce(json({
+      search: [{ title: 'Breaking Bad', year: 2009, ids: { tmdbid: 1396 } }],
+    }));
+    expect(await target.resolveMany([{ title: 'Breaking Bad', year: 2008 }], 'show')).toEqual(['1396']);
+  });
+
+  it('matches on the year alone when the title differs', async () => {
+    fetchMock.mockResolvedValueOnce(json({
+      search: [{ title: 'Breaking Bad (US)', year: 2008, ids: { tmdbid: 1396 } }],
+    }));
+    expect(await target.resolveMany([{ title: 'Breaking Bad', year: 2008 }], 'show')).toEqual(['1396']);
+  });
+
+  it('drops and warns when no result matches the title nor the year', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    fetchMock.mockResolvedValueOnce(json({
+      search: [
+        { title: 'Breaking Bad Fortune Teller', year: 2016, ids: { tmdbid: 232533 } },
+        { title: 'Bad Education', year: 2019, ids: { tmdbid: 550 } },
+      ],
+    }));
+    expect(await target.resolveMany([{ title: 'Breaking Bad', year: 2008 }], 'show')).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('No mdblist match'));
+  });
+
+  it('drops and warns when the item has no year and no title matches', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    fetchMock.mockResolvedValueOnce(json({
+      search: [{ title: 'Breaking Bad Fortune Teller', year: 2016, ids: { tmdbid: 232533 } }],
+    }));
+    expect(await target.resolveMany([{ title: 'Breaking Bad', year: null }], 'show')).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown year'));
+  });
+
   it('creates a private list when privacy is private', async () => {
     fetchMock
       .mockResolvedValueOnce(json([])) // GET /lists/user

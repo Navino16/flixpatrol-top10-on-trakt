@@ -1,14 +1,14 @@
-/** Les deux seuls types de médias que ce projet synchronise. */
+/** The only two media kinds this project synchronises. */
 export type MediaKind = 'movie' | 'show';
 
-/** Vocabulaire de confidentialité de la configuration, hérité de Trakt. */
+/** Privacy vocabulary of the configuration, inherited from Trakt. */
 export type ListPrivacy = 'private' | 'link' | 'friends' | 'public';
 
 export type TargetBackend = 'trakt' | 'floppy' | 'mdblist';
 
 /**
- * Un média tel que FlixPatrol le décrit, avant toute résolution vers un backend.
- * `year` vaut null quand la page de détail n'expose pas d'année exploitable.
+ * A media as FlixPatrol describes it, before any resolution towards a backend.
+ * `year` is null when the detail page exposes no usable year.
  */
 export interface MediaItem {
   title: string;
@@ -18,21 +18,21 @@ export interface MediaItem {
 export interface ListTarget {
   readonly backend: TargetBackend;
 
-  /** Vrai quand le premier setup exige une interaction humaine (device flow Trakt). */
+  /** True when the first setup requires a human interaction (Trakt device flow). */
   readonly requiresInteractiveAuth: boolean;
 
-  /** Vrai quand les credentials présents permettent de travailler sans interaction. */
+  /** True when the credentials at hand allow working without any interaction. */
   isAuthenticated(): boolean;
 
   connect(): Promise<void>;
 
   /**
-   * Résout des médias vers des identifiants opaques propres au backend.
-   * Les items non résolus sont omis après un warn, les doublons écartés,
-   * l'ordre d'entrée préservé. Le tableau retourné peut donc être plus court.
+   * Resolves media items to opaque identifiers specific to the backend.
+   * Unresolved items are omitted after a warn, duplicates are discarded, and
+   * the input order is preserved. The returned array can therefore be shorter.
    */
   resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]>;
 
-  /** Remplace intégralement le contenu de `listName` pour le type `kind`. */
+  /** Entirely replaces the content of `listName` for the `kind` media type. */
   pushToList(ids: string[], listName: string, kind: MediaKind, privacy: ListPrivacy): Promise<void>;
 }
