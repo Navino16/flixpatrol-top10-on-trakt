@@ -479,5 +479,84 @@ describe('GetAndValidateConfigs', () => {
         expect(() => GetAndValidateConfigs.getFlareSolverrOptions()).toThrow(ConfigurationError);
       });
     });
+
+    describe('getTargetOptions', () => {
+      it('defaults to trakt when the Target block is absent', () => {
+        vi.mocked(config.has).mockImplementation(() => false);
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Trakt') {
+            return { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' };
+          }
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        const options = GetAndValidateConfigs.getTargetOptions();
+
+        expect(options.type).toBe('trakt');
+        expect(options).toEqual({
+          type: 'trakt',
+          trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
+        });
+      });
+
+      it('returns floppy options when Target.type is floppy', () => {
+        vi.mocked(config.has).mockImplementation((key: string) => key === 'Target' || key === 'Floppy');
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Target') return { type: 'floppy' };
+          if (key === 'Floppy') return { url: 'http://floppy:8000', apiKey: 'token' };
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
+          type: 'floppy',
+          floppy: { url: 'http://floppy:8000', apiKey: 'token' },
+        });
+      });
+
+      it('returns mdblist options when Target.type is mdblist', () => {
+        vi.mocked(config.has).mockImplementation((key: string) => key === 'Target' || key === 'Mdblist');
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Target') return { type: 'mdblist' };
+          if (key === 'Mdblist') return { apiKey: 'key' };
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
+          type: 'mdblist',
+          mdblist: { apiKey: 'key' },
+        });
+      });
+
+      it('throws when the credentials block of the selected backend is missing', () => {
+        vi.mocked(config.has).mockImplementation((key: string) => key === 'Target');
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Target') return { type: 'floppy' };
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(/Floppy/);
+      });
+
+      it('throws when Floppy.url is not a valid URL', () => {
+        vi.mocked(config.has).mockImplementation((key: string) => key === 'Target' || key === 'Floppy');
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Target') return { type: 'floppy' };
+          if (key === 'Floppy') return { url: 'not-a-url', apiKey: 'token' };
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+      });
+
+      it('rejects an unknown backend', () => {
+        vi.mocked(config.has).mockImplementation((key: string) => key === 'Target');
+        vi.mocked(config.get).mockImplementation((key: string) => {
+          if (key === 'Target') return { type: 'plex' };
+          throw new Error(`unexpected config.get("${key}")`);
+        });
+
+        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+      });
+    });
   });
 });

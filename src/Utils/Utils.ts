@@ -128,6 +128,9 @@ export class Utils {
             language: 'english',
           },
         ],
+        Target: {
+          type: 'trakt',
+        },
         Trakt: {
           saveFile: './config/.trakt',
           clientId: 'You need to replace this client ID',

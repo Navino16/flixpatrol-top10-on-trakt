@@ -106,6 +106,21 @@ export const TraktOptionsSchema = z.object({
   clientSecret: z.string(),
 });
 
+export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
+
+export const TargetSchema = z.object({
+  type: z.enum(targetBackend).default('trakt'),
+});
+
+export const FloppyOptionsSchema = z.object({
+  url: z.url(),
+  apiKey: z.string().min(1, 'apiKey must not be empty'),
+});
+
+export const MdblistOptionsSchema = z.object({
+  apiKey: z.string().min(1, 'apiKey must not be empty'),
+});
+
 export const CacheOptionsSchema = z.object({
   enabled: z.boolean(),
   savePath: z.string(),
@@ -174,6 +189,15 @@ export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
 export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
 export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
+export type TargetBackendName = (typeof targetBackend)[number];
+export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
+export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
+
+export type TargetOptions =
+  | { type: 'trakt'; trakt: TraktAPIOptions }
+  | { type: 'floppy'; floppy: FloppyOptions }
+  | { type: 'mdblist'; mdblist: MdblistOptions };
+
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;
 export type ScheduleOptions = z.infer<typeof ScheduleOptionsSchema>;

@@ -8,6 +8,9 @@ import {
   FlixPatrolMostWatchedSchema,
   FlixPatrolMostHoursSchema,
   TraktOptionsSchema,
+  TargetSchema,
+  FloppyOptionsSchema,
+  MdblistOptionsSchema,
   CacheOptionsSchema,
   NotificationsSchema,
   ScheduleOptionsSchema,
@@ -19,6 +22,7 @@ import type {
   FlixPatrolMostWatched,
   FlixPatrolMostHours,
   TraktAPIOptions,
+  TargetOptions,
   CacheOptions,
   ScheduleOptions,
   FlareSolverrOptions,
@@ -98,6 +102,32 @@ export class GetAndValidateConfigs {
     try {
       const data = config.get('Trakt');
       return validateConfig(TraktOptionsSchema, data, 'Trakt');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getTargetOptions(): TargetOptions {
+    try {
+      const rawTarget = config.has('Target') ? config.get('Target') : {};
+      const { type } = validateConfig(TargetSchema, rawTarget, 'Target');
+
+      if (type === 'floppy') {
+        if (!config.has('Floppy')) {
+          throw new ConfigurationError('Target.type is "floppy" but the Floppy configuration block is missing');
+        }
+        return { type, floppy: validateConfig(FloppyOptionsSchema, config.get('Floppy'), 'Floppy') };
+      }
+
+      if (type === 'mdblist') {
+        if (!config.has('Mdblist')) {
+          throw new ConfigurationError('Target.type is "mdblist" but the Mdblist configuration block is missing');
+        }
+        return { type, mdblist: validateConfig(MdblistOptionsSchema, config.get('Mdblist'), 'Mdblist') };
+      }
+
+      return { type: 'trakt', trakt: GetAndValidateConfigs.getTraktOptions() };
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
