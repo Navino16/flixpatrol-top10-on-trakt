@@ -13,7 +13,7 @@ name: E2E
 #
 # The mdblist suite is deliberately NOT on `pull_request`: it hits a real hosted
 # account on a free tier capped at 1000 requests/day with only four static lists,
-# billed ~2 quota units per HTTP call. Running it on every push would be hostile,
+# billed one quota unit per HTTP call. Running it on every push would be hostile,
 # so it is gated on the `E2E_MDBLIST_API_KEY` secret and skips cleanly without it
 # (fork PRs never receive secrets, and must not fail because of that).
 on:
