@@ -46,6 +46,13 @@ src/
 ├── Trakt/
 │   ├── index.ts                # Exports TraktAPI class and types
 │   └── TraktAPI.ts             # Trakt.tv API wrapper
+├── Targets/
+│   ├── index.ts                # Exports ListTarget, createTarget and target types
+│   ├── ListTarget.ts           # ListTarget interface + MediaItem/MediaKind/ListPrivacy/TargetBackend
+│   ├── createTarget.ts         # Factory: TargetOptions -> concrete adapter
+│   ├── privacy.ts              # isPrivate() — maps the 4-level privacy vocabulary to a boolean
+│   ├── ResolutionCache.ts      # Level-2 cache: media item -> backend id, one namespace per backend
+│   └── adapters/               # TraktTarget, FloppyTarget, MdblistTarget
 ├── Pipeline/
 │   ├── index.ts                # Exports runPipeline
 │   └── runPipeline.ts          # One run: FlareSolverr session lifecycle + all list processing
@@ -68,7 +75,7 @@ src/
     ├── index.ts                # Exports logger, Utils, errors, package info
     ├── Logger.ts               # Winston logger config
     ├── Utils.ts                # Helper functions (sleep, getListName, ensureConfigExist)
-    ├── Errors.ts               # AppError + Configuration/FlixPatrol/Trakt/FlareSolverr errors
+    ├── Errors.ts               # AppError + Configuration/FlixPatrol/FlareSolverr + TargetError (Trakt/Floppy/Mdblist)
     ├── getPackageInfo.ts       # Reads name/version for logs and notifications
     └── GetAndValidateConfigs.ts # Config validation
 ```
@@ -84,15 +91,27 @@ src/
    - **daemon**: hands the pipeline to `Scheduler`, which re-runs it on each cron tick. `SIGTERM`/`SIGINT` stop the scheduler gracefully.
 5. Every exit path flushes pending notification dispatches before `process.exit`, so fire-and-forget notifications are not cut off.
 
-**`src/Pipeline/runPipeline.ts`** - One run:
+**`src/Pipeline/runPipeline.ts`** - One run. It orchestrates two distinct phases — *resolution* then *writing* — and delegates both to the `ListTarget` it receives; it never talks to a backend API itself:
 1. Creates the FlareSolverr session, if enabled (before any list, so a dead container fails fast)
-2. Initializes `FlixPatrol` and `TraktAPI` instances
-3. Calls `trakt.connect()` (OAuth device flow)
-4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially (for each: scrape FlixPatrol → convert to Trakt IDs → sync list)
+2. Initializes `FlixPatrol`. The `ListTarget` is **not** built here: `app.ts` builds it once per process and passes it in, so the daemon auth gate and every scheduled run share one adapter and one resolution cache
+3. Calls `target.connect()` (a no-op for floppy/mdblist, the OAuth device flow for trakt)
+4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially. For each section: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` for backend ids → `target.pushToList()` to replace the list content
 5. Dispatches `run_end` with a summary (lists processed, movies/shows added, duration)
 6. Destroys the FlareSolverr session in a `finally` block, so it also covers the early abort paths and thrown errors
 
-Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current Trakt write, never mid-write.
+`FlixPatrol` no longer knows about any backend: it returns `MediaItem[]` and nothing else. All id resolution lives behind `ListTarget`.
+
+Guard in `syncSection`: `pushToList` **replaces** the list content, so a scrape that produced items but resolved to zero ids leaves the list untouched instead of wiping it — that combination means the backend is failing, not that the list should be emptied. A genuinely empty scrape keeps its previous behaviour.
+
+Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current list write, never mid-write.
+
+**`src/Targets/`** - Backend abstraction:
+- `ListTarget` is the only interface the pipeline knows: `connect()`, `resolveMany(items, kind)` → opaque backend ids, `pushToList(ids, listName, kind, privacy)` which replaces the list content for that kind
+- `createTarget(TargetOptions, CacheOptions, dryRun)` picks the adapter from `Target.type`
+- `TraktTarget` wraps the existing `TraktAPI` (device flow, `requiresInteractiveAuth: true`); `FloppyTarget` uses `X-API-Key` with `movie`/`tv` media types and item-by-item writes; `MdblistTarget` uses `?apikey=` with `movie`/`show` and bulk add/remove
+- `ResolutionCache` is a second cache layer, namespaced per backend (`resolution-<backend>/`), so switching backends never re-scrapes a FlixPatrol detail page
+- Adapter-specific behaviour worth remembering: Floppy ignores `privacy` (its API cannot set list visibility) and writes no description (it exposes `latest_update` natively); mdblist writes no description either (`last_updated_at` is native) and forces `sort_by_score=true` on search because the default ranking is poor
+- In `FloppyTarget.addItem`, the `PUT` is attempted **first, before any catalogue creation**. This is a data-safety guarantee, not an optimisation: the cleanup `DELETE` can then only ever remove a tracking row this run created, never a status or rating the user entered by hand
 
 **`src/Scheduler/Scheduler.ts`** - Daemon mode:
 - Runs the pipeline on `node-cron` schedules; `runOnStart` triggers an immediate first run
@@ -118,7 +137,8 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 **`src/Utils/GetAndValidateConfigs.ts`** - Configuration validation:
 - Zod schemas validate every config block at load time
 - Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
-- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error
+- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`, `Target`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error
+- `getTargetOptions()` returns a discriminated union: an absent `Target` block resolves to `{ type: 'trakt' }`, and only then is the `Trakt` block validated. `Floppy`/`Mdblist` are validated only when the matching `type` is selected, so a user on one backend never has to fill in the others
 
 ### Key Types
 
@@ -135,6 +155,12 @@ type FlixPatrolMostHoursLanguage = 'all' | 'english' | 'non-english'
 type TraktTVId = number | null
 type TraktTVIds = number[]
 type TraktPrivacy = 'private' | 'link' | 'friends' | 'public'
+
+// Target types
+type TargetBackend = 'trakt' | 'floppy' | 'mdblist'
+type MediaKind = 'movie' | 'show'
+type ListPrivacy = 'private' | 'link' | 'friends' | 'public'
+interface MediaItem { title: string; year: number | null }  // what FlixPatrol returns, pre-resolution
 ```
 
 ### Configuration Structure
@@ -184,7 +210,17 @@ File: `config/default.json`
     name?: string,
     normalizeName?: boolean
   }],
-  Trakt: {
+  Target: {  // optional block: absent means { type: 'trakt' }
+    type: 'trakt' | 'floppy' | 'mdblist'  // default: 'trakt'
+  },
+  Floppy: {  // required only when Target.type === 'floppy'
+    url: string,     // base URL of the instance, e.g. http://localhost:8000
+    apiKey: string   // token from Settings -> Advanced (non-empty)
+  },
+  Mdblist: {  // required only when Target.type === 'mdblist'
+    apiKey: string   // non-empty
+  },
+  Trakt: {  // still validated whenever Target.type resolves to 'trakt'
     saveFile: string,  // OAuth token file path
     clientId: string,
     clientSecret: string
@@ -242,7 +278,7 @@ Detail page (title/year extraction):
 
 ### Error Handling
 
-Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `FlixPatrolError`, `TraktError`, `FlareSolverrError`.
+Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `FlixPatrolError`, `FlareSolverrError`, and `TargetError` — the common parent of `TraktError`, `FloppyError` and `MdblistError`, so callers can catch "the backend failed" without knowing which one is configured.
 
 - **Configuration errors**: throw `ConfigurationError`, caught in `app.ts` → `error` notification → exit 1
 - **Scraping failures**: `getFlixPatrolHTMLPage` returns `null` (never throws); callers turn that into `FlixPatrolError`, which fails the run
@@ -255,6 +291,10 @@ Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `Fl
 - List creation
 - Item removal/addition
 - List updates
+
+The other two backends do not sleep. Floppy is self-hosted, so a per-item delay would make a
+ten-item list absurdly slow. mdblist writes in bulk instead, and reports its remaining daily
+budget through `x-ratelimit-remaining`, which `MdblistTarget` logs after each list write.
 
 ### Logging
 

@@ -32,6 +32,7 @@
 
 <p align="center">
   <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#choosing-your-platform">Choosing Your Platform</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#supported-platforms">Supported Platforms</a> &bull;
   <a href="#scheduling">Scheduling</a> &bull;
@@ -45,7 +46,7 @@
 > **Warning**
 > Running at your own risk of being IP banned from FlixPatrol.
 >
-> Due to FlixPatrol limitations, titles are matched on Trakt by name and release year. This may occasionally cause bad matching.
+> Due to FlixPatrol limitations, titles are matched on the target backend by name and release year. This may occasionally cause bad matching.
 
 ## Features
 
@@ -56,7 +57,7 @@
 - Sync **Netflix Most Hours** rankings (total, first week, first month)
 - Support for **200+ countries/regions**
 - Intelligent **caching** to reduce API calls (7-day TTL by default)
-- Automatic Trakt list management (create, update, sync)
+- Automatic list management (create, update, sync) on **Trakt**, **Floppy** or **mdblist**
 - **Dry-run mode** for safe testing
 - Compatible with [Kometa](https://kometa.wiki/) (formerly Plex Meta Manager)
 
@@ -86,6 +87,59 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 2. Run the binary from the command line (double-clicking will close the window automatically)
 3. Edit `./config/default.json` and run again
 
+## Choosing Your Platform
+
+The lists this tool builds can be written to three different backends. Pick one with
+the `Target` block; everything else in the configuration stays the same.
+
+|                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
+|--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
+| Lists              | 5                              | 100               | 4 static           | 20 to 80            | unlimited                                   |
+| Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
+| Hosting            | none                           | none              | none               | none                | you provide it                              |
+| Authentication     | OAuth device flow              | OAuth device flow | API key            | API key             | API key                                     |
+| `privacy` honoured | 4 levels                       | 4 levels          | public/private     | public/private      | ignored, set it by hand in the web UI       |
+| Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
+
+### Trakt (default)
+
+The `Target` block is optional: omitting it entirely keeps the historical Trakt
+behaviour, so existing configurations need no change at all.
+
+```json
+{
+  "Target": { "type": "trakt" },
+  "Trakt": {
+    "saveFile": "./config/.trakt",
+    "clientId": "your-trakt-client-id",
+    "clientSecret": "your-trakt-client-secret"
+  }
+}
+```
+
+### Floppy
+
+```json
+{
+  "Target": { "type": "floppy" },
+  "Floppy": {
+    "url": "http://localhost:8000",
+    "apiKey": "your-floppy-token"
+  }
+}
+```
+
+### mdblist
+
+```json
+{
+  "Target": { "type": "mdblist" },
+  "Mdblist": {
+    "apiKey": "your-mdblist-api-key"
+  }
+}
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -93,7 +147,7 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 | Name             | Description                                                  | Values                          | Default |
 |------------------|--------------------------------------------------------------|---------------------------------|---------|
 | LOG_LEVEL        | How verbose the log will be                                  | error, warn, info, debug, silly | info    |
-| DRY_RUN          | Run without making changes to Trakt                          | true, false                     | false   |
+| DRY_RUN          | Run without making changes to the target backend             | true, false                     | false   |
 | LIST_NAME_PREFIX | String prepended to every list name (useful for dev/testing) | Any string, e.g. `[TEST]`       | (none)  |
 
 #### Dry-Run Mode
@@ -262,6 +316,22 @@ If there is any configuration error, the tool will exit with information about t
 | language        | Filter by language (first-week and first-month only)                                       | No        | all, english, non-english       | all                         |
 | name            | Optional custom list name                                                                  | No        | Any valid string                | netflix-most-hours-{period} |
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                     | true                        |
+
+</details>
+
+<details>
+<summary><strong>Target</strong> — Which backend the lists are written to (optional)</summary>
+
+| Name           | Description                                    | Mandatory | Values                   | Default |
+|----------------|------------------------------------------------|-----------|--------------------------|---------|
+| Target.type    | Which backend receives the generated lists     | No        | trakt, floppy, mdblist   | trakt   |
+| Floppy.url     | Base URL of your Floppy instance               | If `type: "floppy"`  | Any valid URL | |
+| Floppy.apiKey  | Floppy API token (Settings → Advanced)         | If `type: "floppy"`  | A valid string | |
+| Mdblist.apiKey | mdblist API key (preferences page)             | If `type: "mdblist"` | A valid string | |
+
+The whole `Target` block is optional — omit it and the tool writes to Trakt exactly as
+it always has. See [Choosing Your Platform](#choosing-your-platform) for the trade-offs
+between the three backends.
 
 </details>
 
@@ -468,6 +538,67 @@ To run this application you need a Trakt account and a Client ID / Client Secret
    - Other fields are optional
 3. Set the Client ID / Client Secret in `./config/default.json`
 4. Run the app and follow the on-screen instructions
+
+### Floppy Setup
+
+[Floppy](https://github.com/dannyvfilms/Floppy) is a self-hosted media tracker. Point the
+tool at your instance and it will create and refresh lists there instead of on Trakt.
+
+1. Create a **dedicated account** on your instance for this tool. Do not reuse your
+   personal one: adding a title Floppy has never seen goes through a catalogue bootstrap
+   that briefly creates a `Planning` tracking row, which the tool deletes right after. If
+   the process is killed in that narrow window, the stray row stays behind — on a
+   dedicated account it is harmless noise, on your own account it pollutes your watchlist.
+2. Log in as that account and copy its token from **Settings → Advanced**.
+3. Put it in `Floppy.apiKey`, and your instance URL in `Floppy.url`.
+
+```json
+{
+  "Target": { "type": "floppy" },
+  "Floppy": {
+    "url": "http://localhost:8000",
+    "apiKey": "your-floppy-token"
+  }
+}
+```
+
+> **Note**
+> The Floppy API exposes no way to set a list's visibility, so the `privacy` field of your
+> list entries is ignored and every list the tool creates stays private. If you want to
+> share one, flip it by hand in the web UI. This blocks nothing in practice: **Kometa
+> reads private lists with the same token**, so a private list is fully usable.
+
+When wiring the result into [Kometa](https://kometa.wiki/), prefer the `floppy_list`
+builder over `floppy_list_details`: the latter overwrites your Plex collection summary
+with the list description, and the tool never writes one on this backend — it relies on
+Floppy's native `latest_update` field instead of a "Last Updated" description.
+
+### mdblist Setup
+
+[mdblist](https://mdblist.com/) is a hosted list service authenticated by a single API key.
+
+1. Create an account and copy your API key from your
+   [preferences page](https://mdblist.com/preferences/).
+2. Put it in `Mdblist.apiKey`.
+
+```json
+{
+  "Target": { "type": "mdblist" },
+  "Mdblist": {
+    "apiKey": "your-mdblist-api-key"
+  }
+}
+```
+
+> **Warning**
+> A free mdblist account is capped at **4 static lists**. Configure more entries than that
+> and list creation will start failing — trim your configuration or take a paid plan.
+
+The API budget is **1 000 requests per day**, and mdblist bills roughly **2 units per HTTP
+call**, so a run costs about twice the number of calls it makes. Resolution results are
+cached (see `Cache.ttl`), which keeps repeat runs cheap: only titles the tool has never
+resolved before consume search calls. The remaining budget is logged after every list
+write, and reported by `x-ratelimit-remaining` on any API response.
 
 ## Supported Platforms
 
