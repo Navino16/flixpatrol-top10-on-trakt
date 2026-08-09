@@ -38,6 +38,19 @@ const readResults = (payload: unknown): unknown[] => {
 };
 
 /**
+ * Path component of a base URL, without its trailing slash — `''` when the API
+ * sits at the root of its host. Used to re-anchor the absolute cursor Floppy
+ * returns onto the base URL this adapter was configured with.
+ */
+const pathnameOf = (url: string): string => {
+  try {
+    return new URL(url).pathname.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+};
+
+/**
  * Floppy adapter, a self-hosted media tracker exposing a REST API under `/api/v1`.
  *
  * Two peculiarities of this API dictate the shape of the adapter:
@@ -51,7 +64,18 @@ export class FloppyTarget implements ListTarget {
   /** The API key is enough: no device flow, no human interaction. */
   public readonly requiresInteractiveAuth = false;
 
+  /**
+   * Ceiling on the number of pages a single paginated read may follow. Floppy
+   * serves 20 entries per page by default, so this covers 10,000 entries — far
+   * beyond anything this tool writes — while still bounding a `next` cursor that
+   * loops or never clears.
+   */
+  private static readonly MAX_PAGES = 500;
+
   private readonly url: string;
+
+  /** Base path of `url`, hoisted once: every page cursor is re-anchored on it. */
+  private readonly basePath: string;
 
   private readonly apiKey: string;
 
@@ -61,6 +85,7 @@ export class FloppyTarget implements ListTarget {
 
   constructor(options: FloppyOptions, cacheOptions: CacheOptions, dryRun: boolean) {
     this.url = options.url.replace(/\/+$/, '');
+    this.basePath = pathnameOf(this.url);
     this.apiKey = options.apiKey;
     this.dryRun = dryRun;
     this.cache = new ResolutionCache(cacheOptions, 'floppy');
@@ -131,14 +156,16 @@ export class FloppyTarget implements ListTarget {
       .filter((entry): entry is FloppySearchResult => entry !== null);
   }
 
-  private static readLists(payload: unknown): FloppyList[] {
-    return readResults(payload)
+  // The two readers below take already-concatenated entries rather than a
+  // single payload: their sources are read across every page, not page by page.
+  private static readLists(entries: unknown[]): FloppyList[] {
+    return entries
       .map((entry) => FloppyTarget.toList(entry))
       .filter((entry): entry is FloppyList => entry !== null);
   }
 
-  private static readListItems(payload: unknown): FloppyListItem[] {
-    return readResults(payload)
+  private static readListItems(entries: unknown[]): FloppyListItem[] {
+    return entries
       .map((entry) => FloppyTarget.toListItem(entry))
       .filter((entry): entry is FloppyListItem => entry !== null);
   }
@@ -179,6 +206,69 @@ export class FloppyTarget implements ListTarget {
     return { status: response.status, payload };
   }
 
+  /**
+   * Turns the `pagination.next` cursor of a Floppy response into a path this
+   * adapter can request, or null once the collection is exhausted.
+   *
+   * `next` comes back as an ABSOLUTE URL built from the origin the server sees,
+   * which is not necessarily the one the adapter was configured with — think
+   * reverse proxy or container hostname. Only its path and query are kept, and
+   * the base path is stripped so `request` can re-anchor them on `this.url`.
+   *
+   * A cursor that is present but unusable throws rather than being treated as
+   * the end of the collection: silently stopping there is exactly the truncated
+   * read this whole mechanism exists to prevent.
+   */
+  private nextPathOf(payload: unknown): string | null {
+    if (!isRecord(payload) || !isRecord(payload.pagination)) return null;
+    const { next } = payload.pagination;
+    if (next === null || next === undefined) return null;
+    if (typeof next !== 'string' || next === '') {
+      throw new FloppyError(`Unusable pagination cursor ${JSON.stringify(next)} in a Floppy response`);
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(next, `${this.url}/`);
+    } catch {
+      throw new FloppyError(`Unusable pagination cursor "${next}" in a Floppy response`);
+    }
+    const path = this.basePath !== '' && parsed.pathname.startsWith(`${this.basePath}/`)
+      ? parsed.pathname.slice(this.basePath.length)
+      : parsed.pathname;
+    return `${path}${parsed.search}`;
+  }
+
+  /**
+   * Reads a paginated collection to exhaustion and returns every `results`
+   * entry, concatenated.
+   *
+   * The cursor is followed rather than a large `limit` being asked for: a
+   * hardcoded page size is a bet on a maximum that silently truncates the day it
+   * is exceeded, which is the very failure this guards against. The page count
+   * is capped all the same, and hitting the cap THROWS instead of returning a
+   * partial collection — `pushToList` derives what to remove from this read, so
+   * a partial answer would leave stale items behind and grow the list.
+   */
+  private async requestAllPages(path: string): Promise<unknown[]> {
+    const entries: unknown[] = [];
+    let next: string | null = path;
+    let pages = 0;
+
+    while (next !== null) {
+      if (pages >= FloppyTarget.MAX_PAGES) {
+        throw new FloppyError(
+          `GET ${path} still had pages after ${FloppyTarget.MAX_PAGES}, refusing to act on a partial read`,
+        );
+      }
+      const { payload } = await this.request('GET', next, undefined, [200]);
+      entries.push(...readResults(payload));
+      next = this.nextPathOf(payload);
+      pages += 1;
+    }
+    return entries;
+  }
+
   public async resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]> {
     return resolveSequentially(items, (item) => resolveThroughCache({
       cache: this.cache,
@@ -189,7 +279,16 @@ export class FloppyTarget implements ListTarget {
     }));
   }
 
-  /** Backend-specific half of the resolution: search, then the shared match cascade. */
+  /**
+   * Backend-specific half of the resolution: search, then the shared match cascade.
+   *
+   * This read is deliberately NOT paginated. `/api/v1/search/` is paginated like
+   * every Floppy collection and reports thousands of hits for a common word, but
+   * `limit=20` here is a relevance window, not a page: the results come back
+   * ranked, and a title that matches neither by name nor by year within the top
+   * twenty is not a candidate. Reading it whole would mean thousands of requests
+   * per item to consider matches nobody wants.
+   */
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = FloppyTarget.mediaType(kind);
     const query = `search=${encodeURIComponent(item.title)}&source=tmdb&limit=20`;
@@ -200,12 +299,13 @@ export class FloppyTarget implements ListTarget {
   }
 
   private async getOrCreateList(listName: string): Promise<number> {
-    const found = await this.request(
-      'GET', `/api/v1/lists/?search=${encodeURIComponent(listName)}`, undefined, [200],
-    );
+    // Read to exhaustion: `search` is a PARTIAL match, so a name sharing a
+    // substring with many others can push the exact match past the first page.
+    // Stopping at page one would report it absent and create a duplicate list.
+    const found = await this.requestAllPages(`/api/v1/lists/?search=${encodeURIComponent(listName)}`);
     // `search` is a partial match on the Floppy side: we require strict equality
     // so "netflix-france-top10-kids" is not reused instead of "netflix-france-top10".
-    const exact = FloppyTarget.readLists(found.payload).find((l) => l.name === listName);
+    const exact = FloppyTarget.readLists(found).find((l) => l.name === listName);
     if (exact) return exact.id;
 
     if (this.dryRun) {
@@ -280,10 +380,13 @@ export class FloppyTarget implements ListTarget {
       return;
     }
 
-    const existing = await this.request(
-      'GET', `/api/v1/lists/${listId}/items/`, undefined, [200],
+    // Read to exhaustion: this read decides what gets REMOVED. Floppy serves 20
+    // items per page, so stopping at the first one would leave every item past
+    // the twentieth in place while the fresh ones are added on top — the list
+    // would grow at every run and mix stale content with current content.
+    const existingItems = FloppyTarget.readListItems(
+      await this.requestAllPages(`/api/v1/lists/${listId}/items/`),
     );
-    const existingItems = FloppyTarget.readListItems(existing.payload);
 
     for (const kind of kinds) {
       const type = FloppyTarget.mediaType(kind);

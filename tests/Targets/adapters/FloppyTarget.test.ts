@@ -261,3 +261,134 @@ describe('FloppyTarget', () => {
     await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
   });
 });
+
+/**
+ * Pagination. Floppy serves 20 entries per page on every collection, and both
+ * reads `pushToList` depends on are collections.
+ *
+ * The severe one is the items read: it is what decides which entries get
+ * REMOVED. Stopping at the first page leaves everything past the twentieth item
+ * in place while the fresh content is added on top, so the list grows at every
+ * run and mixes stale entries with current ones.
+ *
+ * The second is the list lookup: `search` is a PARTIAL match, so a common
+ * substring can push the exact name onto page two, where a single-page read
+ * reports it absent and creates a DUPLICATE list.
+ */
+describe('FloppyTarget pagination', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: FloppyTarget;
+
+  const page = (next: string | null, results: unknown[]) => json({
+    pagination: {
+      total: results.length, limit: 20, offset: 0, next, previous: null,
+    },
+    results,
+  });
+
+  const movieEntry = (mediaId: string) => ({ item: { media_id: mediaId, source: 'tmdb', media_type: 'movie' } });
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new FloppyTarget(options, cacheOptions, false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('removes the existing items living past the first page of the items read', async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }])) // GET /lists/?search=
+      .mockResolvedValueOnce(page('http://floppy:8000/api/v1/lists/7/items/?limit=20&offset=20', [movieEntry('1')]))
+      .mockResolvedValueOnce(page(null, [movieEntry('21')]))
+      .mockResolvedValueOnce(json({}, 204)) // DELETE of the page-1 item
+      .mockResolvedValueOnce(json({}, 204)) // DELETE of the page-2 item
+      .mockResolvedValue(json([{ list_id: 7 }])); // PUT of the replacement
+
+    await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
+
+    // The second page was asked for, at the offset the cursor dictated.
+    expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/lists/7/items/?limit=20&offset=20');
+
+    const deletes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE').map((c) => c[0] as string);
+    expect(deletes).toEqual([
+      'http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/',
+      'http://floppy:8000/api/v1/media/movie/tmdb/21/lists/7/',
+    ]);
+  });
+
+  it('finds an exact list name sitting on the second page instead of creating a duplicate', async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(
+        'http://floppy:8000/api/v1/lists/?search=my-list&limit=20&offset=20',
+        [{ id: 3, name: 'my-list-kids' }],
+      ))
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
+      .mockResolvedValueOnce(page(null, [])) // GET /lists/7/items/
+      .mockResolvedValue(json([{ list_id: 7 }]));
+
+    await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
+
+    expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'POST')).toBe(false);
+    expect(urlOf(fetchMock, 3)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/');
+  });
+
+  /**
+   * The cursor is built from the origin the SERVER sees, which behind a reverse
+   * proxy or inside a container network is not the one we were configured with.
+   * Only its path and query may be reused.
+   */
+  it('re-anchors a cursor announcing a different origin on the configured base url', async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
+      .mockResolvedValueOnce(page('http://floppy-internal:9999/api/v1/lists/7/items/?offset=20', []))
+      .mockResolvedValueOnce(page(null, []))
+      .mockResolvedValue(json([{ list_id: 7 }]));
+
+    await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
+
+    expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/lists/7/items/?offset=20');
+  });
+
+  it('strips the base path of the configured url before following a cursor', async () => {
+    const behindProxy = new FloppyTarget({ url: 'http://proxy/floppy', apiKey: 'token' }, cacheOptions, false);
+    fetchMock
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
+      .mockResolvedValueOnce(page('http://proxy/floppy/api/v1/lists/7/items/?offset=20', []))
+      .mockResolvedValueOnce(page(null, []))
+      .mockResolvedValue(json([{ list_id: 7 }]));
+
+    await behindProxy.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
+
+    expect(urlOf(fetchMock, 2)).toBe('http://proxy/floppy/api/v1/lists/7/items/?offset=20');
+  });
+
+  /**
+   * A partial read is precisely what corrupts the list, so an unfollowable
+   * cursor must fail the run rather than pass for the end of the collection.
+   */
+  it('raises rather than treating an unusable cursor as the end of the collection', async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
+      .mockResolvedValueOnce(json({
+        pagination: { next: 42 },
+        results: [movieEntry('1')],
+      }));
+
+    await expect(target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
+  });
+
+  it('gives up instead of looping forever when the cursor never ends', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/api/v1/lists/?search=')) return page(null, [{ id: 7, name: 'my-list' }]);
+      return page('http://floppy:8000/api/v1/lists/7/items/?offset=20', []);
+    });
+
+    await expect(target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
+    // Bounded: the run failed, it did not hang.
+    expect(fetchMock.mock.calls.length).toBeLessThan(1000);
+  });
+});

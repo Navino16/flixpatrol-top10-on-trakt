@@ -249,6 +249,105 @@ describe('MdblistTarget', () => {
 });
 
 /**
+ * Pagination of `GET /lists/{id}/items`.
+ *
+ * mdblist pages at 1,000 items, which is far above anything this tool writes, so
+ * unlike Floppy this has never bitten in production — and it is deliberately NOT
+ * covered by an E2E suite: the test account is a real person's metered free
+ * tier, and building a 1,000-item list there to cross the boundary is not an
+ * acceptable cost. A fake multi-page server covers it instead.
+ *
+ * What is asserted is that the read which decides what gets REMOVED sees the
+ * whole list: a truncated read would leave stale items behind while the fresh
+ * ones are added on top.
+ */
+describe('MdblistTarget pagination', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: MdblistTarget;
+
+  const itemsPage = (
+    movies: number[],
+    shows: number[],
+    pagination: Record<string, unknown>,
+  ) => json({
+    movies: movies.map((id) => ({ id })),
+    shows: shows.map((id) => ({ id })),
+    seasons: [],
+    episodes: [],
+    pagination,
+  });
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new MdblistTarget(options, cacheOptions, false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('removes the existing items living past the first page', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValueOnce(itemsPage([1], [9], {
+        offset: 0, limit: 1, total: 2, has_more: true,
+      }))
+      .mockResolvedValueOnce(itemsPage([2], [], {
+        offset: 1, limit: 1, total: 2, has_more: false,
+      }))
+      .mockResolvedValueOnce(json({ removed: { movies: 2, shows: 0 } }))
+      .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
+
+    await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
+
+    // The first page keeps the exact request shape it always had, and the
+    // second is asked for at the offset the server's own envelope dictates.
+    expect(urlOf(fetchMock, 1)).not.toContain('offset=');
+    expect(urlOf(fetchMock, 2)).toContain('/lists/42/items?offset=1');
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body as string))
+      .toEqual({ movies: [{ tmdb: 1 }, { tmdb: 2 }] });
+  });
+
+  it('stops after one page when the response carries no pagination envelope', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValueOnce(json({ movies: [{ id: 1 }], shows: [] }))
+      .mockResolvedValueOnce(json({ removed: { movies: 1, shows: 0 } }))
+      .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
+
+    await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
+
+    expect(fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/lists/42/items?'))).toHaveLength(1);
+  });
+
+  it('raises rather than looping when the server announces a page without advancing', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
+      .mockResolvedValue(itemsPage([1], [], {
+        offset: 0, limit: 0, total: 1, has_more: true,
+      }));
+
+    await expect(target.pushToList({ movie: ['3'] }, 'my-list', 'public')).rejects.toThrow(MdblistError);
+  });
+
+  it('gives up instead of paginating forever when has_more never clears', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/lists/user?')) return json([{ id: 42, name: 'my-list' }]);
+      const offset = Number(new URL(url).searchParams.get('offset') ?? '0');
+      return itemsPage([], [], {
+        offset, limit: 1000, total: 999999, has_more: true,
+      });
+    });
+
+    await expect(target.pushToList({ movie: ['3'] }, 'my-list', 'public')).rejects.toThrow(MdblistError);
+    // Bounded: the run failed, it did not hang.
+    expect(fetchMock.mock.calls.length).toBeLessThan(200);
+  });
+});
+
+/**
  * The memo over `GET /lists/user`. That endpoint returns the user's WHOLE list
  * collection, so re-fetching it per config entry means N identical round trips
  * on an API that meters a daily quota.

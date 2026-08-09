@@ -33,6 +33,7 @@ const runId = `${process.pid}-${Date.now().toString(36)}`;
 const listName = `e2e-probe-${runId}`;
 const coldListName = `e2e-cold-${runId}`;
 const scratchListName = `e2e-scratch-${runId}`;
+const paginationListName = `e2e-pages-${runId}`;
 
 const INCEPTION = '27205';
 const FIGHT_CLUB = '550';
@@ -46,6 +47,17 @@ const BREAKING_BAD = '1396';
 // shrinks), hence the size of the pool.
 const COLD_CANDIDATES_QUERY = 'The Godfather';
 const COLD_CANDIDATES_LIMIT = 100;
+
+// Pagination case. Floppy serves 20 entries per page, so the first batch has to
+// cross that boundary for the items read of the second push to be forced to
+// paginate. The second batch only has to be disjoint from the first — five is
+// enough to prove the replacement, and each extra media costs a three-call
+// catalogue bootstrap.
+const PAGE_SIZE = 20;
+const FIRST_BATCH_SIZE = 25;
+const SECOND_BATCH_SIZE = 5;
+const BATCH_CANDIDATES_QUERY = 'star';
+const BATCH_CANDIDATES_LIMIT = 60;
 
 interface FloppyItem {
   mediaType: string;
@@ -85,12 +97,60 @@ const request = async (
   }
 };
 
+/**
+ * Same call as `request`, but reads the collection to exhaustion.
+ *
+ * Every Floppy collection is paginated at 20 entries per page, so a raw read
+ * stopping at the first page cannot even OBSERVE a list bigger than that — the
+ * pagination case below would be blind to the very bug it exists to catch. The
+ * `next` cursor is absolute and this suite talks to the instance directly, so it
+ * is followed as it comes. The page count is capped so a broken server fails the
+ * test instead of hanging the suite.
+ */
+const requestAllPages = async (path: string): Promise<unknown[]> => {
+  const entries: unknown[] = [];
+  let next: string | null = `${url}${path}`;
+  let pages = 0;
+
+  while (next !== null) {
+    if (pages >= 100) throw new Error(`GET ${path} never stopped paginating`);
+    const response = await fetch(next, { headers: { 'X-API-Key': apiKey } });
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    entries.push(...resultsOf(payload));
+    const pagination = isRecord(payload) && isRecord(payload.pagination) ? payload.pagination : null;
+    next = pagination !== null && typeof pagination.next === 'string' ? pagination.next : null;
+    pages += 1;
+  }
+  return entries;
+};
+
 const findListId = async (name: string): Promise<number | null> => {
-  const { payload } = await request('GET', `/api/v1/lists/?search=${encodeURIComponent(name)}`);
-  for (const entry of resultsOf(payload)) {
+  for (const entry of await requestAllPages(`/api/v1/lists/?search=${encodeURIComponent(name)}`)) {
     if (isRecord(entry) && entry.name === name && typeof entry.id === 'number') return entry.id;
   }
   return null;
+};
+
+/**
+ * Real TMDB ids the instance is able to resolve, taken from Floppy's own search
+ * rather than hardcoded: a frozen list would slowly rot as ids get retired, and
+ * the query has to be broad enough to yield the two disjoint batches.
+ */
+const searchMovieIds = async (query: string, limit: number): Promise<string[]> => {
+  const search = `search=${encodeURIComponent(query)}&source=tmdb&limit=${limit}`;
+  const { payload } = await request('GET', `/api/v1/search/movie?${search}`);
+  const ids: string[] = [];
+  for (const entry of resultsOf(payload)) {
+    if (!isRecord(entry)) continue;
+    const mediaId = asId(entry.media_id);
+    if (mediaId !== null && !ids.includes(mediaId)) ids.push(mediaId);
+  }
+  return ids;
 };
 
 const createList = async (name: string): Promise<number> => {
@@ -101,9 +161,8 @@ const createList = async (name: string): Promise<number> => {
 
 /** Real content of the list, reduced to the type + identifier pair. */
 const readListItemsById = async (listId: number): Promise<FloppyItem[]> => {
-  const { payload } = await request('GET', `/api/v1/lists/${listId}/items/`);
   const items: FloppyItem[] = [];
-  for (const entry of resultsOf(payload)) {
+  for (const entry of await requestAllPages(`/api/v1/lists/${listId}/items/`)) {
     if (!isRecord(entry) || !isRecord(entry.item)) continue;
     const mediaId = asId(entry.item.media_id);
     const mediaType = entry.item.media_type;
@@ -123,9 +182,8 @@ const readListItems = async (name: string): Promise<FloppyItem[]> => {
  * would mean the adapter left a "Planning" status behind it.
  */
 const readTrackedIds = async (type: 'movie' | 'tv'): Promise<string[]> => {
-  const { payload } = await request('GET', `/api/v1/media/${type}/`);
   const ids: string[] = [];
-  for (const entry of resultsOf(payload)) {
+  for (const entry of await requestAllPages(`/api/v1/media/${type}/`)) {
     if (!isRecord(entry) || !isRecord(entry.item)) continue;
     const mediaId = asId(entry.item.media_id);
     if (mediaId !== null) ids.push(mediaId);
@@ -166,17 +224,21 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   let target: FloppyTarget;
   // Kept so that the final cleanup also purges the cold-path media.
   let coldMediaId: string | null = null;
+  // Everything the pagination case touched, so the cleanup can purge it too.
+  let batchMediaIds: string[] = [];
 
   beforeAll(() => {
     target = new FloppyTarget({ url, apiKey }, cacheOptions, false);
   });
 
   afterAll(async () => {
-    for (const name of [listName, coldListName, scratchListName]) {
+    for (const name of [listName, coldListName, scratchListName, paginationListName]) {
       await deleteListByName(name);
     }
     // Safety net: only purges the media this suite could have tracked.
-    const ownMovies = [INCEPTION, FIGHT_CLUB, ...(coldMediaId === null ? [] : [coldMediaId])];
+    const ownMovies = [
+      INCEPTION, FIGHT_CLUB, ...(coldMediaId === null ? [] : [coldMediaId]), ...batchMediaIds,
+    ];
     for (const mediaId of ownMovies) {
       await request('DELETE', `/api/v1/media/movie/tmdb/${mediaId}/`);
     }
@@ -299,4 +361,58 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
       .toEqual([{ mediaType: 'movie', mediaId: coldMediaId }]);
     expect(await readTrackedIds('movie')).not.toContain(coldMediaId);
   });
+
+  /**
+   * The regression this whole change exists for.
+   *
+   * `pushToList` replaces a list's contents by reading the existing items and
+   * removing the ones of the kind being written. Floppy serves 20 items per
+   * page, so a read that stopped at the first page never removed items 21+: the
+   * next push added its content on top of them and the list grew without bound,
+   * mixing stale entries with current ones. Real configurations here use
+   * `limit: 50`, and a real run produced a 100-item list.
+   *
+   * So the first batch deliberately crosses the page boundary, the second is
+   * disjoint from it, and what is checked is the SERVER's state afterwards.
+   *
+   * Slow by construction: every media absent from the instance catalogue costs a
+   * three-call bootstrap, hence the timeout, generous compared to its
+   * neighbours.
+   */
+  it('replaces a list bigger than one page instead of keeping the items past the boundary', async (ctx) => {
+    const candidates = await searchMovieIds(BATCH_CANDIDATES_QUERY, BATCH_CANDIDATES_LIMIT);
+    if (candidates.length < FIRST_BATCH_SIZE + SECOND_BATCH_SIZE) {
+      ctx.skip(
+        `The "${BATCH_CANDIDATES_QUERY}" search returned ${candidates.length} movies, `
+        + `fewer than the ${FIRST_BATCH_SIZE + SECOND_BATCH_SIZE} needed to cross the page boundary.`,
+      );
+      return;
+    }
+
+    const first = candidates.slice(0, FIRST_BATCH_SIZE);
+    const second = candidates.slice(FIRST_BATCH_SIZE, FIRST_BATCH_SIZE + SECOND_BATCH_SIZE);
+    batchMediaIds = [...first, ...second];
+    expect(first.length).toBeGreaterThan(PAGE_SIZE);
+    expect(first.filter((id) => second.includes(id))).toEqual([]);
+
+    await target.pushToList({ movie: first.map((id) => `tmdb:${id}`) }, paginationListName, 'public');
+
+    const listId = await findListId(paginationListName);
+    expect(listId).not.toBeNull();
+    const afterFirst = await readListItemsById(listId as number);
+    expect([...afterFirst.map((i) => i.mediaId)].sort()).toEqual([...first].sort());
+
+    await target.pushToList({ movie: second.map((id) => `tmdb:${id}`) }, paginationListName, 'public');
+
+    // The whole first batch is gone, including everything that sat past the
+    // first page of the items read. Before the fix this held the 5 stale items
+    // of page 2+ on top of the 5 fresh ones.
+    const afterSecond = await readListItemsById(listId as number);
+    expect([...afterSecond.map((i) => i.mediaId)].sort()).toEqual([...second].sort());
+
+    // And the account is left as it was found: no tracking entry survived the
+    // bootstraps the two pushes had to perform.
+    const tracked = await readTrackedIds('movie');
+    expect(batchMediaIds.filter((id) => tracked.includes(id))).toEqual([]);
+  }, 900000);
 });

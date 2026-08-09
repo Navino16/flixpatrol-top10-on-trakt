@@ -29,6 +29,17 @@ interface MdblistItems {
   shows: { id: number }[];
 }
 
+/**
+ * The `pagination` envelope of `GET /lists/{id}/items`. mdblist exposes no
+ * cursor URL: continuation is `has_more` plus the offset/limit of the page just
+ * read.
+ */
+interface MdblistPagination {
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 type HttpMethod = 'GET' | 'POST' | 'PUT';
 type Bucket = 'movies' | 'shows';
 
@@ -89,6 +100,23 @@ const readItems = (payload: unknown): MdblistItems => {
 };
 
 /**
+ * Reads the pagination envelope, or null when the response carries none — an
+ * older mdblist, or a route that is simply not paginated. A missing `offset` or
+ * `limit` is kept as NaN rather than defaulted: the caller refuses to advance on
+ * a non-finite next offset, which is how a nonsensical envelope surfaces as an
+ * error instead of an endless loop.
+ */
+const readPagination = (payload: unknown): MdblistPagination | null => {
+  if (!isRecord(payload) || !isRecord(payload.pagination)) return null;
+  const page = payload.pagination;
+  return {
+    offset: typeof page.offset === 'number' ? page.offset : Number.NaN,
+    limit: typeof page.limit === 'number' ? page.limit : Number.NaN,
+    hasMore: page.has_more === true,
+  };
+};
+
+/**
  * mdblist adapter, a hosted list service exposing a REST API authenticated by
  * an API key in the query string (`?apikey=`), never in a header.
  *
@@ -110,6 +138,14 @@ export class MdblistTarget implements ListTarget {
   public readonly requiresInteractiveAuth = false;
 
   private static readonly BASE = 'https://api.mdblist.com';
+
+  /**
+   * Ceiling on the number of pages a single paginated read may follow. mdblist
+   * serves 1,000 items per page, so this covers 100,000 items — orders of
+   * magnitude beyond anything this tool writes — while still bounding a server
+   * that never clears `has_more`.
+   */
+  private static readonly MAX_PAGES = 100;
 
   private readonly apiKey: string;
 
@@ -224,7 +260,56 @@ export class MdblistTarget implements ListTarget {
     }));
   }
 
-  /** Backend-specific half of the resolution: search, then the shared match cascade. */
+  /**
+   * Reads `GET /lists/{id}/items` to exhaustion and returns both buckets merged.
+   *
+   * This read decides what gets REMOVED, so a truncated answer would leave stale
+   * items in the list while the fresh ones are added on top. mdblist's page is
+   * 1,000 items, far above anything written here, but the guard costs nothing
+   * and the failure it prevents is silent corruption.
+   *
+   * Continuation follows `has_more` and the server's own offset/limit rather
+   * than a hardcoded large page: a fixed size is a bet that breaks silently the
+   * day it is exceeded. `offset` is omitted from the first request so the
+   * overwhelmingly common single-page read stays byte-for-byte what it was.
+   */
+  private async fetchAllItems(listId: number): Promise<MdblistItems> {
+    const all: MdblistItems = { movies: [], shows: [] };
+    let offset = 0;
+
+    for (let page = 0; page < MdblistTarget.MAX_PAGES; page += 1) {
+      const path = offset === 0 ? `/lists/${listId}/items` : `/lists/${listId}/items?offset=${offset}`;
+      const { payload } = await this.request('GET', path, undefined, [200]);
+      const items = readItems(payload);
+      all.movies.push(...items.movies);
+      all.shows.push(...items.shows);
+
+      const pagination = readPagination(payload);
+      if (pagination === null || !pagination.hasMore) return all;
+
+      const nextOffset = pagination.offset + pagination.limit;
+      if (!Number.isFinite(nextOffset) || nextOffset <= offset) {
+        throw new MdblistError(
+          `GET /lists/${listId}/items announced another page without advancing past offset ${offset}`,
+        );
+      }
+      offset = nextOffset;
+    }
+
+    throw new MdblistError(
+      `GET /lists/${listId}/items still had pages after ${MdblistTarget.MAX_PAGES}, `
+      + 'refusing to act on a partial read',
+    );
+  }
+
+  /**
+   * Backend-specific half of the resolution: search, then the shared match cascade.
+   *
+   * This read is deliberately NOT paginated: `limit=20` combined with
+   * `sort_by_score=true` is a relevance window, not a page. A title matching
+   * neither by name nor by year within the twenty best-scored hits is not a
+   * candidate, so reading further would only burn quota.
+   */
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = MdblistTarget.mediaType(kind);
     const query = `query=${encodeURIComponent(item.title)}&year=${item.year ?? ''}&limit=20&sort_by_score=true`;
@@ -239,6 +324,12 @@ export class MdblistTarget implements ListTarget {
    * lookup is a strict name equality, so the map key is the raw name; the first
    * occurrence wins, which keeps the chosen id stable if mdblist ever holds two
    * lists sharing a name.
+   *
+   * No pagination here, and that is checked rather than assumed: `GET
+   * /lists/user` answers a BARE JSON array, with no `pagination` envelope and no
+   * `has_more`, so there is no cursor to follow. Should mdblist ever wrap it,
+   * `readLists` would return an empty collection and the failure would be loud —
+   * every list reported absent — rather than a silent truncation.
    */
   private async fetchListIndex(): Promise<Map<string, number>> {
     const found = await this.request('GET', '/lists/user', undefined, [200]);
@@ -317,7 +408,7 @@ export class MdblistTarget implements ListTarget {
       return;
     }
 
-    const existing = readItems((await this.request('GET', `/lists/${listId}/items`, undefined, [200])).payload);
+    const existing = await this.fetchAllItems(listId);
 
     const toRemove: Partial<Record<Bucket, { tmdb: number }[]>> = {};
     const toAdd: Partial<Record<Bucket, { tmdb: number }[]>> = {};
