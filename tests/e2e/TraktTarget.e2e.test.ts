@@ -42,7 +42,8 @@ const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 // Unique name per run: two concurrent runs do not destroy each other. Kept
 // slug-safe (lowercase alphanumerics and hyphens) so the name Trakt stores and
 // the slug the application derives from it cannot drift apart.
-const listName = `flixpatrol-e2e-${process.pid}-${Date.now().toString(36)}`;
+const LIST_NAME_PREFIX = 'flixpatrol-e2e-';
+const listName = `${LIST_NAME_PREFIX}${process.pid}-${Date.now().toString(36)}`;
 
 // Trakt sleeps 1s between every write, and a push does several of them, so the
 // write-heavy cases get far more than the 60s default.
@@ -109,6 +110,19 @@ describe.skipIf(skip)('TraktTarget (E2E)', () => {
     verifier = new Trakt({ client_id: clientId, client_secret: clientSecret });
     const token = JSON.parse(fs.readFileSync(saveFile, 'utf8')) as TraktAccessExport;
     await verifier.import_token(token);
+
+    // Sweep orphans BEFORE counting: the account is real and survives between
+    // runs, so an interrupted run (Ctrl+C, a timeout, a SIGKILL) leaves its list
+    // behind and it keeps counting against the cap for ever. Every list this
+    // suite creates carries the same prefix, so they are safe to reclaim — and
+    // sweeping first makes the warning below reflect the account as it will
+    // actually be when the list is created.
+    const orphans = (await verifier.users.lists.get({ username: 'me' }))
+      .filter((list: TraktList) => list.name.startsWith(LIST_NAME_PREFIX));
+    for (const orphan of orphans) {
+      console.warn(`[E2E] reclaiming orphaned Trakt list "${orphan.name}" from an interrupted run`);
+      await verifier.users.list.delete({ username: 'me', id: `${orphan.ids.trakt}` });
+    }
 
     const existing = await verifier.users.lists.get({ username: 'me' });
     if (existing.length >= FREE_ACCOUNT_LIST_CAP) {
