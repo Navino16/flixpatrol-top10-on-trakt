@@ -74,7 +74,7 @@ const summarise = (items: TraktItem[]): Entry[] => items.map((item) => ({
 
 const findList = async (name: string): Promise<TraktList | null> => {
   const lists = await verifier.users.lists.get({ username: 'me' });
-  return lists.find((list) => list.name === name) ?? null;
+  return lists.find((list: TraktList) => list.name === name) ?? null;
 };
 
 /** Whole list, unfiltered, read directly from the service. */
@@ -188,7 +188,7 @@ describe.skipIf(skip)('TraktTarget (E2E)', () => {
 
     const asShows = await verifier.users.list.items.get({ username: 'me', id: `${listId}`, type: 'show' });
     // Asked for shows only; the movie is still there. This is the defect.
-    expect([...asShows.map((item) => item.type)].sort()).toEqual(['movie', 'show']);
+    expect([...asShows.map((item: TraktItem) => item.type)].sort()).toEqual(['movie', 'show']);
 
     // And what the production code does instead — one unfiltered read, narrowed
     // per kind in memory — gives the right answer on that same mixed list.
