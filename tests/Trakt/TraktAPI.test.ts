@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TraktAPI } from '../../src/Trakt/TraktAPI';
 import { TraktError } from '../../src/Utils/Errors';
 import { Utils } from '../../src/Utils/Utils';
+import { logger } from '../../src/Utils/Logger';
 import fs from 'fs';
 
 // Mock fs module
@@ -499,6 +500,11 @@ describe('TraktAPI', () => {
      * two description updates (the second silently overwriting the first) and
      * four rate-limit sleeps — two of which were pure waste, i.e. two seconds
      * per list. Reintroducing a per-kind call must break these numbers.
+     *
+     * The items read joined the per-LIST budget once the phantom server-side
+     * type filter was dropped: Trakt returns the whole list whatever `type` is
+     * passed, so the second read was a duplicate of the first. Two reads per
+     * `type: "both"` list, now one.
      */
     it('pays the per-list work once when both kinds are written together', async () => {
       armHappyPath();
@@ -509,9 +515,9 @@ describe('TraktAPI', () => {
       // Per LIST: once each (was twice).
       expect(mockListGet).toHaveBeenCalledTimes(1);
       expect(mockListUpdate).toHaveBeenCalledTimes(1);
-      // Per KIND: `users.list.items.get` is genuinely type-filtered by Trakt, so
-      // it legitimately stays at one call per kind, and so does the add.
-      expect(mockListItemsGet).toHaveBeenCalledTimes(2);
+      // Per LIST too: the read is unfiltered, so one read serves both kinds.
+      expect(mockListItemsGet).toHaveBeenCalledTimes(1);
+      // Per KIND: the add genuinely carries a per-kind payload.
       expect(mockListItemsAdd).toHaveBeenCalledTimes(2);
       // Two adds + one description update; the two sleeps that guarded the
       // duplicated list read and description write are gone.
@@ -530,7 +536,7 @@ describe('TraktAPI', () => {
     });
 
     // Leave-untouched semantics, backend side: an absent key must never reach
-    // the items read nor the remove call for that kind.
+    // the remove call for that kind, even though the read hands us its items.
     it('never touches a kind whose key is absent', async () => {
       armHappyPath();
       mockListItemsGet.mockResolvedValue([{ type: 'show', show: { ids: { trakt: 789 } } }]);
@@ -539,10 +545,8 @@ describe('TraktAPI', () => {
       await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
 
       expect(mockListItemsGet).toHaveBeenCalledTimes(1);
-      expect(mockListItemsGet).toHaveBeenCalledWith(expect.objectContaining({ type: 'movie' }));
-      const removedTypes = mockListItemsRemove.mock.calls
-        .map((c) => c[0] as { movies: unknown[]; shows: unknown[] });
-      expect(removedTypes.every((body) => body.shows.length === 0)).toBe(true);
+      // The list holds a show only, and only movies were asked for: nothing to remove.
+      expect(mockListItemsRemove).not.toHaveBeenCalled();
     });
 
     // An empty array is a deliberate wipe, not an absent key: the removal must happen.
@@ -566,6 +570,113 @@ describe('TraktAPI', () => {
       await trakt.pushToList({}, 'Test List', 'private');
 
       expect(mockListGet).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * `users.list.items.get` is NOT filtered by Trakt: `trakt.tv` sends `type` as
+   * a query parameter where the API wants a path segment, so the whole list
+   * comes back whatever type is asked for. Observed live: 23 movies were
+   * written, the list was re-read for the show pass, and the code announced
+   * "contain 23 show, removing them" — those were the movies it had just
+   * written. Nothing was lost only because the removal payload carried movie
+   * ids under `shows`, which matched nothing. These tests pin the in-memory
+   * narrowing that makes the behaviour intentional rather than accidental.
+   */
+  describe('list items are narrowed by type in memory', () => {
+    const foundList = {
+      name: 'Mixed List',
+      privacy: 'private',
+      ids: { trakt: 7, slug: 'mixed-list' },
+    };
+
+    // A list holding BOTH kinds, as any `type: "both"` list does after a run.
+    const mixedItems = [
+      { type: 'movie', movie: { ids: { trakt: 111 } } },
+      { type: 'show', show: { ids: { trakt: 222 } } },
+      { type: 'movie', movie: { ids: { trakt: 333 } } },
+    ];
+
+    const armMixedList = () => {
+      mockListGet.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue(mixedItems);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListItemsRemove.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+    };
+
+    const removeBodies = () => mockListItemsRemove.mock.calls
+      .map((c) => c[0] as { movies: { ids: { trakt: number } }[]; shows: { ids: { trakt: number } }[] });
+
+    it('removes only the movies when the movie kind is written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [999] }, 'Mixed List', 'private');
+
+      expect(removeBodies()).toHaveLength(1);
+      const [body] = removeBodies();
+      expect(body.movies.map((m) => m.ids.trakt)).toEqual([111, 333]);
+      expect(body.shows).toEqual([]);
+    });
+
+    it('removes only the shows when the show kind is written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ show: [999] }, 'Mixed List', 'private');
+
+      expect(removeBodies()).toHaveLength(1);
+      const [body] = removeBodies();
+      expect(body.shows.map((s) => s.ids.trakt)).toEqual([222]);
+      expect(body.movies).toEqual([]);
+    });
+
+    it('never files a movie id under shows when both kinds are written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [999], show: [888] }, 'Mixed List', 'private');
+
+      const movieIds = [111, 333];
+      const showIds = [222];
+      removeBodies().forEach((body) => {
+        expect(body.shows.every((s) => showIds.includes(s.ids.trakt))).toBe(true);
+        expect(body.movies.every((m) => movieIds.includes(m.ids.trakt))).toBe(true);
+      });
+    });
+
+    // The false data-loss alarm was raised by this log line, not by a write.
+    it('logs the real count of the requested kind, not the whole list size', async () => {
+      armMixedList();
+      const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ show: [999] }, 'Mixed List', 'private');
+
+      const removalLogs = infoSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((message) => message.includes('removing them'));
+      expect(removalLogs).toHaveLength(1);
+      // One show in the list, not the three items it holds.
+      expect(removalLogs[0]).toContain('contain 1 show');
+      infoSpy.mockRestore();
+    });
+
+    it('says nothing about existing content for a freshly created, empty list', async () => {
+      mockListGet.mockRejectedValue(new Error('404 (Not Found)'));
+      mockListsCreate.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue([]);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+      const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [1, 2], show: [3] }, 'Mixed List', 'private');
+
+      expect(mockListItemsRemove).not.toHaveBeenCalled();
+      expect(infoSpy.mock.calls.map((c) => String(c[0])).some((m) => m.includes('removing them'))).toBe(false);
+      infoSpy.mockRestore();
     });
   });
 });
