@@ -853,19 +853,21 @@ process lifecycle rather than on behaviour — the logic it orchestrates is cove
 ### End-to-end tests
 
 `npm run test:e2e` uses a separate config (`vitest.e2e.config.ts`) and runs only
-`tests/e2e/**/*.e2e.test.ts`. There is one suite per backend, and each talks to a **real
-service** — a real Floppy instance, a real Trakt account, a real mdblist account — so they are
-excluded from `npm test` and from the coverage numbers.
+`tests/e2e/**/*.e2e.test.ts`. There is one suite per backend plus one for FlixPatrol itself, and
+each talks to a **real service** — a real Floppy instance, a real Trakt account, a real mdblist
+account, the live FlixPatrol site — so they are excluded from `npm test` and from the coverage
+numbers.
 
-All three are opt-in through environment variables, and each suite **skips cleanly** when its own
+All of them are opt-in through environment variables, and each suite **skips cleanly** when its own
 variables are missing. Running `npm run test:e2e` with no environment at all skips everything and
-exits green, so you only ever enable the backend you actually want to exercise:
+exits green, so you only ever enable the target you actually want to exercise:
 
-| Backend     | Variables                                                                  |
-|-------------|----------------------------------------------------------------------------|
-| **Floppy**  | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
-| **Trakt**   | `E2E_TRAKT_CLIENT_ID`, `E2E_TRAKT_CLIENT_SECRET`, `E2E_TRAKT_SAVE_FILE` (all required) |
-| **mdblist** | `E2E_MDBLIST_API_KEY`                                                       |
+| Suite           | Variables                                                                  |
+|-----------------|----------------------------------------------------------------------------|
+| **Floppy**      | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
+| **Trakt**       | `E2E_TRAKT_CLIENT_ID`, `E2E_TRAKT_CLIENT_SECRET`, `E2E_TRAKT_SAVE_FILE` (all required) |
+| **mdblist**     | `E2E_MDBLIST_API_KEY`                                                       |
+| **FlixPatrol**  | `E2E_FLARESOLVERR_URL`                                                      |
 
 ```bash
 # Floppy only
@@ -877,11 +879,32 @@ E2E_TRAKT_CLIENT_ID=your-id E2E_TRAKT_CLIENT_SECRET=your-secret \
 
 # mdblist only
 E2E_MDBLIST_API_KEY=your-key npm run test:e2e
+
+# FlixPatrol markup drift — needs a reachable FlareSolverr, since the site is behind Cloudflare
+E2E_FLARESOLVERR_URL=http://localhost:8191/v1 npm run test:e2e
 ```
 
-Every suite checks the end state by querying the service directly, never through the adapter, and
-cleans up after itself: each names the objects it creates with a per-run unique suffix, and
-deletes them in an `afterAll` that runs even when a test failed.
+#### The FlixPatrol drift suite
+
+`tests/e2e/FlixPatrolXPath.e2e.test.ts` is the odd one out: it writes nothing, it only reads. Every
+XPath expression in `src/Flixpatrol/parse.ts` is matched against a site nobody here controls, and
+when that markup drifts the fallbacks keep the parse "working" while quietly returning the wrong
+thing — which is exactly how a run of releases once stamped the same year onto every single title.
+
+So the suite does **not** assert that parsing succeeds. It asserts that the **primary** rung of each
+expression chain still matches, and treats a fallback taking over as a failure in its own right. It
+also checks one invariant that holds whatever the site lists today: several unrelated titles must
+not all report the same release year. It never asserts today's content — only shapes, counts and
+which rung matched.
+
+It covers one page per XPath family (Top 10 world, Top 10 regional, Top 10 Kids, Popular, Most
+watched including the `original: true` variant, Most hours including its language tabs), and derives
+its detail-page URLs at runtime from those listings rather than hardcoding `/title/...` links, which
+would rot as the site prunes pages. Each page is fetched exactly once and shared by every assertion.
+
+Every backend suite checks the end state by querying the service directly, never through the
+adapter, and cleans up after itself: each names the objects it creates with a per-run unique
+suffix, and deletes them in an `afterAll` that runs even when a test failed.
 
 Trakt authenticates through an OAuth **device flow** — a human opens a URL and types a code —
 which cannot happen inside a test. The Trakt suite therefore consumes an **already-obtained**
@@ -902,6 +925,15 @@ personal lists) and never touches a list it did not create.
   workflow and depend on no repository secret — there is nothing to leak and nothing that can
   quietly burn a metered quota (mdblist's free tier is capped at 1000 requests/day and a handful
   of lists) or churn a real Trakt profile. Run them by hand, with the commands above.
+- **The FlixPatrol drift suite runs weekly**, as `.github/workflows/flixpatrol-drift.yml`
+  (`schedule` + `workflow_dispatch`). The job stands up its own FlareSolverr container, so it needs
+  no secret either. It is deliberately **not** wired to `pull_request`: as this README warns, using
+  the project carries a risk of being IP banned from FlixPatrol, and GitHub runners share a small
+  set of published address ranges — scraping the site on every pull request would be both hostile
+  to a third party and a good way to get those ranges blocked. Drift is a slow-moving failure, so
+  weekly is enough to shorten the time to notice from months to days. A failure fails the job
+  loudly and, when a `DISCORD_WEBHOOK` repository secret exists, posts which assertions drifted;
+  without the secret the notification step skips and the run simply stays red.
 
 ## License
 

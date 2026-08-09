@@ -57,6 +57,35 @@ function parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
 }
 
 /**
+ * Every expression tried for the Top10 section, strictest first.
+ *
+ * Exported so the drift suite can assert WHICH rung matched against the live
+ * site, instead of only that the chain as a whole produced something. A fallback
+ * quietly taking over is itself the early warning, and it can only be observed
+ * from outside if the rungs are addressable one by one — duplicating the strings
+ * in the test would defeat the purpose, since the copy could not drift with the
+ * original.
+ */
+export function top10Expressions(
+  type: FlixPatrolType,
+  location: FlixPatrolTop10Location,
+): string[] {
+  if (location === 'world') {
+    return [
+      `//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
+    ];
+  }
+  return [
+    // Original strict
+    `//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
+    // More tolerant headline match
+    `//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
+    // Generic first tables fallback
+    `((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href`,
+  ];
+}
+
+/**
  * Top10 section of a platform page. The world page and the regional pages do not
  * share the same markup, and the regional one has drifted enough over time to
  * warrant a chain of three expressions, from strictest to loosest.
@@ -66,17 +95,7 @@ export function parseTop10Page(
   location: FlixPatrolTop10Location,
   html: string,
 ): FlixPatrolMatchResult[] {
-  const expressions: string[] = [];
-  if (location === 'world') {
-    expressions.push(`//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
-  } else {
-    // Original strict
-    expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
-    // More tolerant headline match
-    expressions.push(`//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`);
-    // Generic first tables fallback
-    expressions.push(`((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href`);
-  }
+  const expressions = top10Expressions(type, location);
   for (const expr of expressions) {
     const res = parsePage(expr, html);
     if (res.length > 0){
@@ -85,6 +104,17 @@ export function parseTop10Page(
     }
   }
   return [];
+}
+
+/** Every expression tried for the Kids Top10 section, strictest first. */
+export function top10KidsExpressions(type: FlixPatrolType): string[] {
+  const kidsType = type === 'Movies' ? 'Kids Movies' : 'Kids TV Shows';
+  return [
+    // Match h3 with "TOP 10 Kids Movies/TV Shows" followed by table
+    `//h3[text() = "TOP 10 ${kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
+    // Fallback with contains for more tolerance
+    `//h3[contains(., "TOP 10") and contains(., "${kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
+  ];
 }
 
 /**
@@ -96,12 +126,7 @@ export function parseTop10KidsPage(
   html: string,
 ): FlixPatrolMatchResult[] {
   const kidsType = type === 'Movies' ? 'Kids Movies' : 'Kids TV Shows';
-  const expressions: string[] = [
-    // Match h3 with "TOP 10 Kids Movies/TV Shows" followed by table
-    `//h3[text() = "TOP 10 ${kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
-    // Fallback with contains for more tolerance
-    `//h3[contains(., "TOP 10") and contains(., "${kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
-  ];
+  const expressions = top10KidsExpressions(type);
 
   for (const expr of expressions) {
     const res = parsePage(expr, html);
@@ -113,13 +138,22 @@ export function parseTop10KidsPage(
   return [];
 }
 
+/** The single expression a Popular page relies on. There is no fallback rung. */
+export const POPULAR_EXPRESSION = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
+
 /** Popular page: a single card table, no fallback. */
 export function parsePopularPage(
   html: string,
 ): FlixPatrolMatchResult[] {
-  const expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
+  return parsePage(POPULAR_EXPRESSION, html);
+}
 
-  return parsePage(expression, html);
+/** The single expression a Most-watched page relies on, for each of its two modes. */
+export function mostWatchedExpression(originalsOnly: boolean): string {
+  if (originalsOnly) {
+    return '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href';
+  }
+  return '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
 }
 
 /**
@@ -130,23 +164,24 @@ export function parseMostWatchedPage(
   html: string,
   originalsOnly: boolean,
 ): FlixPatrolMatchResult[] {
-  let expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
-  if (originalsOnly) {
-    expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href'
-  }
-
-  return parsePage(expression, html);
+  return parsePage(mostWatchedExpression(originalsOnly), html);
 }
 
 /**
  * Most-hours page: one section per media type, and — outside the `total` period —
  * one table per language tab.
  */
-export function parseMostHoursPage(
+/**
+ * The two expressions a Most-hours page relies on, strictest first: the
+ * language-tab table, then the whole section. The second rung exists for the
+ * `total` period, which publishes no language tabs at all — so a fallback there
+ * is normal, while a fallback on a period that DOES have tabs means the tab
+ * markup drifted and every language now returns the same rows.
+ */
+export function mostHoursExpressions(
   type: FlixPatrolType,
   language: FlixPatrolMostHoursLanguage,
-  html: string,
-): FlixPatrolMatchResult[] {
+): string[] {
   const sectionId = type === 'Movies' ? 'toc-movies' : 'toc-tv-shows';
   const langMap: Record<FlixPatrolMostHoursLanguage, string> = {
     'all': 'all-languages',
@@ -155,14 +190,24 @@ export function parseMostHoursPage(
   };
   const langTab = langMap[language];
 
-  // For language-specific tables, we need to find the correct table within the section
-  // The tables use x-show="isCurrent('all-languages')" etc.
-  const expression = `//div[@id="${sectionId}"]//table[contains(@x-show, "'${langTab}'")]//a[@class="flex gap-2 group items-center"]/@href`;
+  return [
+    // For language-specific tables, we need to find the correct table within the section
+    // The tables use x-show="isCurrent('all-languages')" etc.
+    `//div[@id="${sectionId}"]//table[contains(@x-show, "'${langTab}'")]//a[@class="flex gap-2 group items-center"]/@href`,
+    // Fallback for 'total' period which doesn't have language tabs
+    `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`,
+  ];
+}
+
+export function parseMostHoursPage(
+  type: FlixPatrolType,
+  language: FlixPatrolMostHoursLanguage,
+  html: string,
+): FlixPatrolMatchResult[] {
+  const [expression, fallbackExpr] = mostHoursExpressions(type, language);
   let results = parsePage(expression, html);
 
-  // Fallback for 'total' period which doesn't have language tabs
   if (results.length === 0) {
-    const fallbackExpr = `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`;
     results = parsePage(fallbackExpr, html);
   }
 
@@ -175,25 +220,31 @@ export function parseMostHoursPage(
  * do not touch them without re-checking a real detail page.
  * The title lives in `div.info-grid-header`, a direct child of `div.info-grid`.
  */
+/**
+ * The two title expressions, strictest first. The second one is a bare `//h1`,
+ * which matches on essentially any page and therefore hides a drift of the first
+ * completely: the suite has to be able to interrogate rung 1 on its own.
+ */
+export const DETAIL_TITLE_EXPRESSIONS = [
+  '//div[contains(@class,"info-grid-header")]//h1/text()',
+  '//h1/text()',
+];
+
 export function parseDetailTitle(dom: JSDOM): string {
   // Title with fallback (kept)
-  const title = dom.window.document.evaluate(
-    '//div[contains(@class,"info-grid-header")]//h1/text()',
-    dom.window.document,
-    null,
-    dom.window.XPathResult.STRING_TYPE,
-    null,
-  ).stringValue.trim();
-  if (title) {
-    return title;
+  for (const expression of DETAIL_TITLE_EXPRESSIONS) {
+    const title = dom.window.document.evaluate(
+      expression,
+      dom.window.document,
+      null,
+      dom.window.XPathResult.STRING_TYPE,
+      null,
+    ).stringValue.trim();
+    if (title) {
+      return title;
+    }
   }
-  return dom.window.document.evaluate(
-    '//h1/text()',
-    dom.window.document,
-    null,
-    dom.window.XPathResult.STRING_TYPE,
-    null,
-  ).stringValue.trim();
+  return '';
 }
 
 /**
@@ -211,15 +262,20 @@ export function parseDetailTitle(dom: JSDOM): string {
  * the wrong film with full confidence. A missing year degrades the cascade to
  * title-only and is not cached; a wrong year is silently destructive. Never guess.
  */
+export const DETAIL_PREMIERE_EXPRESSION = '//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]';
+
+/** The four-digit run the premiere block is scanned for. */
+export const DETAIL_YEAR_PATTERN = /(19|20)\d{2}/;
+
 export function parseDetailYear(dom: JSDOM): number | null {
   const premiereBlock = dom.window.document.evaluate(
-    '//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]',
+    DETAIL_PREMIERE_EXPRESSION,
     dom.window.document,
     null,
     dom.window.XPathResult.STRING_TYPE,
     null,
   ).stringValue;
-  const match = premiereBlock.match(/(19|20)\d{2}/);
+  const match = premiereBlock.match(DETAIL_YEAR_PATTERN);
   if (match === null) {
     return null;
   }
