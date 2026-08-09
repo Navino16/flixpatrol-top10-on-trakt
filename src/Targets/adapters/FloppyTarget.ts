@@ -5,6 +5,9 @@ import type {
 } from '../ListTarget';
 import { MEDIA_KINDS } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
+import { detailOf, isRecord, readPayload } from '../http';
+import { pickBestMatch } from '../matching';
+import { resolveSequentially, resolveThroughCache } from '../resolution';
 
 /** A single result of `GET /api/v1/search/{media_type}`. */
 interface FloppySearchResult {
@@ -27,8 +30,6 @@ interface FloppyListItem {
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
 /** Extracts the `results` array of a paginated response, assuming nothing about the rest of the envelope. */
 const readResults = (payload: unknown): unknown[] => {
@@ -143,36 +144,6 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * There is deliberately no last-resort fallback on the first result: falling
-   * through the whole cascade means neither the title nor the year matched, so
-   * any result left is a mismatch by definition. Returning null lets the caller
-   * warn and drop the item rather than write a confidently wrong entry.
-   */
-  private static pickBest(results: FloppySearchResult[], item: MediaItem): FloppySearchResult | null {
-    const sameTitle = (r: FloppySearchResult) => r.title.trim().toLowerCase() === item.title.trim().toLowerCase();
-    const sameYear = (r: FloppySearchResult) => item.year !== null && r.year === item.year;
-    return results.find((r) => sameTitle(r) && sameYear(r))
-      ?? results.find(sameTitle)
-      ?? results.find(sameYear)
-      ?? null;
-  }
-
-  private static async readPayload(response: Response): Promise<unknown> {
-    // A 204 has no body, and an infrastructure error can return HTML: in both
-    // cases the absence of JSON is not an error in itself.
-    try {
-      return await response.json();
-    } catch {
-      return null;
-    }
-  }
-
-  private static detailOf(payload: unknown): string {
-    if (isRecord(payload) && typeof payload.detail === 'string') return `: ${payload.detail}`;
-    return '';
-  }
-
-  /**
    * Single point of passage to the API: authentication header, URL building,
    * content header when there is a body. Any status outside `expected` throws a
    * FloppyError mentioning the method, the path and the status.
@@ -201,41 +172,31 @@ export class FloppyTarget implements ListTarget {
       throw new FloppyError(`${method} ${path} failed: ${reason}`);
     }
 
-    const payload = await FloppyTarget.readPayload(response);
+    const payload = await readPayload(response);
     if (!expected.includes(response.status)) {
-      throw new FloppyError(`${method} ${path} returned ${response.status}${FloppyTarget.detailOf(payload)}`);
+      throw new FloppyError(`${method} ${path} returned ${response.status}${detailOf(payload, 'detail')}`);
     }
     return { status: response.status, payload };
   }
 
   public async resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]> {
-    const ids: string[] = [];
-    for (const item of items) {
-      const id = await this.resolveOne(item, kind);
-      if (id !== null && !ids.includes(id)) {
-        ids.push(id);
-      }
-    }
-    return ids;
+    return resolveSequentially(items, (item) => resolveThroughCache({
+      cache: this.cache,
+      backend: 'Floppy',
+      item,
+      kind,
+      search: () => this.searchId(item, kind),
+    }));
   }
 
-  private async resolveOne(item: MediaItem, kind: MediaKind): Promise<string | null> {
-    const cached = await this.cache.get(item, kind);
-    if (cached !== null) return cached;
-
+  /** Backend-specific half of the resolution: search, then the shared match cascade. */
+  private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = FloppyTarget.mediaType(kind);
     const query = `search=${encodeURIComponent(item.title)}&source=tmdb&limit=20`;
     const found = await this.request('GET', `/api/v1/search/${type}?${query}`, undefined, [200]);
 
-    const best = FloppyTarget.pickBest(FloppyTarget.readSearchResults(found.payload), item);
-    if (best === null) {
-      logger.warn(`No Floppy match for ${kind} "${item.title}" (${item.year ?? 'unknown year'})`);
-      return null;
-    }
-
-    const id = FloppyTarget.encodeId(best.source, best.media_id);
-    await this.cache.set(item, kind, id);
-    return id;
+    const best = pickBestMatch(FloppyTarget.readSearchResults(found.payload), item, (r) => r);
+    return best === null ? null : FloppyTarget.encodeId(best.source, best.media_id);
   }
 
   private async getOrCreateList(listName: string): Promise<number> {

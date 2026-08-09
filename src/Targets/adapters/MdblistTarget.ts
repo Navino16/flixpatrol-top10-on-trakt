@@ -6,6 +6,9 @@ import type {
 import { MEDIA_KINDS } from '../ListTarget';
 import { isPrivate } from '../privacy';
 import { ResolutionCache } from '../ResolutionCache';
+import { detailOf, isRecord, readPayload } from '../http';
+import { pickBestMatch } from '../matching';
+import { resolveSequentially, resolveThroughCache } from '../resolution';
 
 /** A single result of `GET /search/{media_type}`. */
 interface MdblistSearchResult {
@@ -28,8 +31,6 @@ interface MdblistItems {
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
 type Bucket = 'movies' | 'shows';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
 const readSearchResult = (value: unknown): MdblistSearchResult | null => {
   if (!isRecord(value)) return null;
@@ -160,38 +161,14 @@ export class MdblistTarget implements ListTarget {
 
   /**
    * The default ranking of the search is bad — "Breaking Bad" only comes 4th —
-   * hence `sort_by_score=true` and the requirement of an exact match. A result
-   * without a `tmdbid` is discarded: without it, the write would be impossible.
-   *
-   * There is deliberately no last-resort fallback on the first usable result:
-   * falling through the whole cascade means neither the title nor the year
-   * matched, so any result left is a mismatch by definition. Returning null
-   * lets the caller warn and drop the item rather than write a confidently
-   * wrong entry.
+   * hence `sort_by_score=true` on every call and the shared match cascade on top
+   * of it. A result without a `tmdbid` is discarded BEFORE matching: without it
+   * the write would be impossible, so it is not an eligible candidate at all —
+   * which is why that filter stays here rather than in `pickBestMatch`.
    */
   private static pickBest(results: MdblistSearchResult[], item: MediaItem): number | null {
     const usable = results.filter((r) => r.ids.tmdbid !== null);
-    const sameTitle = (r: MdblistSearchResult) => r.title.trim().toLowerCase() === item.title.trim().toLowerCase();
-    const sameYear = (r: MdblistSearchResult) => item.year !== null && r.year === item.year;
-    const best = usable.find((r) => sameTitle(r) && sameYear(r))
-      ?? usable.find(sameTitle)
-      ?? usable.find(sameYear);
-    return best?.ids.tmdbid ?? null;
-  }
-
-  private static async readPayload(response: Response): Promise<unknown> {
-    // An infrastructure error status can return HTML: in that case the absence
-    // of JSON is not an error in itself, it will be reported by the status.
-    try {
-      return await response.json();
-    } catch {
-      return null;
-    }
-  }
-
-  private static detailOf(payload: unknown): string {
-    if (isRecord(payload) && typeof payload.error === 'string') return `: ${payload.error}`;
-    return '';
+    return pickBestMatch(usable, item, (r) => r)?.ids.tmdbid ?? null;
   }
 
   /**
@@ -223,9 +200,9 @@ export class MdblistTarget implements ListTarget {
       throw new MdblistError(`${method} ${path} failed: ${reason}`);
     }
 
-    const payload = await MdblistTarget.readPayload(response);
+    const payload = await readPayload(response);
     if (!expected.includes(response.status)) {
-      throw new MdblistError(`${method} ${path} returned ${response.status}${MdblistTarget.detailOf(payload)}`);
+      throw new MdblistError(`${method} ${path} returned ${response.status}${detailOf(payload, 'error')}`);
     }
     return { status: response.status, payload, headers: response.headers };
   }
@@ -238,33 +215,23 @@ export class MdblistTarget implements ListTarget {
   }
 
   public async resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]> {
-    const ids: string[] = [];
-    for (const item of items) {
-      const id = await this.resolveOne(item, kind);
-      if (id !== null && !ids.includes(id)) {
-        ids.push(id);
-      }
-    }
-    return ids;
+    return resolveSequentially(items, (item) => resolveThroughCache({
+      cache: this.cache,
+      backend: 'mdblist',
+      item,
+      kind,
+      search: () => this.searchId(item, kind),
+    }));
   }
 
-  private async resolveOne(item: MediaItem, kind: MediaKind): Promise<string | null> {
-    const cached = await this.cache.get(item, kind);
-    if (cached !== null) return cached;
-
+  /** Backend-specific half of the resolution: search, then the shared match cascade. */
+  private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = MdblistTarget.mediaType(kind);
     const query = `query=${encodeURIComponent(item.title)}&year=${item.year ?? ''}&limit=20&sort_by_score=true`;
     const found = await this.request('GET', `/search/${type}?${query}`, undefined, [200]);
 
     const tmdbid = MdblistTarget.pickBest(readSearchResults(found.payload), item);
-    if (tmdbid === null) {
-      logger.warn(`No mdblist match for ${kind} "${item.title}" (${item.year ?? 'unknown year'})`);
-      return null;
-    }
-
-    const id = `${tmdbid}`;
-    await this.cache.set(item, kind, id);
-    return id;
+    return tmdbid === null ? null : `${tmdbid}`;
   }
 
   /**

@@ -1,12 +1,12 @@
 import fs from 'fs';
 import { TraktAPI } from '../../Trakt';
 import type { TraktListContent } from '../../Trakt';
-import { logger } from '../../Utils';
 import type { CacheOptions, TraktAPIOptions } from '../../types';
 import type {
   ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
 } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
+import { resolveSequentially, resolveThroughCache } from '../resolution';
 
 export class TraktTarget implements ListTarget {
   public readonly backend: TargetBackend = 'trakt';
@@ -34,32 +34,26 @@ export class TraktTarget implements ListTarget {
   }
 
   public async resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]> {
-    const ids: string[] = [];
-    for (const item of items) {
-      const id = await this.resolveOne(item, kind);
-      if (id !== null && !ids.includes(id)) {
-        ids.push(id);
-      }
-    }
-    return ids;
+    return resolveSequentially(items, (item) => resolveThroughCache({
+      cache: this.cache,
+      backend: 'Trakt',
+      item,
+      kind,
+      search: () => this.searchId(item, kind),
+    }));
   }
 
-  private async resolveOne(item: MediaItem, kind: MediaKind): Promise<string | null> {
-    const cached = await this.cache.get(item, kind);
-    if (cached !== null) return cached;
-
+  /**
+   * Backend-specific half of the resolution. There is no shared match cascade
+   * here: the Trakt client already returns a single best result, so the matching
+   * happens server-side.
+   */
+  private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     // Trakt expects a number: 0 means "year unknown", and its search then
     // falls back to the first textual result.
     const found = await this.trakt.getFirstItemByQuery(kind, item.title, item.year ?? 0);
     const traktId = kind === 'movie' ? found?.movie?.ids.trakt : found?.show?.ids.trakt;
-    if (traktId === undefined || traktId === null) {
-      logger.warn(`No Trakt match for ${kind} "${item.title}" (${item.year ?? 'unknown year'})`);
-      return null;
-    }
-
-    const id = `${traktId}`;
-    await this.cache.set(item, kind, id);
-    return id;
+    return traktId === undefined || traktId === null ? null : `${traktId}`;
   }
 
   public async pushToList(
