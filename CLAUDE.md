@@ -37,35 +37,46 @@ file and therefore silently disables the gate. Do not "restore" it. `src/types/*
 `process.exit` paths), so unit-testing it would assert on the process lifecycle rather than on
 behaviour; the logic it orchestrates is covered through `Pipeline/` and `Scheduler/`.
 
-**E2E suites** hit a **real Floppy instance** and a **real mdblist account** — they are excluded
-from `npm test` and from coverage for that reason. Each suite is gated on environment variables
-and calls `describe.skipIf(...)` when they are absent, so a CI without secrets stays green
-instead of failing:
+**E2E suites** hit a **real Floppy instance**, a **real Trakt account** and a **real mdblist
+account** — they are excluded from `npm test` and from coverage for that reason. Each suite is
+gated on environment variables and calls `describe.skipIf(...)` when they are absent, so a run
+with no environment skips everything and stays green instead of failing:
 
 | Variable | Suite | Effect when absent |
 |---|---|---|
 | `E2E_FLOPPY_URL` | `tests/e2e/FloppyTarget.e2e.test.ts` | suite skipped |
 | `E2E_FLOPPY_API_KEY` | `tests/e2e/FloppyTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_CLIENT_ID` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_CLIENT_SECRET` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_SAVE_FILE` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
 | `E2E_MDBLIST_API_KEY` | `tests/e2e/MdblistTarget.e2e.test.ts` | suite skipped |
 
-Both suites verify the end state by querying the service directly with `fetch`, never through
-the adapter, and they name every object they create with a per-run unique suffix so two
-concurrent runs cannot destroy each other's data.
+Every suite verifies the end state by querying the service directly — `fetch` for Floppy and
+mdblist, a second independent `trakt.tv` client for Trakt — never through the adapter under test,
+and they name every object they create with a per-run unique suffix so two concurrent runs cannot
+destroy each other's data.
 
-`.github/workflows/e2e.yml` triggers the two backends differently, and the asymmetry is
-deliberate:
+The **Trakt** suite is the one that cannot be replaced by unit tests: it pins, against the live
+API, that `trakt.tv` sends `type` as a QUERY parameter on `users.list.items.get` while Trakt
+expects a PATH segment, so the filter is silently ignored and a "filtered" read still returns
+every type. Mocking the client would only mock the lie. It also consumes an **already-obtained**
+token (`E2E_TRAKT_SAVE_FILE`) because the OAuth device flow needs a human; it fails with an
+explicit message rather than hanging if the file is missing. It creates a single `private` list —
+a free Trakt account is capped at 5 — and deletes it in `afterAll`, never touching a list it did
+not create.
 
-- **Floppy** stands up its own throwaway container (Redis + `ghcr.io/dannyvfilms/floppy:latest`,
-  ~90s cold start, polled on `/api/v1/health`) and mints its API token with `docker exec`. It
-  needs **no secret**, so it can run on `pull_request` — including from forks — filtered on the
-  paths that can break it (`src/Targets/**`, `tests/e2e/**`, `vitest.e2e.config.ts`, the workflow
-  itself).
-- **mdblist** hits a **real hosted account on the metered free tier** (1000 requests/day, four
-  static lists). Running it on every push would be hostile, so it is limited to
-  `workflow_dispatch` and a **weekly** `schedule` (Mondays 04:00 UTC), and gated on the
-  `E2E_MDBLIST_API_KEY` secret through a `mdblist-guard` job — `secrets` cannot be read from a
-  job-level `if:`, so presence is resolved into a plain output and the job *skips* rather than
-  fails when the secret is missing (always the case on forks).
+**Triggering, and why it is asymmetric:**
+
+- **Floppy is a first-class CI gate**: the `e2e-floppy` job of `.github/workflows/ci.yml`, sharing
+  the `lint`/`build`/`test` trigger verbatim (every pull request to `main`/`develop`, no `paths`
+  filter). It stands up its own throwaway containers (Redis + `ghcr.io/dannyvfilms/floppy:latest`,
+  ~90s cold start, **polled** on `/api/v1/health` — never a fixed `sleep`) and mints its API token
+  with `docker exec`, masked with `::add-mask::`. It needs **no repository secret**, which is what
+  makes it safe on pull requests from forks.
+- **Trakt and mdblist are local-only, on purpose.** They write to real third-party accounts, and
+  the owner controls which credentials are used run by run. They belong to **no workflow** and
+  depend on **no repository secret**. Do not add them to CI, and do not add a scheduled job that
+  can only ever skip.
 
 ### Environment Variables
 

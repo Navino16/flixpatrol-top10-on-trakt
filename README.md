@@ -853,39 +853,55 @@ process lifecycle rather than on behaviour — the logic it orchestrates is cove
 ### End-to-end tests
 
 `npm run test:e2e` uses a separate config (`vitest.e2e.config.ts`) and runs only
-`tests/e2e/**/*.e2e.test.ts`. These suites talk to a **real Floppy instance** and a **real
-mdblist account**, so they are excluded from `npm test` and from the coverage numbers.
+`tests/e2e/**/*.e2e.test.ts`. There is one suite per backend, and each talks to a **real
+service** — a real Floppy instance, a real Trakt account, a real mdblist account — so they are
+excluded from `npm test` and from the coverage numbers.
 
-They are opt-in through environment variables, and each suite **skips cleanly** when its own
-variables are missing — a CI without secrets stays green rather than failing:
+All three are opt-in through environment variables, and each suite **skips cleanly** when its own
+variables are missing. Running `npm run test:e2e` with no environment at all skips everything and
+exits green, so you only ever enable the backend you actually want to exercise:
 
-| Variable              | Enables                             |
-|-----------------------|-------------------------------------|
-| `E2E_FLOPPY_URL`      | the Floppy suite (both are required) |
-| `E2E_FLOPPY_API_KEY`  | the Floppy suite (both are required) |
-| `E2E_MDBLIST_API_KEY` | the mdblist suite                    |
+| Backend     | Variables                                                                  |
+|-------------|----------------------------------------------------------------------------|
+| **Floppy**  | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
+| **Trakt**   | `E2E_TRAKT_CLIENT_ID`, `E2E_TRAKT_CLIENT_SECRET`, `E2E_TRAKT_SAVE_FILE` (all required) |
+| **mdblist** | `E2E_MDBLIST_API_KEY`                                                       |
 
 ```bash
 # Floppy only
 E2E_FLOPPY_URL=http://localhost:8000 E2E_FLOPPY_API_KEY=your-token npm run test:e2e
 
+# Trakt only — E2E_TRAKT_SAVE_FILE must point at an EXISTING token file
+E2E_TRAKT_CLIENT_ID=your-id E2E_TRAKT_CLIENT_SECRET=your-secret \
+  E2E_TRAKT_SAVE_FILE=./config/.trakt npm run test:e2e
+
 # mdblist only
 E2E_MDBLIST_API_KEY=your-key npm run test:e2e
 ```
 
-Both suites check the end state by querying the service directly, never through the adapter, and
-they clean up after themselves. The mdblist suite in particular deletes the list it created,
-because a free account only tolerates four static lists.
+Every suite checks the end state by querying the service directly, never through the adapter, and
+cleans up after itself: each names the objects it creates with a per-run unique suffix, and
+deletes them in an `afterAll` that runs even when a test failed.
 
-They run in their own workflow, `.github/workflows/e2e.yml`, and the two backends are triggered
-differently on purpose:
+Trakt authenticates through an OAuth **device flow** — a human opens a URL and types a code —
+which cannot happen inside a test. The Trakt suite therefore consumes an **already-obtained**
+token: run the application once to authorise, then point `E2E_TRAKT_SAVE_FILE` at the token file
+it wrote. The suite creates a single `private` list (a free Trakt account is capped at five
+personal lists) and never touches a list it did not create.
 
-- **Floppy** starts its own throwaway container (Redis + the upstream Floppy image) and mints an
-  API token inside it, so it needs **no secret**. That makes it safe on `pull_request`, including
-  from forks; a `paths` filter keeps it off doc-only PRs.
-- **mdblist** hits a **real hosted account on the metered free tier**, so running it on every push
-  would be hostile. It is limited to manual `workflow_dispatch` and a weekly schedule, and is
-  skipped entirely when the `E2E_MDBLIST_API_KEY` secret is absent.
+#### What runs in CI, and what does not
+
+- **Floppy runs automatically in CI**, as the `E2E - Floppy` job of
+  `.github/workflows/ci.yml`, on every pull request to `main`/`develop` — the same trigger as
+  `lint`, `build` and `test`. It stands up its own throwaway containers (Redis + the upstream
+  Floppy image) and mints its API token inside them, so it needs **no repository secret**. That
+  makes it safe even for pull requests from forks, and it is a first-class gate rather than an
+  opt-in extra.
+- **Trakt and mdblist are deliberately local-only.** They write to **real third-party accounts**,
+  so the owner wants to decide, run by run, which credentials are used. They are not part of any
+  workflow and depend on no repository secret — there is nothing to leak and nothing that can
+  quietly burn a metered quota (mdblist's free tier is capped at 1000 requests/day and a handful
+  of lists) or churn a real Trakt profile. Run them by hand, with the commands above.
 
 ## License
 
