@@ -14,6 +14,7 @@ import {
   ScheduleOptionsSchema,
   FlareSolverrOptionsSchema,
   targetBackend,
+  TEMPLATE_CREDENTIALS,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -170,6 +171,54 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
     + `read and can be deleted.`);
 }
 
+/**
+ * Where the real credentials come from, per backend. Only backends that ship
+ * template credentials need an entry — today, only `trakt`.
+ */
+const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
+  trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
+    + 'client id and client secret into the `Target` block.',
+};
+
+/** "a", "a and b", "a, b and c". */
+function formatFieldList(names: string[]): string {
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Refuses to start while the `Target` block still carries the credentials
+ * shipped in the configuration template. They satisfy every schema, so without
+ * this the run starts, scrapes FlixPatrol for twenty seconds and only then
+ * collapses into a wall of `403 Forbidden` responses and `No match` warnings,
+ * with nothing anywhere naming the configuration as the cause.
+ *
+ * Checked field by field, so replacing only one of the two credentials is still
+ * caught and the message names the one left over.
+ */
+function checkForTemplateCredentials(target: TargetOptions): void {
+  const templates = TEMPLATE_CREDENTIALS[target.type];
+  if (templates === undefined) return;
+
+  const values: Record<string, unknown> = { ...target };
+  const untouched = Object.keys(templates).filter((key) => values[key] === templates[key]);
+  if (untouched.length === 0) return;
+
+  const plural = untouched.length > 1;
+  const names = formatFieldList(untouched.map((key) => `\`Target.${key}\``));
+  const hint = CREDENTIAL_SOURCE_HINT[target.type];
+
+  throw new ConfigurationError([
+    `${names} still ${plural ? 'hold' : 'holds'} the placeholder value${plural ? 's' : ''} `
+    + 'shipped in the configuration template:',
+    '',
+    ...untouched.map((key) => `  ${JSON.stringify(key)}: ${JSON.stringify(templates[key])}`),
+    '',
+    `Replace ${plural ? 'them' : 'it'} with your own \`${target.type}\` credentials before running.`
+    + (hint === undefined ? '' : ` ${hint}`),
+  ].join('\n'));
+}
+
 export class GetAndValidateConfigs {
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
     try {
@@ -272,6 +321,9 @@ export class GetAndValidateConfigs {
       // never a failed startup.
       const parsed = TargetSchema.safeParse(rawTarget);
       if (parsed.success) {
+        // Before the obsolete-block warning: unreplaced credentials are fatal,
+        // so advice about dead config would only be noise ahead of the error.
+        checkForTemplateCredentials(parsed.data);
         warnAboutObsoleteBlocks(presentObsoleteBlocks);
         return parsed.data;
       }

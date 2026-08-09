@@ -3,6 +3,7 @@ import {
 } from 'vitest';
 import fs, { readFileSync } from 'fs';
 import { Utils } from '../../src/Utils/Utils';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 
 // Partial mock: only the three calls ensureConfigExist() makes are stubbed, so it
 // generates in memory instead of touching the working tree. Everything else — in
@@ -72,5 +73,22 @@ describe('default configuration consistency', () => {
     const tracked: unknown = JSON.parse(readFileSync('config/default.json', 'utf8'));
 
     expect(sortKeysDeep(generated)).toEqual(sortKeysDeep(tracked));
+  });
+
+  /**
+   * The startup guard refuses to run on the credentials shipped in the template,
+   * and recognises them by comparing against these constants. `config/default.json`
+   * is a plain JSON file that cannot import them, so this is what keeps the two
+   * from drifting: reword the template without touching the constants and the
+   * guard would silently stop matching, handing users back the wall of 403s it
+   * exists to prevent.
+   */
+  it('config/default.json ships exactly the template credentials the guard matches', () => {
+    const tracked = JSON.parse(readFileSync('config/default.json', 'utf8')) as {
+      Target: Record<string, unknown>;
+    };
+
+    expect(tracked.Target.clientId).toBe(TRAKT_TEMPLATE_CLIENT_ID);
+    expect(tracked.Target.clientSecret).toBe(TRAKT_TEMPLATE_CLIENT_SECRET);
   });
 });

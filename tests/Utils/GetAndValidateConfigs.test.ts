@@ -7,6 +7,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 
 // Mock the config module
 vi.mock('config', () => ({
@@ -576,6 +577,83 @@ describe('GetAndValidateConfigs', () => {
 
           expect(() => GetAndValidateConfigs.getTargetOptions())
             .toThrow(/Configuration format changed in 3\.0\.0\./);
+        });
+      });
+
+      // Left in place, the shipped credentials pass every schema and only surface
+      // twenty seconds later as a wall of 403s. These lock the startup guard.
+      describe('unreplaced template credentials', () => {
+        const templateTarget = {
+          type: 'trakt',
+          saveFile: './config/.trakt',
+          clientId: TRAKT_TEMPLATE_CLIENT_ID,
+          clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+        };
+
+        const messageOf = (): string => {
+          try {
+            GetAndValidateConfigs.getTargetOptions();
+          } catch (err) {
+            return (err as Error).message;
+          }
+          return '';
+        };
+
+        it('rejects an untouched template configuration and names both credentials', () => {
+          useConfig({ Target: templateTarget });
+
+          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+
+          const message = messageOf();
+          expect(message).toContain('`Target.clientId` and `Target.clientSecret`');
+          expect(message).toContain('placeholder values shipped in the configuration template');
+          expect(message).toContain(`"clientId": ${JSON.stringify(TRAKT_TEMPLATE_CLIENT_ID)}`);
+          expect(message).toContain(`"clientSecret": ${JSON.stringify(TRAKT_TEMPLATE_CLIENT_SECRET)}`);
+          expect(message).toContain('https://trakt.tv/oauth/applications');
+        });
+
+        it('still rejects when only clientId was replaced, naming clientSecret alone', () => {
+          useConfig({ Target: { ...templateTarget, clientId: 'my-real-id' } });
+
+          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+
+          const message = messageOf();
+          expect(message).toContain('`Target.clientSecret` still holds the placeholder value ');
+          expect(message).not.toContain('Target.clientId');
+          expect(message).not.toContain('my-real-id');
+        });
+
+        it('still rejects when only clientSecret was replaced, naming clientId alone', () => {
+          useConfig({ Target: { ...templateTarget, clientSecret: 'my-real-secret' } });
+
+          const message = messageOf();
+          expect(message).toContain('`Target.clientId` still holds the placeholder value ');
+          expect(message).not.toContain('Target.clientSecret');
+        });
+
+        // `./config/.trakt` is the intended default, not a placeholder: keeping it
+        // must never be an error.
+        it('accepts real credentials that keep the default saveFile', () => {
+          useConfig({
+            Target: { ...templateTarget, clientId: 'my-real-id', clientSecret: 'my-real-secret' },
+          });
+
+          expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
+            type: 'trakt',
+            saveFile: './config/.trakt',
+            clientId: 'my-real-id',
+            clientSecret: 'my-real-secret',
+          });
+        });
+
+        // Neither backend ships template credentials, so nothing can be left
+        // unreplaced for them and the guard must stay out of the way.
+        it('leaves backends without shipped templates alone', () => {
+          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
+          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+
+          useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
+          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
         });
       });
 

@@ -118,6 +118,32 @@ export const MdblistOptionsSchema = z.object({
 export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
 
 /**
+ * Credential values shipped in the configuration template. They exist in two
+ * places — `config/default.json` and the `defaultConfig` literal of
+ * `Utils.ensureConfigExist()` — and startup refuses to run on them, so all three
+ * sites read them from here: reword the template and the guard follows, instead
+ * of silently stopping to match.
+ */
+export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
+export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
+
+/**
+ * Template credentials per backend, keyed by the field they occupy in the
+ * `Target` block. Only `trakt` is listed: it is the backend `Target.type`
+ * defaults to, and the only one the template carries credentials for. Floppy
+ * and mdblist ship nothing, so nothing can be left unreplaced for them.
+ *
+ * `saveFile` is deliberately absent — `./config/.trakt` is a sensible default
+ * users are expected to keep, not a placeholder.
+ */
+export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
+  trakt: {
+    clientId: TRAKT_TEMPLATE_CLIENT_ID,
+    clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+  },
+};
+
+/**
  * The backend selector and its credentials are one discriminated union rather
  * than a selector plus three sibling credential blocks. A `Target` entry
  * therefore carries exactly the fields its backend needs, and combinations such

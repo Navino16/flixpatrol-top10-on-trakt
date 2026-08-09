@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from './Logger';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../types';
 
 /**
  * Scraping cache directories of 2.x. The move to a two-level cache
@@ -154,8 +155,8 @@ export class Utils {
         Target: {
           type: 'trakt',
           saveFile: './config/.trakt',
-          clientId: 'You need to replace this client ID',
-          clientSecret: 'You need to replace this client secret',
+          clientId: TRAKT_TEMPLATE_CLIENT_ID,
+          clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
         },
         Cache: {
           enabled: true,

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Utils } from '../../src/Utils/Utils';
 import { logger } from '../../src/Utils/Logger';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 import fs from 'fs';
 import path from 'path';
 
@@ -204,8 +205,8 @@ describe('Utils', () => {
       expect(parsed.Target).toEqual({
         type: 'trakt',
         saveFile: './config/.trakt',
-        clientId: 'You need to replace this client ID',
-        clientSecret: 'You need to replace this client secret',
+        clientId: TRAKT_TEMPLATE_CLIENT_ID,
+        clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
       });
     });
 
