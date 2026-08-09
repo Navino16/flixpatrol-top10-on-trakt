@@ -1,4 +1,3 @@
-import { JSDOM } from 'jsdom';
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
 import { logger, FlixPatrolError } from '../Utils';
@@ -7,7 +6,6 @@ import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
   FlixPatrolMostWatched,
   FlixPatrolMostHours,
-  FlixPatrolMostHoursLanguage,
   FlixPatrolPopular,
   FlixPatrolTop10,
   CacheOptions,
@@ -24,11 +22,18 @@ import {
   flixpatrolPopularPlatform,
   flixpatrolConfigType,
 } from '../types';
+import type { FlixPatrolMatchResult } from './parse';
+import {
+  parseDetailPage,
+  parseMostHoursPage,
+  parseMostWatchedPage,
+  parsePopularPage,
+  parseTop10KidsPage,
+  parseTop10Page,
+} from './parse';
 
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
-
-type FlixPatrolMatchResult = string;
 
 export class FlixPatrol {
   private options: FlixPatrolOptions = {};
@@ -123,54 +128,6 @@ export class FlixPatrol {
     return null;
   }
 
-  private static parseTop10Page(
-    type: FlixPatrolType,
-    location: FlixPatrolTop10Location,
-    html: string,
-  ): FlixPatrolMatchResult[] {
-    const expressions: string[] = [];
-    if (location === 'world') {
-      expressions.push(`//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
-    } else {
-      // Original strict
-      expressions.push(`//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`);
-      // More tolerant headline match
-      expressions.push(`//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`);
-      // Generic first tables fallback
-      expressions.push(`((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href`);
-    }
-    for (const expr of expressions) {
-      const res = FlixPatrol.parsePage(expr, html);
-      if (res.length > 0){
-        logger.silly(`Found ${res.length} ${type} in ${expr}`);
-        return res;
-      }
-    }
-    return [];
-  }
-
-  private static parseTop10KidsPage(
-    type: FlixPatrolType,
-    html: string,
-  ): FlixPatrolMatchResult[] {
-    const kidsType = type === 'Movies' ? 'Kids Movies' : 'Kids TV Shows';
-    const expressions: string[] = [
-      // Match h3 with "TOP 10 Kids Movies/TV Shows" followed by table
-      `//h3[text() = "TOP 10 ${kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
-      // Fallback with contains for more tolerance
-      `//h3[contains(., "TOP 10") and contains(., "${kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
-    ];
-
-    for (const expr of expressions) {
-      const res = FlixPatrol.parsePage(expr, html);
-      if (res.length > 0) {
-        logger.silly(`Found ${res.length} ${kidsType} in ${expr}`);
-        return res;
-      }
-    }
-    return [];
-  }
-
   public async getTop10Sections(
     config: FlixPatrolTop10,
   ): Promise<{
@@ -199,8 +156,8 @@ export class FlixPatrol {
     let moviesRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'movies' || config.type === 'both') {
       moviesRaw = config.kids
-        ? FlixPatrol.parseTop10KidsPage('Movies', html)
-        : FlixPatrol.parseTop10Page('Movies', config.location, html);
+        ? parseTop10KidsPage('Movies', html)
+        : parseTop10Page('Movies', config.location, html);
       movies = await this.convertResultsToItems(moviesRaw.slice(0, config.limit));
     }
 
@@ -208,8 +165,8 @@ export class FlixPatrol {
     let showsRaw: FlixPatrolMatchResult[] = [];
     if (config.type === 'shows' || config.type === 'both') {
       showsRaw = config.kids
-        ? FlixPatrol.parseTop10KidsPage('TV Shows', html)
-        : FlixPatrol.parseTop10Page('TV Shows', config.location, html);
+        ? parseTop10KidsPage('TV Shows', html)
+        : parseTop10Page('TV Shows', config.location, html);
       shows = await this.convertResultsToItems(showsRaw.slice(0, config.limit));
     }
 
@@ -232,110 +189,6 @@ export class FlixPatrol {
         shows: Math.min(showsRaw.length, config.limit),
       }
     };
-  }
-
-  private static parsePopularPage(
-    html: string,
-  ): FlixPatrolMatchResult[] {
-    const expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
-
-    return FlixPatrol.parsePage(expression, html);
-  }
-
-  private static parseMostWatchedPage(
-    html: string,
-    config: FlixPatrolMostWatched
-  ): FlixPatrolMatchResult[] {
-    let expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
-    if (config.original !== undefined && config.original) {
-      expression = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href'
-    }
-
-    return FlixPatrol.parsePage(expression, html);
-  }
-
-  private static parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
-    const dom = new JSDOM(html);
-    const match = dom.window.document.evaluate(
-      expression,
-      dom.window.document,
-      null,
-      dom.window.XPathResult.UNORDERED_NODE_ITERATOR_TYPE,
-      null,
-    );
-    const results: string[] = [];
-
-    try {
-      let p = match.iterateNext();
-      while (p !== null) {
-        if (p.textContent) {
-          results.push(p.textContent);
-        }
-        p = match.iterateNext();
-      }
-    } catch (err) {
-      logger.error(`Error parsing XPath: ${err}`);
-      return [];
-    }
-    return results;
-  }
-
-  /**
-   * Title as FlixPatrol prints it on a detail page.
-   * The two expressions and their order are load-bearing against the live site:
-   * do not touch them without re-checking a real detail page.
-   * The title lives in `div.info-grid-header`, a direct child of `div.info-grid`.
-   */
-  private static parseDetailTitle(dom: JSDOM): string {
-    // Title with fallback (kept)
-    const title = dom.window.document.evaluate(
-      '//div[contains(@class,"info-grid-header")]//h1/text()',
-      dom.window.document,
-      null,
-      dom.window.XPathResult.STRING_TYPE,
-      null,
-    ).stringValue.trim();
-    if (title) {
-      return title;
-    }
-    return dom.window.document.evaluate(
-      '//h1/text()',
-      dom.window.document,
-      null,
-      dom.window.XPathResult.STRING_TYPE,
-      null,
-    ).stringValue.trim();
-  }
-
-  /**
-   * Release year, or null when the detail page exposes nothing usable.
-   *
-   * The year is read only from the premiere block inside `div.info-grid-header`
-   * (`<div title="Premiere">`), whose date is formatted MM/DD/YYYY. Only the year is
-   * needed, so the day/month ambiguity never has to be resolved: a four-digit run
-   * starting with 19 or 20 cannot appear before the year in that format.
-   *
-   * There is deliberately NO fallback. A previous version scanned the text of
-   * `div.mb-6`, which the site now uses for a marketing blurb ending in
-   * "the most popular TV shows in 2021" — that stamped 2021 onto every single title
-   * and made the "exact title AND year" branch of the backend match cascade select
-   * the wrong film with full confidence. A missing year degrades the cascade to
-   * title-only and is not cached; a wrong year is silently destructive. Never guess.
-   */
-  private static parseDetailYear(dom: JSDOM): number | null {
-    const premiereBlock = dom.window.document.evaluate(
-      '//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]',
-      dom.window.document,
-      null,
-      dom.window.XPathResult.STRING_TYPE,
-      null,
-    ).stringValue;
-    const match = premiereBlock.match(/(19|20)\d{2}/);
-    if (match === null) {
-      return null;
-    }
-    const year = parseInt(match[0], 10);
-    return Number.isNaN(year) ? null : year;
   }
 
   /**
@@ -364,9 +217,7 @@ export class FlixPatrol {
       throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
     }
 
-    const dom = new JSDOM(html);
-    const title = FlixPatrol.parseDetailTitle(dom);
-    const year = FlixPatrol.parseDetailYear(dom);
+    const { title, year } = parseDetailPage(html);
     const item: MediaItem = { title, year };
 
     // Only cache a fully successful parse. A missing year is not a benign gap: it is
@@ -399,7 +250,7 @@ export class FlixPatrol {
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol popular page');
     }
-    let results = FlixPatrol.parsePopularPage(html);
+    let results = parsePopularPage(html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
   }
@@ -427,36 +278,9 @@ export class FlixPatrol {
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
-    let results = FlixPatrol.parseMostWatchedPage(html, config);
+    let results = parseMostWatchedPage(html, config.original !== undefined && config.original);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
-  }
-
-  private static parseMostHoursPage(
-    type: FlixPatrolType,
-    language: FlixPatrolMostHoursLanguage,
-    html: string,
-  ): FlixPatrolMatchResult[] {
-    const sectionId = type === 'Movies' ? 'toc-movies' : 'toc-tv-shows';
-    const langMap: Record<FlixPatrolMostHoursLanguage, string> = {
-      'all': 'all-languages',
-      'english': 'english',
-      'non-english': 'non-english',
-    };
-    const langTab = langMap[language];
-
-    // For language-specific tables, we need to find the correct table within the section
-    // The tables use x-show="isCurrent('all-languages')" etc.
-    const expression = `//div[@id="${sectionId}"]//table[contains(@x-show, "'${langTab}'")]//a[@class="flex gap-2 group items-center"]/@href`;
-    let results = FlixPatrol.parsePage(expression, html);
-
-    // Fallback for 'total' period which doesn't have language tabs
-    if (results.length === 0) {
-      const fallbackExpr = `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`;
-      results = FlixPatrol.parsePage(fallbackExpr, html);
-    }
-
-    return results;
   }
 
   public async getMostHours(
@@ -474,7 +298,7 @@ export class FlixPatrol {
     if (html === null) {
       throw new FlixPatrolError(`Unable to get FlixPatrol most-hours-${config.period} page`);
     }
-    let results = FlixPatrol.parseMostHoursPage(type, config.language, html);
+    let results = parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
   }
