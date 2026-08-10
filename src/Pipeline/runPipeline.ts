@@ -207,6 +207,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     const baseListName = Utils.getListName(top10, defaultName, deps.listNamePrefix);
+    logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
     logger.info(`Scraping FlixPatrol ${kindsLabel(top10.type)} for "${baseListName}"`);
 
@@ -235,6 +236,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   for (const popular of deps.flixPatrolPopulars) {
     currentList++;
     const listName = Utils.getListName(popular, `${popular.platform}-popular`, deps.listNamePrefix);
+    logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
     logger.info(`Scraping FlixPatrol ${kindsLabel(popular.type)} for "${listName}"`);
 
@@ -262,6 +264,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
       const listName = Utils.getListName(mostWatched, defaultName, deps.listNamePrefix);
+      logger.info('==============================');
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
       logger.info(`Scraping FlixPatrol ${kindsLabel(mostWatched.type)} for "${listName}"`);
 
@@ -290,6 +293,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
         defaultName += `-${mostHours.language}`;
       }
       const listName = Utils.getListName(mostHours, defaultName, deps.listNamePrefix);
+      logger.info('==============================');
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
       logger.info(`Scraping FlixPatrol ${kindsLabel(mostHours.type)} for "${listName}"`);
 
