@@ -8,3 +8,4 @@ config/local.json
 .cache/
 .reports/
 docker-compose.yml
+.env.e2e

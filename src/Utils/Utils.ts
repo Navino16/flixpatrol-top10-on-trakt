@@ -1,9 +1,33 @@
 import fs from 'fs';
+import path from 'path';
 import { logger } from './Logger';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../types';
+
+/**
+ * Scraping cache directories of 2.x, left unread by the move to a two-level cache
+ * (`details` plus `resolution-<backend>`).
+ */
+const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows'] as const;
 
 export class Utils {
   public static sleep(time: number) {
     return new Promise((resolve) => { setTimeout(resolve, time); });
+  }
+
+  /**
+   * Warns once when the 2.x cache directories are still on disk. They are never
+   * deleted here: the app does not remove user files, and the cache directory is
+   * often a mounted volume the user manages themselves.
+   */
+  public static warnAboutOrphanedCaches(savePath: string): void {
+    const orphaned = ORPHANED_CACHE_DIRECTORIES
+      .map((directory) => path.join(savePath, directory))
+      .filter((directory) => fs.existsSync(directory));
+    if (orphaned.length === 0) return;
+
+    logger.warn(`Leftover cache director${orphaned.length > 1 ? 'ies' : 'y'} from a previous version `
+      + `found: ${orphaned.join(', ')}. They are no longer read since the cache was split into `
+      + '`details` and `resolution-<backend>`, and can safely be deleted.');
   }
 
   public static getListName(
@@ -128,10 +152,11 @@ export class Utils {
             language: 'english',
           },
         ],
-        Trakt: {
+        Target: {
+          type: 'trakt',
           saveFile: './config/.trakt',
-          clientId: 'You need to replace this client ID',
-          clientSecret: 'You need to replace this client secret',
+          clientId: TRAKT_TEMPLATE_CLIENT_ID,
+          clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
         },
         Cache: {
           enabled: true,

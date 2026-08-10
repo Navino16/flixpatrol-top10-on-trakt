@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TraktAPI } from '../../src/Trakt/TraktAPI';
 import { TraktError } from '../../src/Utils/Errors';
+import { Utils } from '../../src/Utils/Utils';
+import { logger } from '../../src/Utils/Logger';
 import fs from 'fs';
 
-// Mock fs module
 vi.mock('fs', () => ({
   default: {
     existsSync: vi.fn(),
@@ -13,7 +14,6 @@ vi.mock('fs', () => ({
   },
 }));
 
-// Create mock functions for trakt.tv
 const mockImportToken = vi.fn();
 const mockExportToken = vi.fn();
 const mockGetCodes = vi.fn();
@@ -26,7 +26,6 @@ const mockListItemsRemove = vi.fn();
 const mockListsCreate = vi.fn();
 const mockSearchText = vi.fn();
 
-// Mock trakt.tv module with a proper class
 vi.mock('trakt.tv', () => {
   return {
     default: class MockTrakt {
@@ -87,7 +86,6 @@ describe('TraktAPI', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockToken));
 
       const trakt = new TraktAPI(mockOptions);
-      // Access private trakt instance via prototype
       const traktInstance = (trakt as unknown as { trakt: { import_token: ReturnType<typeof vi.fn> } }).trakt;
       traktInstance.import_token.mockResolvedValue(mockToken);
 
@@ -235,7 +233,7 @@ describe('TraktAPI', () => {
       traktInstance.users.lists.create.mockResolvedValue(mockList);
       traktInstance.users.list.items.get.mockResolvedValue([]);
 
-      await trakt.pushToList([], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
 
       expect(traktInstance.users.lists.create).toHaveBeenCalled();
     });
@@ -263,7 +261,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.update.mockResolvedValue(updatedList);
       traktInstance.users.list.items.get.mockResolvedValue([]);
 
-      await trakt.pushToList([], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.update).toHaveBeenCalled();
     });
@@ -291,7 +289,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123, 456], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [123, 456] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.add).toHaveBeenCalled();
     });
@@ -323,7 +321,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123], 'Test List', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
       expect(traktInstance.users.list.items.add).toHaveBeenCalled();
@@ -356,16 +354,12 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
       traktInstance.users.list.update.mockResolvedValue(mockList);
 
-      await trakt.pushToList([123], 'Test List', 'show', 'private');
+      await trakt.pushToList({ show: [123] }, 'Test List', 'private');
 
       expect(traktInstance.users.list.items.remove).toHaveBeenCalled();
     });
 
     it('normalizes list names with brackets to match Trakt slug format', async () => {
-      // Regression for the crash observed with LIST_NAME_PREFIX="[TEST]":
-      // naive slug `[test]netflix-france-...` did not match Trakt's canonical
-      // `test-netflix-france-...`, so `.get()` returned partial data and the
-      // privacy-update path crashed on `list.ids.slug` (ids was undefined).
       const mockList = {
         name: '[TEST]netflix-france-top10-with-world-fallback',
         privacy: 'private',
@@ -386,12 +380,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList(
-        [123],
-        '[TEST]netflix-france-top10-with-world-fallback',
-        'movie',
-        'private',
-      );
+      await trakt.pushToList({ movie: [123] }, '[TEST]netflix-france-top10-with-world-fallback', 'private');
 
       expect(traktInstance.users.list.get).toHaveBeenCalledWith({
         username: 'me',
@@ -400,10 +389,8 @@ describe('TraktAPI', () => {
     });
 
     it('treats Trakt returning an empty-string body as not-found and creates the list', async () => {
-      // Regression: Trakt's API has been observed returning HTTP 200 with an
-      // empty body (`""`) instead of a proper 404 for some missing-list
-      // lookups. The previous code accepted that as a valid response, then
-      // crashed on `list.ids.slug` in the privacy-update branch.
+      // Trakt answers some missing-list lookups with HTTP 200 and an empty body
+      // (`""`) instead of a 404.
       const createdList = {
         name: '[TEST]new-list',
         privacy: 'private',
@@ -426,7 +413,7 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList([123], '[TEST]new-list', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, '[TEST]new-list', 'private');
 
       expect(traktInstance.users.lists.create).toHaveBeenCalledWith({
         username: 'me',
@@ -448,7 +435,7 @@ describe('TraktAPI', () => {
       traktInstance.users.lists.create.mockResolvedValue('');
 
       await expect(
-        trakt.pushToList([123], '[TEST]borked', 'movie', 'private'),
+        trakt.pushToList({ movie: [123] }, '[TEST]borked', 'private'),
       ).rejects.toThrow(/malformed response/);
     });
 
@@ -473,12 +460,195 @@ describe('TraktAPI', () => {
       traktInstance.users.list.items.get.mockResolvedValue([]);
       traktInstance.users.list.items.add.mockResolvedValue(undefined);
 
-      await trakt.pushToList([123], 'Foo (Bar) & Baz!', 'movie', 'private');
+      await trakt.pushToList({ movie: [123] }, 'Foo (Bar) & Baz!', 'private');
 
       expect(traktInstance.users.list.get).toHaveBeenCalledWith({
         username: 'me',
         id: 'foo-bar-baz',
       });
+    });
+  });
+
+  describe('pushToList call budget', () => {
+    const foundList = {
+      name: 'Test List',
+      privacy: 'private',
+      ids: { trakt: 1, slug: 'test-list' },
+    };
+
+    const armHappyPath = () => {
+      mockListGet.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue([]);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListItemsRemove.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+    };
+
+    /**
+     * These numbers pin what is paid per LIST versus per KIND. Reintroducing a
+     * per-kind list lookup, description update or items read must break them.
+     */
+    it('pays the per-list work once when both kinds are written together', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123], show: [456] }, 'Test List', 'private');
+
+      // Per LIST.
+      expect(mockListGet).toHaveBeenCalledTimes(1);
+      expect(mockListUpdate).toHaveBeenCalledTimes(1);
+      // Per LIST too: the read is unfiltered, so one read serves both kinds.
+      expect(mockListItemsGet).toHaveBeenCalledTimes(1);
+      // Per KIND: the add genuinely carries a per-kind payload.
+      expect(mockListItemsAdd).toHaveBeenCalledTimes(2);
+      // One sleep per write: two adds plus the description update.
+      expect(Utils.sleep).toHaveBeenCalledTimes(3);
+    });
+
+    it('writes the description exactly once, so it is never overwritten by a twin', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123], show: [456] }, 'Test List', 'private');
+
+      const descriptionUpdates = mockListUpdate.mock.calls
+        .filter((c) => typeof (c[0] as { description?: string }).description === 'string');
+      expect(descriptionUpdates).toHaveLength(1);
+    });
+
+    // Leave-untouched semantics, backend side: an absent key must never reach
+    // the remove call for that kind, even though the read hands us its items.
+    it('never touches a kind whose key is absent', async () => {
+      armHappyPath();
+      mockListItemsGet.mockResolvedValue([{ type: 'show', show: { ids: { trakt: 789 } } }]);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
+
+      expect(mockListItemsGet).toHaveBeenCalledTimes(1);
+      expect(mockListItemsRemove).not.toHaveBeenCalled();
+    });
+
+    // An empty array is a deliberate wipe, not an absent key: the removal must happen.
+    it('removes a kind handed an explicitly empty array', async () => {
+      armHappyPath();
+      mockListItemsGet.mockResolvedValue([{ type: 'movie', movie: { ids: { trakt: 789 } } }]);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [] }, 'Test List', 'private');
+
+      expect(mockListItemsRemove).toHaveBeenCalledTimes(1);
+      expect(mockListItemsAdd).not.toHaveBeenCalled();
+      // Nothing was added, so there is nothing to date-stamp.
+      expect(mockListUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not even look the list up when no kind is given', async () => {
+      armHappyPath();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({}, 'Test List', 'private');
+
+      expect(mockListGet).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * `users.list.items.get` is NOT filtered by Trakt: `trakt.tv` sends `type` as a
+   * query parameter where the API wants a path segment, so the whole list comes back
+   * whatever type is asked for. Narrowing by type therefore happens in memory.
+   */
+  describe('list items are narrowed by type in memory', () => {
+    const foundList = {
+      name: 'Mixed List',
+      privacy: 'private',
+      ids: { trakt: 7, slug: 'mixed-list' },
+    };
+
+    const mixedItems = [
+      { type: 'movie', movie: { ids: { trakt: 111 } } },
+      { type: 'show', show: { ids: { trakt: 222 } } },
+      { type: 'movie', movie: { ids: { trakt: 333 } } },
+    ];
+
+    const armMixedList = () => {
+      mockListGet.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue(mixedItems);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListItemsRemove.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+    };
+
+    const removeBodies = () => mockListItemsRemove.mock.calls
+      .map((c) => c[0] as { movies: { ids: { trakt: number } }[]; shows: { ids: { trakt: number } }[] });
+
+    it('removes only the movies when the movie kind is written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [999] }, 'Mixed List', 'private');
+
+      expect(removeBodies()).toHaveLength(1);
+      const [body] = removeBodies();
+      expect(body.movies.map((m) => m.ids.trakt)).toEqual([111, 333]);
+      expect(body.shows).toEqual([]);
+    });
+
+    it('removes only the shows when the show kind is written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ show: [999] }, 'Mixed List', 'private');
+
+      expect(removeBodies()).toHaveLength(1);
+      const [body] = removeBodies();
+      expect(body.shows.map((s) => s.ids.trakt)).toEqual([222]);
+      expect(body.movies).toEqual([]);
+    });
+
+    it('never files a movie id under shows when both kinds are written', async () => {
+      armMixedList();
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [999], show: [888] }, 'Mixed List', 'private');
+
+      const movieIds = [111, 333];
+      const showIds = [222];
+      removeBodies().forEach((body) => {
+        expect(body.shows.every((s) => showIds.includes(s.ids.trakt))).toBe(true);
+        expect(body.movies.every((m) => movieIds.includes(m.ids.trakt))).toBe(true);
+      });
+    });
+
+    it('logs the real count of the requested kind, not the whole list size', async () => {
+      armMixedList();
+      const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ show: [999] }, 'Mixed List', 'private');
+
+      const removalLogs = infoSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((message) => message.includes('removing them'));
+      expect(removalLogs).toHaveLength(1);
+      expect(removalLogs[0]).toContain('contain 1 show');
+      infoSpy.mockRestore();
+    });
+
+    it('says nothing about existing content for a freshly created, empty list', async () => {
+      mockListGet.mockRejectedValue(new Error('404 (Not Found)'));
+      mockListsCreate.mockResolvedValue(foundList);
+      mockListItemsGet.mockResolvedValue([]);
+      mockListItemsAdd.mockResolvedValue(undefined);
+      mockListUpdate.mockResolvedValue(foundList);
+      const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      const trakt = new TraktAPI(mockOptions);
+
+      await trakt.pushToList({ movie: [1, 2], show: [3] }, 'Mixed List', 'private');
+
+      expect(mockListItemsRemove).not.toHaveBeenCalled();
+      expect(infoSpy.mock.calls.map((c) => String(c[0])).some((m) => m.includes('removing them'))).toBe(false);
+      infoSpy.mockRestore();
     });
   });
 });

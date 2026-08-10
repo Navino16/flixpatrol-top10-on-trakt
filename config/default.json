@@ -100,7 +100,8 @@
       "language": "english"
     }
   ],
-  "Trakt": {
+  "Target": {
+    "type": "trakt",
     "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"

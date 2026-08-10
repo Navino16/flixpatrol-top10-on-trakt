@@ -2,14 +2,10 @@ import { logger } from '../Utils/Logger';
 import { FlareSolverrError } from '../Utils/Errors';
 import type { FlareSolverrOptions } from '../types';
 
-/**
- * Fixed, namespaced session id. FlareSolverr instances are commonly shared with
- * other tools (*arr stack), so an unqualified name like "default" could collide.
- */
+// Namespaced: a FlareSolverr instance shared with other tools could collide on the name.
 const SESSION_NAME = 'flixpatrol-top10';
 
-// Mirrors FlixPatrol.ts's own retry constants: same retryable HTTP statuses,
-// same attempt budget, same exponential backoff shape (1s, 2s, 4s).
+// Mirrors the retry constants in FlixPatrol.ts; keep the two in sync.
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
 
@@ -27,18 +23,9 @@ interface FlareSolverrEnvelope {
 }
 
 /**
- * Minimal FlareSolverr v1 client.
- *
- * The three session commands are issued explicitly and in order:
- * `sessions.create` -> N x `request.get` -> `sessions.destroy`.
- *
- * This is deliberate. Per the FlareSolverr docs, a `request.get` sent WITHOUT a
- * session field "will create a temporary instance that will be destroyed
- * immediately after the request is completed" — so no cf_clearance cookie is
- * reused and every request re-solves the challenge (measured: 15.4s per request
- * versus 1.3-2.5s on a warm session). Dropping the session would still "work",
- * just ~10x slower, which is why the tests assert the session id is present in
- * every request.get payload.
+ * Minimal FlareSolverr v1 client. Commands are issued explicitly and in order:
+ * `sessions.create` -> N x `request.get` -> `sessions.destroy`. A `request.get`
+ * without a `session` re-solves the challenge on a throwaway browser instance.
  */
 export class FlareSolverrClient {
   private readonly endpoint: string;
@@ -65,16 +52,13 @@ export class FlareSolverrClient {
   }
 
   /**
-   * Formats a caught error for a thrown/logged message, appending the underlying
-   * `cause` when present. Node's fetch collapses every transport failure — dead
-   * container, wrong port, wrong host, DNS failure, missing `http://` scheme —
-   * into the same generic `TypeError: fetch failed`; the actionable detail lives
-   * in `err.cause`, which is otherwise silently dropped.
+   * Appends the underlying `cause` to the message: Node's fetch collapses every
+   * transport failure into a generic `TypeError: fetch failed`, and the actionable
+   * detail lives in `err.cause`.
    */
   private static formatError(err: unknown): string {
     const message = err instanceof Error ? err.message : String(err);
-    // `Error.cause` (ES2022) isn't in this project's configured TS lib, so it is
-    // read through an explicit shape rather than widening the whole tsconfig target.
+    // `Error.cause` isn't in this project's configured TS lib, hence the explicit shape.
     const cause = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
     if (cause === undefined) {
       return message;
@@ -83,11 +67,7 @@ export class FlareSolverrClient {
     return `${message} (${causeText})`;
   }
 
-  /**
-   * Opens the browser session. Throws on failure: without a session there is no
-   * point starting the run, and failing here surfaces a dead container before any
-   * list is processed rather than midway through.
-   */
+  /** Throws on failure: a dead FlareSolverr must abort the run before any list is processed. */
   public async createSession(): Promise<void> {
     logger.debug(`Creating FlareSolverr session "${SESSION_NAME}" at ${this.endpoint}`);
     let envelope: FlareSolverrEnvelope;
@@ -109,19 +89,8 @@ export class FlareSolverrClient {
 
   /**
    * Fetches a URL through FlareSolverr. Returns null on any failure, matching the
-   * contract of FlixPatrol.getFlixPatrolHTMLPage so callers gain no new case.
-   *
-   * Retries up to MAX_RETRIES times, mirroring the impit retry loop in
-   * FlixPatrol.getFlixPatrolHTMLPage (same attempt budget, same 1s/2s/4s
-   * exponential backoff). This is deliberately selective, not a blanket
-   * retry-on-everything:
-   *  - a thrown/transport error is retried;
-   *  - an envelope with `status !== 'ok'` is retried — this is how FlareSolverr
-   *    reports a challenge-solve timeout, which is measurably flaky;
-   *  - a `solution.status` in RETRY_STATUS_CODES is retried;
-   *  - any other definitive `solution.status` (e.g. 404, 403) returns null
-   *    immediately, exactly as impit does for a non-retryable status — retrying
-   *    would only waste up to two more 60s solves on a page that will never work.
+   * contract of FlixPatrol.getFlixPatrolHTMLPage. An envelope with `status !== 'ok'`
+   * is how FlareSolverr reports a challenge-solve timeout, so it is retried.
    */
   public async get(url: string): Promise<string | null> {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
@@ -149,9 +118,7 @@ export class FlareSolverrClient {
           }
           logger.warn(`Retry attempt ${attempt} for ${url}: HTTP ${solutionStatus}`);
         } else if (typeof envelope.solution.response !== 'string') {
-          // ok/200 envelope with no usable body: treat as a definitive failure rather
-          // than silently returning undefined (which callers can't distinguish from a
-          // real empty page, and which would flow into JSDOM/downstream parsing).
+          // ok/200 envelope with no usable body: a definitive failure, not an empty page.
           logger.error(`FlareSolverr returned no response body for ${url}`);
           return null;
         } else {
@@ -172,10 +139,8 @@ export class FlareSolverrClient {
   }
 
   /**
-   * Closes the browser session. Never throws: it runs in a finally block after the
-   * useful work is done, so a failure here must not turn a successful run into a
-   * failed one. Leaking a session would keep a Chrome resident in the container,
-   * which matters in daemon mode where runs repeat.
+   * Never throws: it runs in a `finally` block, so a failure here must not fail an
+   * otherwise successful run. A leaked session keeps a Chrome resident alive.
    */
   public async destroySession(): Promise<void> {
     if (this.sessionId === null) {

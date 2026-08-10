@@ -9,20 +9,81 @@ npm install          # Install dependencies
 npm run build        # Build TypeScript to build/
 npm run start        # Build and run
 npm run start:dev    # Development mode with nodemon hot reload
-npm test             # Run the test suite once (vitest)
+npm test             # Run the unit/integration suite once (vitest)
 npm run test:watch   # Run tests in watch mode
 npm run test:coverage # Run tests with coverage (reports in .reports/coverage)
+npm run test:e2e     # Opt-in end-to-end suites against real services (see Testing below)
 npm run lint         # Run ESLint
 npm run lint-and-fix # Run ESLint with auto-fix
 npm run package      # Create cross-platform binaries in bin/
 ```
+
+### Testing
+
+Two vitest configurations, deliberately separate:
+
+- **`vitest.config.ts`** — `npm test` / `npm run test:coverage`. Includes `tests/**/*.test.ts` and
+  **excludes `tests/e2e/**`**, so the default run never touches the network. CI runs
+  `npm run test:coverage`.
+- **`vitest.e2e.config.ts`** — `npm run test:e2e`. Includes only `tests/e2e/**/*.e2e.test.ts`,
+  runs one file at a time (`fileParallelism: false`) with a 60s test/hook timeout, because real
+  network calls are slow and must not step on each other.
+
+**Coverage gate**: thresholds are enforced at **80%** for lines, functions, branches and
+statements. They are declared as *top-level* keys under `coverage.thresholds`, not under a
+`global` key — `global` is the Jest spelling, which Vitest reads as a glob pattern matching no
+file and therefore silently disables the gate. Do not "restore" it. `src/types/**` and
+**`src/app.ts`** are excluded from coverage: `app.ts` is process-level wiring (signal handlers,
+`process.exit` paths), so unit-testing it would assert on the process lifecycle rather than on
+behaviour; the logic it orchestrates is covered through `Pipeline/` and `Scheduler/`.
+
+**E2E suites** hit a **real Floppy instance**, a **real Trakt account** and a **real mdblist
+account** — they are excluded from `npm test` and from coverage for that reason. Each suite is
+gated on environment variables and calls `describe.skipIf(...)` when they are absent, so a run
+with no environment skips everything and stays green instead of failing:
+
+| Variable | Suite | Effect when absent |
+|---|---|---|
+| `E2E_FLOPPY_URL` | `tests/e2e/FloppyTarget.e2e.test.ts` | suite skipped |
+| `E2E_FLOPPY_API_KEY` | `tests/e2e/FloppyTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_CLIENT_ID` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_CLIENT_SECRET` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
+| `E2E_TRAKT_SAVE_FILE` | `tests/e2e/TraktTarget.e2e.test.ts` | suite skipped |
+| `E2E_MDBLIST_API_KEY` | `tests/e2e/MdblistTarget.e2e.test.ts` | suite skipped |
+
+Every suite verifies the end state by querying the service directly — `fetch` for Floppy and
+mdblist, a second independent `trakt.tv` client for Trakt — never through the adapter under test,
+and they name every object they create with a per-run unique suffix so two concurrent runs cannot
+destroy each other's data.
+
+The **Trakt** suite is the one that cannot be replaced by unit tests: it pins, against the live
+API, that `trakt.tv` sends `type` as a QUERY parameter on `users.list.items.get` while Trakt
+expects a PATH segment, so the filter is silently ignored and a "filtered" read still returns
+every type. Mocking the client would only mock the lie. It also consumes an **already-obtained**
+token (`E2E_TRAKT_SAVE_FILE`) because the OAuth device flow needs a human; it fails with an
+explicit message rather than hanging if the file is missing. It creates a single `private` list —
+a free Trakt account is capped at 5 — and deletes it in `afterAll`, never touching a list it did
+not create.
+
+**Triggering, and why it is asymmetric:**
+
+- **Floppy is a first-class CI gate**: the `e2e-floppy` job of `.github/workflows/ci.yml`, sharing
+  the `lint`/`build`/`test` trigger verbatim (every pull request to `main`/`develop`, no `paths`
+  filter). It stands up its own throwaway containers (Redis + `ghcr.io/dannyvfilms/floppy:latest`,
+  ~90s cold start, **polled** on `/api/v1/health` — never a fixed `sleep`) and mints its API token
+  with `docker exec`, masked with `::add-mask::`. It needs **no repository secret**, which is what
+  makes it safe on pull requests from forks.
+- **Trakt and mdblist are local-only, on purpose.** They write to real third-party accounts, and
+  the owner controls which credentials are used run by run. They belong to **no workflow** and
+  depend on **no repository secret**. Do not add them to CI, and do not add a scheduled job that
+  can only ever skip.
 
 ### Environment Variables
 
 | Variable | Effect |
 |---|---|
 | `LOG_LEVEL` | `error`, `warn`, `info` (default), `debug`, `silly` |
-| `DRY_RUN` | `true` skips every Trakt write; lists are computed and logged only |
+| `DRY_RUN` | `true` skips every write to the configured backend; lists are computed and logged only |
 | `LIST_NAME_PREFIX` | Prefixes every list name, e.g. `[TEST]`. Use it for local runs so real lists are never touched |
 
 When running the app locally to verify a change by hand, always set
@@ -30,7 +91,7 @@ When running the app locally to verify a change by hand, always set
 
 ## Architecture Overview
 
-TypeScript CLI tool that scrapes FlixPatrol for streaming platform top 10 lists and syncs them to Trakt.tv user lists.
+TypeScript CLI tool that scrapes FlixPatrol for streaming platform top 10 lists and syncs them to the user lists of one configured backend — Trakt.tv, Floppy or mdblist — selected by the `Target` config block.
 
 ### Module Structure
 
@@ -46,6 +107,13 @@ src/
 ├── Trakt/
 │   ├── index.ts                # Exports TraktAPI class and types
 │   └── TraktAPI.ts             # Trakt.tv API wrapper
+├── Targets/
+│   ├── index.ts                # Exports ListTarget, createTarget and target types
+│   ├── ListTarget.ts           # ListTarget interface + MediaItem/MediaKind/ListPrivacy/TargetBackend
+│   ├── createTarget.ts         # Factory: TargetOptions -> concrete adapter
+│   ├── privacy.ts              # isPrivate() — maps the 4-level privacy vocabulary to a boolean
+│   ├── ResolutionCache.ts      # Level-2 cache: media item -> backend id, one namespace per backend
+│   └── adapters/               # TraktTarget, FloppyTarget, MdblistTarget
 ├── Pipeline/
 │   ├── index.ts                # Exports runPipeline
 │   └── runPipeline.ts          # One run: FlareSolverr session lifecycle + all list processing
@@ -68,7 +136,7 @@ src/
     ├── index.ts                # Exports logger, Utils, errors, package info
     ├── Logger.ts               # Winston logger config
     ├── Utils.ts                # Helper functions (sleep, getListName, ensureConfigExist)
-    ├── Errors.ts               # AppError + Configuration/FlixPatrol/Trakt/FlareSolverr errors
+    ├── Errors.ts               # AppError + Configuration/FlixPatrol/FlareSolverr + TargetError (Trakt/Floppy/Mdblist)
     ├── getPackageInfo.ts       # Reads name/version for logs and notifications
     └── GetAndValidateConfigs.ts # Config validation
 ```
@@ -78,26 +146,40 @@ src/
 **`src/app.ts`** - Entry point flow:
 1. `Utils.ensureConfigExist()` - creates default config if missing
 2. Builds the `NotificationManager` early, so later failures can be notified. Two failures cannot be: a config file that can't be written, and a broken `Notifications` block — no working notifier exists yet at that point.
-3. Loads and validates all configurations via `GetAndValidateConfigs`
+3. Loads and validates all configurations via `GetAndValidateConfigs`, then runs the startup checks that need several blocks at once: `Utils.warnAboutOrphanedCaches()` and `GetAndValidateConfigs.checkTargetCompatibility()`
 4. Branches on `Schedule.enabled`:
    - **one-shot** (default, or when no Trakt token exists yet): runs the pipeline once, then exits. `SIGINT` dispatches an `error` notification and exits 130.
    - **daemon**: hands the pipeline to `Scheduler`, which re-runs it on each cron tick. `SIGTERM`/`SIGINT` stop the scheduler gracefully.
 5. Every exit path flushes pending notification dispatches before `process.exit`, so fire-and-forget notifications are not cut off.
 
-**`src/Pipeline/runPipeline.ts`** - One run:
+**`src/Pipeline/runPipeline.ts`** - One run. It orchestrates two distinct phases — *resolution* then *writing* — and delegates both to the `ListTarget` it receives; it never talks to a backend API itself:
 1. Creates the FlareSolverr session, if enabled (before any list, so a dead container fails fast)
-2. Initializes `FlixPatrol` and `TraktAPI` instances
-3. Calls `trakt.connect()` (OAuth device flow)
-4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially (for each: scrape FlixPatrol → convert to Trakt IDs → sync list)
+2. Initializes `FlixPatrol`. The `ListTarget` is **not** built here: `app.ts` builds it once per process and passes it in, so the daemon auth gate and every scheduled run share one adapter and one resolution cache
+3. Calls `target.connect()` (a no-op for floppy/mdblist, the OAuth device flow for trakt)
+4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially. For each list: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` per kind for backend ids → **one** `target.pushToList()` carrying both kinds, so everything a backend does per list (list lookup, items read, description stamp) is paid once even for `type: "both"`
 5. Dispatches `run_end` with a summary (lists processed, movies/shows added, duration)
 6. Destroys the FlareSolverr session in a `finally` block, so it also covers the early abort paths and thrown errors
 
-Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current Trakt write, never mid-write.
+`FlixPatrol` no longer knows about any backend: it returns `MediaItem[]` and nothing else. All id resolution lives behind `ListTarget`.
+
+Guard in `resolveSection`: `pushToList` **replaces** the content of every kind whose key is present, so a scrape that produced items but resolved to zero ids returns `null` and the caller OMITS that kind's key — the kind is left untouched while the other one is still written in the same call. That combination means the backend is failing, not that the list should be emptied. A genuinely empty scrape keeps its previous behaviour: a present, empty array, hence a wipe of that kind.
+
+Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current list write, never mid-write.
+
+**`src/Targets/`** - Backend abstraction:
+- `ListTarget` is the only interface the pipeline knows: `connect()`, `resolveMany(items, kind)` → opaque backend ids, `pushToList(ids, listName, privacy)` where `ids` is a `ListContent` = `Partial<Record<MediaKind, string[]>>`. The three states of a key are all meaningful: **absent** → that kind is left untouched; **present and non-empty** → that kind is replaced; **present and empty** → that kind is cleared
+- `createTarget(TargetOptions, CacheOptions, dryRun)` picks the adapter from `Target.type`
+- `TraktTarget` wraps the existing `TraktAPI` (device flow, `requiresInteractiveAuth: true`); `FloppyTarget` uses `X-API-Key` with `movie`/`tv` media types and item-by-item writes (its API has no bulk write; only the list lookup and the items read are shared between kinds); `MdblistTarget` uses `?apikey=` with `movie`/`show` and sends both buckets in a single bulk add and a single bulk remove, each skipped when its payload would be empty
+- `ResolutionCache` is a second cache layer, namespaced per backend (`resolution-<backend>/`), so switching backends never re-scrapes a FlixPatrol detail page
+- Adapter-specific behaviour worth remembering: Floppy ignores `privacy` (its API cannot set list visibility) and writes no description (it exposes `latest_update` natively); mdblist writes no description either (`last_updated_at` is native) and forces `sort_by_score=true` on search because the default ranking is poor
+- Neither `FloppyTarget.pickBest` nor `MdblistTarget.pickBest` has a last-resort fallback on the first usable result. Falling through the whole cascade (title+year → title → year) means nothing matched, so any remaining result is a mismatch by definition: they return `null`, the caller warns and drops the item. `TraktTarget` is the exception, because `TraktAPI.getFirstItemByQuery` does fall back to `items[0]`
+- In `FloppyTarget.addItem`, the `PUT` is attempted **first, before any catalogue creation**. This is a data-safety guarantee, not an optimisation: the cleanup `DELETE` can then only ever remove a tracking row this run created, never a status or rating the user entered by hand
+- `MdblistTarget` memoizes the user list index (`GET /lists/user` returns the WHOLE collection, so one call answers every list lookup) as a `name -> id` map. The memo is **scoped to one run**: `connect()` drops it, because the adapter is built once per process by `app.ts` and shared by every daemon tick — a memo living for the instance lifetime would go stale between two ticks hours apart, and a list deleted from the mdblist web UI in the meantime would still look present, so the adapter would write to a dead id. A miss on an *already populated* memo re-fetches once before concluding the list is absent, since creating a duplicate is a visibly wrong outcome on a backend capped at four static lists
 
 **`src/Scheduler/Scheduler.ts`** - Daemon mode:
 - Runs the pipeline on `node-cron` schedules; `runOnStart` triggers an immediate first run
 - Guards against overlap: a tick is skipped while a run is still in flight
-- `stop()` awaits the in-flight run so a shutdown never truncates a Trakt write
+- `stop()` awaits the in-flight run so a shutdown never truncates a backend write
 
 **`src/Notifications/`** - Event dispatch:
 - Three events: `run_start`, `run_end`, `error`, each with its own list of destinations
@@ -106,19 +188,26 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 
 **`src/Flixpatrol/FlixPatrol.ts`** - Web scraping:
 - Platform/location constants defined as const arrays (type guards derive from these)
-- Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured
+- Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured. The impit path retries up to 3 times with 1s/2s/4s backoff on 408/429/500/502/503/504, and reports Cloudflare's `cf-mitigated` header when present — that header is what separates "FlixPatrol is down" from "we got bot-blocked". The FlareSolverr path has **no** retry loop: FlareSolverr retries internally, and wrapping a 12s challenge solve in a 3x backoff produces pathological runtimes
 - HTML parsing via JSDOM with XPath expressions
-- File-system caching with `file-system-cache` (SHA1 keys, TTL-based, separate caches for movies/TV shows)
+- Returns `MediaItem[]` (title + year) and knows nothing about any backend. The Top10 `fallback` triggers when the *page* yields no result at all, no longer when no backend id could be resolved (behaviour change vs 2.17): a title FlixPatrol lists but the backend does not know is now reported as unmatched instead of silently swapping the whole list for another location's
+- File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. The 2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
 
-**`src/Trakt/TraktAPI.ts`** - Trakt.tv integration:
-- OAuth device flow: user visits verification_url, enters code, token saved to file
-- List operations: get/create list, remove old items, add new items, update description
-- Search: matches titles by name and year
+**`src/Trakt/TraktAPI.ts`** - Trakt.tv integration, wrapped by `TraktTarget`:
+- OAuth device flow: user visits verification_url, enters code, token saved to file. A token file that fails to parse is deleted and the flow restarts rather than crashing
+- `pushToList(content, listName, privacy)` takes a `TraktListContent` = `Partial<Record<'movie'|'show', number[]>>` with the same absent/present/empty tri-state as `ListContent`, and writes the list once: list lookup or creation, privacy alignment and the "Last Updated" description are per-LIST and happen exactly once whatever the number of types. `users.list.items.get` is genuinely filtered by type on the Trakt side, so it legitimately stays one call per type
+- `toTraktSlug` mirrors Trakt's own normalization (lowercase, any run of non-alphanumerics collapsed to one hyphen, trimmed). A naive `\s+ -> -` left punctuation intact and produced slugs that did not match the canonical form, so `.get()` returned partial data instead of a 404
+- Trakt has been observed answering HTTP 200 with an empty body instead of 404 for a missing list, so the success path shape-checks the response and treats a malformed one as not-found
+- Search: `getFirstItemByQuery` queries Trakt by **title only** (`fields: 'title'`), then prefers the first result whose year matches; if none does it falls back to the first result. Unlike the Floppy and mdblist adapters, this backend does have a last-resort fallback
 
 **`src/Utils/GetAndValidateConfigs.ts`** - Configuration validation:
 - Zod schemas validate every config block at load time
 - Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
-- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error
+- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error. `Target` is **not** optional since 3.0.0
+- `getTargetOptions()` returns the `Target` discriminated union straight from Zod — backend and credentials in one block, so `createTarget` narrows on `type` and hands the same object to the adapter
+- **Unmigrated-config detection**: `Target` absent, or present but failing the union — including the never-released intermediate shape where it carried only `type` — throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim from the root-level `Trakt`/`Floppy`/`Mdblist` block (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
+- **Obsolete blocks are not fatal**: once `Target` satisfies the union, a leftover root-level `Trakt`/`Floppy`/`Mdblist` block only produces one `warn` naming it. Rejecting a correctly migrated config over dead config would be an outage for nothing. Only `Trakt` ever shipped (2.17.0 and earlier); `Floppy` and `Mdblist` existed solely in an unreleased intermediate shape and are deliberately absent from README
+- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all four list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list)
 
 ### Key Types
 
@@ -135,6 +224,33 @@ type FlixPatrolMostHoursLanguage = 'all' | 'english' | 'non-english'
 type TraktTVId = number | null
 type TraktTVIds = number[]
 type TraktPrivacy = 'private' | 'link' | 'friends' | 'public'
+
+// Target types (src/Targets/ListTarget.ts) — the core vocabulary of the backend abstraction
+type TargetBackend = 'trakt' | 'floppy' | 'mdblist'
+type MediaKind = 'movie' | 'show'
+const MEDIA_KINDS: readonly MediaKind[] = ['movie', 'show']  // canonical order, movies first
+type ListPrivacy = 'private' | 'link' | 'friends' | 'public'  // inherited from Trakt
+
+// What FlixPatrol returns, pre-resolution. `year` is null when the detail page
+// exposes no usable premiere date — see "XPath Expressions" below.
+interface MediaItem { title: string; year: number | null }
+
+// Tri-state per kind. All three states are meaningful:
+//   key ABSENT           -> that kind is LEFT UNTOUCHED
+//   key present, non-empty -> that kind's content is REPLACED by those ids
+//   key present, EMPTY     -> that kind was genuinely scraped empty, so it is CLEARED
+type ListContent = Partial<Record<MediaKind, string[]>>
+
+// The only interface the pipeline knows about. Ids are opaque strings whose
+// encoding is the adapter's business (Trakt id, `source:media_id` for Floppy, tmdb id for mdblist).
+interface ListTarget {
+  readonly backend: TargetBackend
+  readonly requiresInteractiveAuth: boolean   // true only for Trakt's device flow
+  isAuthenticated(): boolean
+  connect(): Promise<void>
+  resolveMany(items: MediaItem[], kind: MediaKind): Promise<string[]>  // unresolved omitted, dupes dropped, order kept
+  pushToList(ids: ListContent, listName: string, privacy: ListPrivacy): Promise<void>  // ONE call, both kinds
+}
 ```
 
 ### Configuration Structure
@@ -151,7 +267,10 @@ File: `config/default.json`
     limit: number,  // >= 1
     type: 'movies' | 'shows' | 'both',
     name?: string,  // custom list name
-    normalizeName?: boolean  // convert to kebab-case (default: true)
+    normalizeName?: boolean,  // convert to kebab-case (default: true)
+    kids?: boolean  // Netflix Kids Top 10. Netflix-only and country-only: any other
+                    // platform, or location 'world', logs a warn and skips the entry.
+                    // Also disables the `fallback` path.
   }],
   FlixPatrolPopular: [{
     platform: FlixPatrolPopularPlatform,
@@ -184,11 +303,19 @@ File: `config/default.json`
     name?: string,
     normalizeName?: boolean
   }],
-  Trakt: {
-    saveFile: string,  // OAuth token file path
-    clientId: string,
-    clientSecret: string
-  },
+  // NEW and MANDATORY in 3.0.0. Zod discriminated union on `type`: the block carries
+  // the backend AND its credentials, so an invalid pairing is unrepresentable. It
+  // replaces the root-level `Trakt` block, the only backend config 2.17.0 had.
+  Target:
+    | { type: 'trakt',
+        saveFile: string,      // OAuth token file path
+        clientId: string,
+        clientSecret: string }
+    | { type: 'floppy',
+        url: string,           // base URL of the instance, e.g. http://localhost:8000
+        apiKey: string }       // token from Settings -> Advanced (non-empty)
+    | { type: 'mdblist',
+        apiKey: string },      // non-empty
   Cache: {
     enabled: boolean,
     savePath: string,  // cache directory
@@ -219,35 +346,85 @@ File: `config/default.json`
 
 ### XPath Expressions (FlixPatrol scraping)
 
-Top10 (World):
+These expressions and their order are load-bearing against the live site. Do not change them
+without checking a real page: FlixPatrol's markup drifts, and a silently-empty expression turns
+into a wrong list rather than an error.
+
+`{type}` below is `Movies` or `TV Shows`.
+
+**Top10 (World)** — one expression:
 ```xpath
 //div[h2[span[contains(., "TOP {type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href
 ```
 
-Top10 (Regions) - tries multiple expressions:
+**Top10 (Regions)** — three expressions, tried in order, first non-empty result wins:
 ```xpath
 //div[h3[text() = "TOP 10 {type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href
+//h3[contains(., "TOP 10") and contains(., "{type}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href
+((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href
 ```
 
-Popular/MostWatched:
+**Top10 Kids** (`kids: true`, Netflix + a country only) — two expressions, strict then tolerant.
+`{kidsType}` is `Kids Movies` or `Kids TV Shows`:
+```xpath
+//h3[text() = "TOP 10 {kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href
+//h3[contains(., "TOP 10") and contains(., "{kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href
+```
+
+**Popular / MostWatched**:
 ```xpath
 //table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href
 ```
-
-Detail page (title/year extraction):
+MostWatched with `original: true` adds an `[.//svg]` predicate — the badge FlixPatrol puts on
+Netflix originals:
 ```xpath
-//div[contains(@class,"mb-6")]//h1[contains(@class,"mb-4")]/text()
-//div[@class="mb-6"]//span[5]/span/text()
+//table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href
 ```
+
+**MostHours** — `{sectionId}` is `toc-movies` or `toc-tv-shows`, `{langTab}` is
+`all-languages` / `english` / `non-english`. The `total` period has no language tabs, so the
+second expression is its normal path, not an error case:
+```xpath
+//div[@id="{sectionId}"]//table[contains(@x-show, "'{langTab}'")]//a[@class="flex gap-2 group items-center"]/@href
+//div[@id="{sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href
+```
+
+**Detail page (title)** — `FlixPatrol.parseDetailTitle`, anchored on `div.info-grid-header`,
+with a bare `//h1` as last resort:
+```xpath
+//div[contains(@class,"info-grid-header")]//h1/text()
+//h1/text()
+```
+
+**Detail page (premiere year)** — `FlixPatrol.parseDetailYear`. The year is read **only** from
+the premiere block inside `div.info-grid-header`, then a `/(19|20)\d{2}/` regex over that block's
+text. The date is formatted MM/DD/YYYY, and no four-digit run starting with 19 or 20 can appear
+before the year in that format, so the day/month ambiguity never has to be resolved:
+```xpath
+//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]
+```
+
+**There is deliberately NO fallback for the year, and none must ever be added back.** An earlier
+version scanned the text of `div.mb-6`; that selector now matches a site-wide marketing blurb
+ending in "the most popular TV shows in 2021", so the regex stamped **2021 onto every single
+title**. That fed the "exact title AND year" branch of each backend's match cascade, which then
+selected the wrong film with full confidence, on all three backends, silently. Fixed in
+`484bb03`. The asymmetry is the whole point: a **missing** year degrades the cascade to a
+title-only match, which is safe; a **wrong** year is silently destructive. Never guess a year.
+
+Consistently, `getMediaItem` caches a detail page **only when both title and year parsed**. A
+missing year is not a benign gap — it is exactly what disambiguates the later backend search — so
+persisting one would degrade every match for the whole TTL (7 days by default) after a single
+transient markup drift. A cache miss costs one re-scrape.
 
 ### Error Handling
 
-Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `FlixPatrolError`, `TraktError`, `FlareSolverrError`.
+Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `FlixPatrolError`, `FlareSolverrError`, and `TargetError` — the common parent of `TraktError`, `FloppyError` and `MdblistError`, so callers can catch "the backend failed" without knowing which one is configured.
 
 - **Configuration errors**: throw `ConfigurationError`, caught in `app.ts` → `error` notification → exit 1
 - **Scraping failures**: `getFlixPatrolHTMLPage` returns `null` (never throws); callers turn that into `FlixPatrolError`, which fails the run
 - **Notification failures**: logged as warnings only — a broken destination never fails a run
-- **SIGINT / SIGTERM**: graceful. One-shot mode dispatches an `error` notification and exits 130; daemon mode stops the scheduler and awaits the in-flight run. An abort checkpoint between lists stops only after the current Trakt write completes
+- **SIGINT / SIGTERM**: graceful. One-shot mode dispatches an `error` notification and exits 130; daemon mode stops the scheduler and awaits the in-flight run. Since a list is written in a single `pushToList` call, the abort checkpoint sits *between* lists: a stop can no longer land between the movie half and the show half of the same list
 
 ### Rate Limiting
 
@@ -255,6 +432,16 @@ Errors derive from `AppError` (`src/Utils/Errors.ts`): `ConfigurationError`, `Fl
 - List creation
 - Item removal/addition
 - List updates
+
+Every one of those sleeps still guards a call that still happens; the rate-limit protection is
+unchanged. What disappeared with the fused write is the *duplicated* per-list work of a
+`type: "both"` list: `users.list.get` and the "Last Updated" description now run once instead of
+twice, which removes two wasted seconds per list. `users.list.items.get` is genuinely filtered by
+type on the Trakt side, so it legitimately stays one call per kind.
+
+The other two backends do not sleep. Floppy is self-hosted, so a per-item delay would make a
+ten-item list absurdly slow. mdblist writes in bulk instead, and reports its remaining daily
+budget through `x-ratelimit-remaining`, which `MdblistTarget` logs after each list write.
 
 ### Logging
 

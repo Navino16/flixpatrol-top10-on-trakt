@@ -5,14 +5,29 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // The E2E suites hit real services, so they must neither run as part of
+    // `npm test` nor weigh on the coverage thresholds.
+    exclude: ['node_modules/**', 'build/**', 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
       reportsDirectory: '.reports/coverage',
       reporter: ['text', 'json', 'html', 'cobertura'],
       include: ['src/**/*.ts'],
-      exclude: ['src/types/**'],
+      exclude: [
+        'src/types/**',
+        // Signal handlers, `process.exit` paths and bootstrap wiring: testing it would
+        // assert on the process lifecycle rather than behaviour, and the logic it
+        // orchestrates is covered through Pipeline/ and Scheduler/.
+        'src/app.ts',
+      ],
+      // Vitest reads threshold keys as glob patterns; a `global` key (the Jest
+      // spelling) matches no file and silently disables the gate. Top-level keys
+      // apply to the whole project.
       thresholds: {
-        global: { lines: 80, functions: 80, branches: 80, statements: 80 },
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
       },
     },
     reporters: ['default', 'junit'],

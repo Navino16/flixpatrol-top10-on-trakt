@@ -106,6 +106,54 @@ export const TraktOptionsSchema = z.object({
   clientSecret: z.string(),
 });
 
+export const FloppyOptionsSchema = z.object({
+  url: z.url(),
+  apiKey: z.string().min(1, 'apiKey must not be empty'),
+});
+
+export const MdblistOptionsSchema = z.object({
+  apiKey: z.string().min(1, 'apiKey must not be empty'),
+});
+
+export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
+
+/**
+ * Credential values shipped in the configuration template. Both template sites and the
+ * startup guard that rejects them read from here, so rewording the template cannot
+ * silently leave the guard behind.
+ */
+export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
+export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
+
+/**
+ * Template credentials per backend, keyed by the field they occupy in the `Target` block.
+ * Only `trakt` is listed, being the only backend the template carries credentials for.
+ *
+ * `saveFile` is deliberately absent: `./config/.trakt` is a sensible default users are
+ * expected to keep, not a placeholder to replace.
+ */
+export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
+  trakt: {
+    clientId: TRAKT_TEMPLATE_CLIENT_ID,
+    clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+  },
+};
+
+/**
+ * The backend selector and its credentials form one discriminated union rather than a
+ * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
+ * backend needs and "type: floppy with only Trakt credentials" is not representable.
+ */
+export const TraktTargetSchema = TraktOptionsSchema.extend({ type: z.literal('trakt') });
+export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
+export const MdblistTargetSchema = MdblistOptionsSchema.extend({ type: z.literal('mdblist') });
+
+export const TargetSchema = z.discriminatedUnion('type', [
+  TraktTargetSchema,
+  FloppyTargetSchema,
+  MdblistTargetSchema,
+]);
+
 export const CacheOptionsSchema = z.object({
   enabled: z.boolean(),
   savePath: z.string(),
@@ -174,6 +222,14 @@ export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
 export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
 export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
+export type TargetBackendName = (typeof targetBackend)[number];
+export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
+export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
+
+/** A discriminated union on `type`, which is what `createTarget` narrows on. */
+export type TargetOptions = z.infer<typeof TargetSchema>;
+export type TraktPrivacy = z.infer<typeof TraktPrivacySchema>;
+
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;
 export type ScheduleOptions = z.infer<typeof ScheduleOptionsSchema>;
