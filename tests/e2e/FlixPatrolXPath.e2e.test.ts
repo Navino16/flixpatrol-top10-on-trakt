@@ -11,6 +11,7 @@ import {
   mostHoursExpressions,
   mostWatchedExpression,
   parseDetailPage,
+  parseTop10Page,
   toCanonicalTitlePath,
   top10Expressions,
   top10KidsExpressions,
@@ -176,11 +177,12 @@ interface RegionalPage {
  *
  * `go3/latvia` is the deliberate small-market case: a regional Baltic service
  * whose page publishes a Movies chart but, routinely, no TV Shows chart at all.
- * That is not a hypothetical — it is precisely the situation where a naive
- * "something matched" assertion is worst: with no TV Shows chart, the strict
- * rung correctly returns nothing and the chain falls through to its loosest
- * rung, which scoops up whatever tables the page does have. A page with no data
- * must therefore be recognised as such and reported distinctly, never as drift.
+ * That is not a hypothetical — it is the situation an untyped fallback rung used
+ * to corrupt: with no TV Shows chart the typed rungs correctly matched nothing and
+ * the chain fell through to a positional "first two tables" rung, which handed the
+ * movie rows back as shows. That rung is gone, so the chain now returns empty here
+ * — asserted below. A page with no data must still be recognised as such and
+ * reported distinctly, never as drift.
  *
  * Asking for a COMPLETED day is what keeps that distinction sharp. On the current
  * day a missing chart is ambiguous — the market may not chart it, or the site may
@@ -498,6 +500,14 @@ const top10WorldCases: Top10Case[] = TOP10_WORLD_PATHS
 const top10RegionCases: RegionalCase[] = TOP10_REGION_PAGES
   .flatMap((entry) => MEDIA_TYPES.map((type) => ({ ...entry, type })));
 
+/**
+ * The subset allowed to publish no chart at all — today, only `go3/latvia`. These
+ * are the only cases where "the chain returns nothing" is a legitimate outcome and
+ * therefore the only ones where it can be asserted as such.
+ */
+const top10AbsentChartCases: RegionalCase[] = top10RegionCases
+  .filter((entry) => entry.mayBeShortOrAbsent);
+
 const top10KidsCases: Top10Case[] = TOP10_KIDS_PATHS
   .flatMap((path) => MEDIA_TYPES.map((type) => ({ path, type })));
 
@@ -659,13 +669,15 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
 
   describe('Top 10 (regional)', () => {
     it.for(top10RegionCases)(
-      '$path — the STRICT rung matches for $type, not one of its two fallbacks',
+      '$path — the STRICT rung matches for $type, not its tolerant fallback',
       ({
         path, location, type, mayBeShortOrAbsent,
       }, ctx) => {
         const html = page(path);
         const expressions = top10Expressions(type, location);
-        expect(expressions).toHaveLength(3);
+        // Two rungs, both typed. A third, untyped one was removed: it matched on
+        // table position alone and so answered one media type with the other's rows.
+        expect(expressions).toHaveLength(2);
 
         if (!publishesChart(type, html)) {
           if (!mayBeShortOrAbsent) {
@@ -676,23 +688,22 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
             );
           }
           // A market with no chart is not drift. Prove the two agree — the page
-          // says there is nothing, and the strict rung finds nothing — then bow
-          // out with a message that cannot be mistaken for a passing assertion.
+          // says there is nothing, and NO rung of the chain finds anything — then
+          // bow out with a message that cannot be mistaken for a passing assertion.
           //
           // This branch means "this market does not chart this media type" and
           // nothing else. The third reading it could once have had, "the day is
           // not fully published yet", is ruled out upstream: the page is a
           // completed day and the guard above already asserted the site served it.
-          expect(matches(expressions[0], html)).toHaveLength(0);
+          expect(firstMatchingRung(expressions, html)).toBe(-1);
           ctx.skip(`${path} publishes no "TOP 10 ${type}" chart today: no drift signal available for this case`);
           return;
         }
 
         const rung = firstMatchingRung(expressions, html);
-        // rung 0 is the only acceptable answer. rung 1 or 2 means the site
-        // drifted and production is silently running on a looser expression;
-        // rung 2 in particular scoops up whole tables and would return far more
-        // than ten titles. -1 means the whole chain is dead.
+        // rung 0 is the only acceptable answer. rung 1 means the site drifted and
+        // production is silently running on the looser heading match. -1 means the
+        // whole chain is dead on a page that visibly does publish the chart.
         expect(rung).toBe(0);
 
         const hrefs = matches(expressions[0], html);
@@ -710,17 +721,26 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       },
     );
 
-    it.for(TOP10_REGION_PAGES)(
-      '$path — the loosest rung over-matches, proving it is a degraded substitute',
-      ({ path, location }) => {
+    it.for(top10AbsentChartCases)(
+      '$path — an unpublished $type chart yields EMPTY, never the other type rows',
+      ({ path, location, type }, ctx) => {
         const html = page(path);
-        const expressions = top10Expressions('Movies', location);
-        const strict = matches(expressions[0], html);
-        const loosest = matches(expressions[2], html);
-        // Documents WHY falling back matters: the last rung mixes several charts
-        // together, so a silent fallback does not merely change the selector, it
-        // changes the list that users receive.
-        expect(loosest.length).toBeGreaterThan(strict.length);
+        // The counterpart of the rung assertions above, and the reason the untyped
+        // rung was removed. Both remaining rungs name the media type, so a market
+        // that charts one type and not the other must come back with nothing for
+        // the missing one — not with the rows it does publish, relabelled.
+        if (publishesChart(type, html)) {
+          ctx.skip(`${path} publishes a "TOP 10 ${type}" chart today: no absent-chart case to exercise`);
+          return;
+        }
+        // The page is not blank: it charts the OTHER media type, so anything
+        // positional would have plenty to grab here.
+        const other: FlixPatrolType = type === 'Movies' ? 'TV Shows' : 'Movies';
+        expect(publishesChart(other, html)).toBe(true);
+        expect(matches(top10Expressions(other, location)[0], html).length).toBeGreaterThan(0);
+        // Asserted through the parser's own chain walk, which is what production
+        // runs: an empty result is what makes the caller leave the list untouched.
+        expect(parseTop10Page(type, location, html)).toEqual([]);
       },
     );
   });

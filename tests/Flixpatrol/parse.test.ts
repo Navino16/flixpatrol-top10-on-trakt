@@ -105,7 +105,12 @@ describe('FlixPatrol parsing', () => {
       expect(parseTop10Page('Movies', 'france', html)).toEqual(['/title/tolerant-1']);
     });
 
-    it('falls back to the first two tables when no headline matches at all', () => {
+    it('returns nothing rather than borrowing tables when no headline matches at all', () => {
+      // There used to be a third, untyped rung taking "the first two tables on the
+      // page" whatever they held. On a market publishing only a Movies chart it
+      // answered the TV Shows question with the movie rows, and the shows list was
+      // filled with films that no downstream check could reject. No data is the
+      // correct answer here, so the caller can leave the existing list alone.
       const html = `
         <html><body>
           <table><tr><td><a class="hover:underline" href="/title/table-1">T1</a></td></tr></table>
@@ -114,7 +119,26 @@ describe('FlixPatrol parsing', () => {
         </body></html>
       `;
 
-      expect(parseTop10Page('Movies', 'france', html)).toEqual(['/title/table-1', '/title/table-2']);
+      expect(parseTop10Page('Movies', 'france', html)).toEqual([]);
+    });
+
+    it('never answers one media type with the other type chart', () => {
+      // The `go3/latvia` shape, reduced to a fixture: a page publishing a Movies
+      // chart and no TV Shows heading at all.
+      const html = `
+        <html><body>
+          <div>
+            <div><h3>TOP 10 Movies</h3></div>
+            <div>
+              <a class="hover:underline" href="/title/movie-1">Movie 1</a>
+              <a class="hover:underline" href="/title/movie-2">Movie 2</a>
+            </div>
+          </div>
+        </body></html>
+      `;
+
+      expect(parseTop10Page('Movies', 'latvia', html)).toEqual(['/title/movie-1', '/title/movie-2']);
+      expect(parseTop10Page('TV Shows', 'latvia', html)).toEqual([]);
     });
 
     it('returns an empty array when the page holds nothing usable', () => {

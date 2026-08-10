@@ -106,20 +106,43 @@ export function top10Expressions(
       `//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
     ];
   }
+  // Both rungs are TYPED: each one names the media type in the heading it matches,
+  // so neither can ever answer the Movies question with the TV Shows chart or the
+  // other way round.
+  //
+  // There used to be a third, untyped rung — `((//table)[1] | (//table)[2])//a[...]`
+  // — whose only instruction was "take the first two tables on the page". It
+  // existed to absorb a redesign of the section headings, and it no longer earns
+  // its keep: `tests/e2e/FlixPatrolXPath.e2e.test.ts` now watches the PRIMARY rung
+  // of every chain against the live site on a weekly cron, so a heading drift is
+  // reported within a week instead of being silently absorbed.
+  //
+  // What that rung did in the meantime was strictly worse than returning nothing.
+  // It ignored the `type` argument entirely, so on a market publishing no TV chart
+  // (`go3/latvia`, measured) the Movies call matched rung 0 while the TV Shows call
+  // fell through to it and returned the movie rows plus whatever else sat in the
+  // first two tables — 18 hrefs where the movie chart had 10. Those are real films
+  // that resolve perfectly on the backend, so nothing downstream could object: the
+  // user's shows list was quietly filled with films. Same failure shape as the
+  // `div.mb-6` year fallback that stamped 2021 onto every title for months.
+  //
+  // With both typed rungs dead the chain now returns an empty array, the caller
+  // leaves that media type alone, and the pipeline guard keeps the existing list
+  // rather than replacing it with wrong content.
   return [
     // Original strict
     `//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
     // More tolerant headline match
     `//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
-    // Generic first tables fallback
-    `((//table)[1] | (//table)[2])//a[contains(@class,'hover:underline')]/@href`,
   ];
 }
 
 /**
  * Top10 section of a platform page. The world page and the regional pages do not
- * share the same markup, and the regional one has drifted enough over time to
- * warrant a chain of three expressions, from strictest to loosest.
+ * share the same markup, and the regional headings have drifted enough over time
+ * to warrant two expressions, strictest first — both of them typed. An empty
+ * result means "this page publishes no chart for this media type", which callers
+ * must treat as no data rather than substituting anything.
  */
 export function parseTop10Page(
   type: FlixPatrolType,
