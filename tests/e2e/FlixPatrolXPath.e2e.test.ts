@@ -68,7 +68,7 @@ import type {
  * survives on that one layout. FlixPatrol renders a big catalogue, a small one,
  * a niche regional platform and a language-tabbed report differently enough that
  * an expression can die on one shape while still matching on another. Each
- * family below therefore spans three or four deliberately DIFFERENT pages, and
+ * family below therefore spans three to six deliberately DIFFERENT pages, and
  * every case is table-driven so a red CI line names the page and the rung
  * without anyone opening this file.
  *
@@ -89,14 +89,22 @@ const REQUEST_DELAY_MS = 1500;
 /**
  * Hard ceiling on live page loads for the whole suite, asserted at the end.
  *
- * The suite currently plans 20 listing pages plus 8 detail pages derived from
+ * The suite currently plans 22 listing pages plus 8 detail pages derived from
  * them. The budget leaves a small margin and no more: it exists so that adding
  * "just one more page" is a deliberate act that shows up in a diff, rather than
  * something that quietly triples the load on a site that owes us nothing.
+ *
+ * RAISED FROM 30 when `go3/lithuania` and `go3/estonia` joined `go3/latvia` as
+ * empty-chain subjects. Those two pages took the plan to exactly 30, which would
+ * have left the ceiling doing nothing: at zero margin the assertion no longer
+ * distinguishes "someone added a page" from "something is re-fetching", because
+ * the very next request of any kind trips it. The margin is deliberately the same
+ * two slots it has always been, so raising it stays a visible act rather than a
+ * habit — the number is not meant to track the plan upwards.
  */
-const REQUEST_BUDGET = 30;
+const REQUEST_BUDGET = 32;
 
-/** Whole-suite budget: ~28 page loads, the first of which solves a challenge. */
+/** Whole-suite budget: ~30 page loads, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
 
 const MEDIA_TYPES: readonly FlixPatrolType[] = ['Movies', 'TV Shows'];
@@ -172,30 +180,32 @@ interface RegionalPage {
 }
 
 /**
- * Top 10 (regional) — the three-rung chain, across four different platform and
+ * Top 10 (regional) — the three-rung chain, across six different platform and
  * country pairings.
  *
- * `go3/latvia` is the deliberate small-market case: a regional Baltic service
- * whose page publishes a Movies chart but, routinely, no TV Shows chart at all.
- * That is not a hypothetical — it is the situation an untyped fallback rung used
- * to corrupt: with no TV Shows chart the typed rungs correctly matched nothing and
- * the chain fell through to a positional "first two tables" rung, which handed the
- * movie rows back as shows. That rung is gone, so the chain now returns empty here
- * — asserted below. A page with no data must still be recognised as such and
- * reported distinctly, never as drift.
+ * The three `go3` Baltic markets are the deliberate small-market case: pages that
+ * publish a Movies chart but, routinely, no TV Shows chart at all. That is not a
+ * hypothetical — it is the situation an untyped fallback rung used to corrupt: with
+ * no TV Shows chart the typed rungs correctly matched nothing and the chain fell
+ * through to a positional "first two tables" rung, which handed the movie rows back
+ * as shows. That rung is gone, so the chain now returns empty here — asserted
+ * below. A page with no data must still be recognised as such and reported
+ * distinctly, never as drift.
  *
  * Asking for a COMPLETED day is what keeps that distinction sharp. On the current
  * day a missing chart is ambiguous — the market may not chart it, or the site may
  * simply not have got round to publishing it yet. On a finished day only the first
  * reading survives, so the skip below means what it says. Verified on the live
- * site: `go3/latvia` publishes a full Movies chart and no TV Shows heading at all
- * on a completed day.
+ * site: all three `go3` markets publish a full Movies chart and no TV Shows heading
+ * at all on a completed day.
  */
 const TOP10_REGION_PAGES: readonly RegionalPage[] = [
   { path: onPreviousDay('/top10/netflix/france'), location: 'france', mayBeShortOrAbsent: false },
   { path: onPreviousDay('/top10/disney/united-states'), location: 'united-states', mayBeShortOrAbsent: false },
   { path: onPreviousDay('/top10/amazon-prime/japan'), location: 'japan', mayBeShortOrAbsent: false },
   { path: onPreviousDay('/top10/go3/latvia'), location: 'latvia', mayBeShortOrAbsent: true },
+  { path: onPreviousDay('/top10/go3/lithuania'), location: 'lithuania', mayBeShortOrAbsent: true },
+  { path: onPreviousDay('/top10/go3/estonia'), location: 'estonia', mayBeShortOrAbsent: true },
 ];
 
 /**
@@ -501,9 +511,9 @@ const top10RegionCases: RegionalCase[] = TOP10_REGION_PAGES
   .flatMap((entry) => MEDIA_TYPES.map((type) => ({ ...entry, type })));
 
 /**
- * The subset allowed to publish no chart at all — today, only `go3/latvia`. These
- * are the only cases where "the chain returns nothing" is a legitimate outcome and
- * therefore the only ones where it can be asserted as such.
+ * The subset allowed to publish no chart at all — today, the three `go3` Baltic
+ * markets. These are the only cases where "the chain returns nothing" is a
+ * legitimate outcome and therefore the only ones where it can be asserted as such.
  */
 const top10AbsentChartCases: RegionalCase[] = top10RegionCases
   .filter((entry) => entry.mayBeShortOrAbsent);
@@ -721,6 +731,28 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       },
     );
 
+    /**
+     * Three subjects, and the redundancy between them is SHALLOW — read this before
+     * trusting the count.
+     *
+     * Each subject self-skips when its market starts charting the missing type, so a
+     * single subject meant one market flipping silently deleted all live coverage of
+     * the behaviour. Two more mono-type markets make that harder. But all three are
+     * the SAME platform, `go3`: whatever makes one of them start publishing a TV
+     * Shows chart is far more likely to be a platform-wide feed change than a
+     * per-country one, and then all three skip together and the coverage is gone
+     * exactly as before. Three subjects are therefore NOT three independent chances.
+     *
+     * A second platform would be the real fix, and none is available: every non-go3
+     * market probed for this (`viaplay/iceland`, `vidio/indonesia`,
+     * `catchplay/taiwan`, `osn/kuwait`, `voyo/slovakia`) charts BOTH media types, so
+     * none of them can exercise an absent chart. If a mono-type market on another
+     * platform ever turns up, it is worth more here than a fourth Baltic one.
+     *
+     * What is never at stake is the guarantee itself: `tests/Flixpatrol/parse.test.ts`
+     * asserts the empty-chain behaviour unconditionally against a fixture. All that
+     * can be lost here is its verification against the real site.
+     */
     it.for(top10AbsentChartCases)(
       '$path — an unpublished $type chart yields EMPTY, never the other type rows',
       ({ path, location, type }, ctx) => {
