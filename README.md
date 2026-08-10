@@ -862,6 +862,10 @@ All of them are opt-in through environment variables, and each suite **skips cle
 variables are missing. Running `npm run test:e2e` with no environment at all skips everything and
 exits green, so you only ever enable the target you actually want to exercise:
 
+The variables can be exported inline, or written once into a git-ignored `.env.e2e` that
+`vitest.e2e.config.ts` loads automatically — copy `.env.e2e.example` and fill in what you need. A
+variable already present in the environment overrides the file, so one-off runs stay possible.
+
 | Suite           | Variables                                                                  |
 |-----------------|----------------------------------------------------------------------------|
 | **Floppy**      | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
@@ -883,6 +887,36 @@ E2E_MDBLIST_API_KEY=your-key npm run test:e2e
 # FlixPatrol markup drift — needs a reachable FlareSolverr, since the site is behind Cloudflare
 E2E_FLARESOLVERR_URL=http://localhost:8191/v1 npm run test:e2e
 ```
+
+#### Local infrastructure
+
+Two of the suites need something running locally: Floppy for its own suite, and FlareSolverr for the
+FlixPatrol one. `docker-compose.e2e.yml` provides both. It is separate from `docker-compose.yml`,
+which is user-facing, so nobody ends up starting a Floppy instance they have no use for — merge the
+two files rather than duplicating FlareSolverr:
+
+```bash
+# --wait blocks until the healthchecks pass; Floppy's first boot takes about 90 seconds
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait
+
+# Mint a token for the dedicated `e2e` account and put it in .env.e2e as E2E_FLOPPY_API_KEY
+docker exec floppy-e2e python manage.py shell -c \
+  "from users.models import User; u,_ = User.objects.get_or_create(username='e2e'); print(u.token)" \
+  2>/dev/null | tail -n1
+
+npm run test:e2e
+
+# Tear down, discarding the Floppy database with it
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v
+```
+
+The Floppy service deliberately persists nothing: a fresh, empty catalogue on every `up` is what
+makes the cold-path bootstrap test meaningful, since against a long-lived instance it consumes one
+uncatalogued title per run and eventually degrades to the warm path, testing nothing.
+
+Note the Floppy suite does **not** start a container itself, and does not skip when the instance is
+unreachable — if `E2E_FLOPPY_URL` is set, it fails. That is deliberate: configuring the URL is the
+statement that you meant to test Floppy.
 
 #### The FlixPatrol drift suite
 
