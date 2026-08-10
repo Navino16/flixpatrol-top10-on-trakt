@@ -34,6 +34,7 @@
 <p align="center">
   <a href="#getting-started">Getting Started</a> &bull;
   <a href="#choosing-your-platform">Choosing Your Platform</a> &bull;
+  <a href="#migrating-from-2x">Migrating from 2.x</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#supported-platforms">Supported Platforms</a> &bull;
   <a href="#scheduling">Scheduling</a> &bull;
@@ -68,13 +69,14 @@
 
 ## Getting Started
 
+The first run writes a template `./config/default.json` and exits. Get that far with your platform
+below, then follow the [next steps](#next-steps-all-platforms) — they are the same for all three.
+
 ### Docker
 
 ```bash
 docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
 ```
-
-Edit `./config/default.json`, then schedule periodic runs with cron.
 
 ### Linux / macOS
 
@@ -84,13 +86,25 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
     chmod +x flixpatrol-top10-linux-x64
     ./flixpatrol-top10-linux-x64
     ```
-3. Edit `./config/default.json` and run again
 
 ### Windows
 
 1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for Windows
 2. Run the binary from the command line (double-clicking will close the window automatically)
-3. Edit `./config/default.json` and run again
+
+### Next steps (all platforms)
+
+1. **Choose the backend your lists are written to and fill in its `Target` block** in
+   `./config/default.json`. `Target` is **mandatory** and carries the backend's credentials — the
+   app refuses to start while it still holds the template placeholders. See
+   [Choosing Your Platform](#choosing-your-platform) to pick between Trakt, Floppy and mdblist,
+   then [Trakt Setup](#trakt-setup), [Floppy Setup](#floppy-setup) or
+   [mdblist Setup](#mdblist-setup) to obtain the credentials.
+2. Edit the list blocks (`FlixPatrolTop10`, `FlixPatrolPopular`, …) to the lists you actually
+   want — see [Configuration](#configuration).
+3. Run again. Then schedule periodic runs, either with an
+   [external scheduler](#scheduling) or with the built-in
+   [daemon mode](#daemon-mode-built-in-scheduling).
 
 ## Choosing Your Platform
 
@@ -795,180 +809,90 @@ lives inside the app itself.
 
 ## Troubleshooting
 
-| Problem                 | Solution                                                                                 |
-|-------------------------|------------------------------------------------------------------------------------------|
-| "Rate limit exceeded"   | Increase time between runs. The cache helps reduce API calls.                            |
-| "List limit reached"    | Trakt free accounts are limited to 5 lists. Upgrade to VIP or reduce configured lists.   |
-| "No items found"        | Verify the platform/location combination exists on [FlixPatrol](https://flixpatrol.com). |
-| "Bad matching"          | This is a FlixPatrol/Trakt limitation. Titles are matched by name and year.              |
-| "Authentication failed" | Delete `./config/.trakt` and re-authenticate.                                            |
-| "Permission denied" on config folder (Docker) | The Docker image runs as a non-root user (`flixpatrol`, UID 1000). Fix permissions with: `sudo chown -R 1000:1000 /path/to/config` |
-| "Unable to get FlixPatrol ... page" with `HTTP 403 (cf-mitigated: challenge)` | Cloudflare is challenging the request. Enable the optional `FlareSolverr` block (see Configuration File). |
+Roughly ordered by how often each one comes up.
+
+**Startup fails with `Configuration format changed in 3.0.0.` and prints a `Target` block.**
+Your configuration still uses the 2.17-and-earlier shape: a root-level `Trakt` block and no
+`Target`. The message contains the exact block to paste, with your own values already filled in —
+copy it into `config/default.json` in place of the old block. Your file is never rewritten for you:
+the config directory is frequently a read-only mount and usually version-controlled. See
+[Migrating from 2.x](#migrating-from-2x).
+
+**Startup fails saying `Target.clientId` / `Target.clientSecret` still hold the placeholder values.**
+The `config/default.json` the app generated on first run was never edited. Replace the placeholders
+with real credentials — [create a Trakt API application](https://trakt.tv/oauth/applications/new)
+and copy its client id and secret into the `Target` block. The check runs field by field, so
+replacing only one of the two is still caught and the message names the one left over.
+
+**Warning about an obsolete root-level `Trakt` block.**
+Nothing is broken: the run proceeds normally. Credentials now live inside `Target`, so the
+root-level block is no longer read. Delete it whenever you like to silence the warning.
+
+**`Unable to get FlixPatrol ... page` with `HTTP 403 (cf-mitigated: challenge)`.**
+Cloudflare is challenging the request. Enable the optional
+[`FlareSolverr`](#configuration-file) block and point it at a FlareSolverr instance.
+
+**Warning naming leftover cache directories `movies/` and `tv-shows/` under your cache path.**
+They are the 2.x cache layout. The cache is now split into `details/` and `resolution-<backend>/`,
+so nothing reads them any more. Delete them yourself — the app never removes your files.
+
+**One list stopped updating, on a market that charts only one media type.**
+This is the correct behaviour, not a regression. When FlixPatrol publishes no chart for a media
+type, that half of the list is left exactly as it was rather than being filled with the other
+type's rows — which is what earlier versions could do. The other half still updates normally.
+
+**A `kids: true` entry produced nothing.**
+Kids is the last section of the day FlixPatrol publishes, so an early run finds the tables absent
+and leaves the list unchanged rather than writing the wrong content. Run later in the day. Also
+check the entry is on `netflix` with a specific `location`: kids charts do not exist for other
+platforms or for `world`, and the app skips the entry with a warning.
+
+**Titles in the list are wrong or missing.**
+FlixPatrol exposes only a name and a release year, so titles are matched on the backend by those
+two fields and can occasionally mismatch. When a detail page exposes no usable premiere date the
+year is reported as unknown and the match falls back to the title alone. If nothing at all
+resolves, a warning says so and the list is left unchanged instead of being emptied.
+
+**No items found for a platform/location combination.**
+Verify the combination actually exists on [FlixPatrol](https://flixpatrol.com) — not every platform
+charts in every country. Set `fallback` to another location if you want an empty result to fall back
+rather than produce nothing.
+
+**Creating a list fails once you have a few of them.**
+A free Trakt account is capped at **5 personal lists** and a free mdblist account at **4 static
+lists**. Beyond that, list creation starts failing. Trim your configuration, or upgrade (Trakt VIP,
+or a paid mdblist plan). Floppy has no such cap.
+
+**On Floppy, every list is created private and `privacy` is ignored.**
+The Floppy API exposes no way to set visibility, so the setting cannot be honoured; a warning says
+so once at startup. Flip the ones you want to share by hand in the Floppy web UI. This blocks
+nothing for [Kometa](https://kometa.wiki/), which reads private lists with the same token. Note that
+`link` and `friends` are rejected outright on Floppy and mdblist — see
+[Privacy levels per backend](#privacy-levels-per-backend).
+
+**`Permission denied` on the config folder (Docker).**
+The image runs as a non-root user (`flixpatrol`, UID 1000). Fix ownership of the mounted directory:
+`sudo chown -R 1000:1000 /path/to/config`.
+
+**Authentication failed on Trakt.**
+Delete the token file `Target.saveFile` points at (`./config/.trakt` by default) and run again to
+go through the OAuth device flow afresh. On Floppy and mdblist there is no token file — re-check
+`Target.apiKey`.
+
+**Rate limit exceeded.**
+Increase the time between runs. Keeping `Cache.enabled: true` reduces both scraping and backend API
+calls substantially, since resolved titles are not looked up again until the TTL expires.
 
 ## Development
 
-```bash
-# Install dependencies
-npm install
+Local setup, the full command reference (build, lint, unit tests, coverage), the code style and
+the pull request conventions live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-# Run in development mode (hot reload)
-npm run start:dev
-
-# Build
-npm run build
-
-# Run after build
-npm run start
-
-# Lint
-npm run lint
-
-# Lint and auto-fix
-npm run lint-and-fix
-
-# Run the test suite once
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage (reports in .reports/coverage)
-npm run test:coverage
-
-# Run the opt-in end-to-end suites against real services (see below)
-npm run test:e2e
-
-# Create cross-platform binaries
-npm run package
-```
-
-### Tests
-
-`npm test` runs the unit and integration suites offline — no network, no credentials. Coverage
-(`npm run test:coverage`, which is what CI runs) is gated at **80%** for lines, functions,
-branches and statements. `src/app.ts` is deliberately excluded from coverage: it is
-process-level wiring (signal handlers, `process.exit` paths), so testing it would assert on the
-process lifecycle rather than on behaviour — the logic it orchestrates is covered through
-`Pipeline/` and `Scheduler/`.
-
-### End-to-end tests
-
-`npm run test:e2e` uses a separate config (`vitest.e2e.config.ts`) and runs only
-`tests/e2e/**/*.e2e.test.ts`. There is one suite per backend plus one for FlixPatrol itself, and
-each talks to a **real service** — a real Floppy instance, a real Trakt account, a real mdblist
-account, the live FlixPatrol site — so they are excluded from `npm test` and from the coverage
-numbers.
-
-All of them are opt-in through environment variables, and each suite **skips cleanly** when its own
-variables are missing. Running `npm run test:e2e` with no environment at all skips everything and
-exits green, so you only ever enable the target you actually want to exercise:
-
-The variables can be exported inline, or written once into a git-ignored `.env.e2e` that
-`vitest.e2e.config.ts` loads automatically — copy `.env.e2e.example` and fill in what you need. A
-variable already present in the environment overrides the file, so one-off runs stay possible.
-
-| Suite           | Variables                                                                  |
-|-----------------|----------------------------------------------------------------------------|
-| **Floppy**      | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
-| **Trakt**       | `E2E_TRAKT_CLIENT_ID`, `E2E_TRAKT_CLIENT_SECRET`, `E2E_TRAKT_SAVE_FILE` (all required) |
-| **mdblist**     | `E2E_MDBLIST_API_KEY`                                                       |
-| **FlixPatrol**  | `E2E_FLARESOLVERR_URL`                                                      |
-
-```bash
-# Floppy only
-E2E_FLOPPY_URL=http://localhost:8000 E2E_FLOPPY_API_KEY=your-token npm run test:e2e
-
-# Trakt only — E2E_TRAKT_SAVE_FILE must point at an EXISTING token file
-E2E_TRAKT_CLIENT_ID=your-id E2E_TRAKT_CLIENT_SECRET=your-secret \
-  E2E_TRAKT_SAVE_FILE=./config/.trakt npm run test:e2e
-
-# mdblist only
-E2E_MDBLIST_API_KEY=your-key npm run test:e2e
-
-# FlixPatrol markup drift — needs a reachable FlareSolverr, since the site is behind Cloudflare
-E2E_FLARESOLVERR_URL=http://localhost:8191/v1 npm run test:e2e
-```
-
-#### Local infrastructure
-
-Two of the suites need something running locally: Floppy for its own suite, and FlareSolverr for the
-FlixPatrol one. `docker-compose.e2e.yml` provides both. It is separate from `docker-compose.yml`,
-which is user-facing, so nobody ends up starting a Floppy instance they have no use for — merge the
-two files rather than duplicating FlareSolverr:
-
-```bash
-# --wait blocks until the healthchecks pass; Floppy's first boot takes about 90 seconds
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait
-
-# Mint a token for the dedicated `e2e` account and put it in .env.e2e as E2E_FLOPPY_API_KEY
-docker exec floppy-e2e python manage.py shell -c \
-  "from users.models import User; u,_ = User.objects.get_or_create(username='e2e'); print(u.token)" \
-  2>/dev/null | tail -n1
-
-npm run test:e2e
-
-# Tear down, discarding the Floppy database with it
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v
-```
-
-The Floppy service deliberately persists nothing: a fresh, empty catalogue on every `up` is what
-makes the cold-path bootstrap test meaningful, since against a long-lived instance it consumes one
-uncatalogued title per run and eventually degrades to the warm path, testing nothing.
-
-Note the Floppy suite does **not** start a container itself, and does not skip when the instance is
-unreachable — if `E2E_FLOPPY_URL` is set, it fails. That is deliberate: configuring the URL is the
-statement that you meant to test Floppy.
-
-#### The FlixPatrol drift suite
-
-`tests/e2e/FlixPatrolXPath.e2e.test.ts` is the odd one out: it writes nothing, it only reads. Every
-XPath expression in `src/Flixpatrol/parse.ts` is matched against a site nobody here controls, and
-when that markup drifts the fallbacks keep the parse "working" while quietly returning the wrong
-thing — which is exactly how a run of releases once stamped the same year onto every single title.
-
-So the suite does **not** assert that parsing succeeds. It asserts that the **primary** rung of each
-expression chain still matches, and treats a fallback taking over as a failure in its own right. It
-also checks one invariant that holds whatever the site lists today: several unrelated titles must
-not all report the same release year. It never asserts today's content — only shapes, counts and
-which rung matched.
-
-It covers one page per XPath family (Top 10 world, Top 10 regional, Top 10 Kids, Popular, Most
-watched including the `original: true` variant, Most hours including its language tabs), and derives
-its detail-page URLs at runtime from those listings rather than hardcoding `/title/...` links, which
-would rot as the site prunes pages. Each page is fetched exactly once and shared by every assertion.
-
-Every backend suite checks the end state by querying the service directly, never through the
-adapter, and cleans up after itself: each names the objects it creates with a per-run unique
-suffix, and deletes them in an `afterAll` that runs even when a test failed.
-
-Trakt authenticates through an OAuth **device flow** — a human opens a URL and types a code —
-which cannot happen inside a test. The Trakt suite therefore consumes an **already-obtained**
-token: run the application once to authorise, then point `E2E_TRAKT_SAVE_FILE` at the token file
-it wrote. The suite creates a single `private` list (a free Trakt account is capped at five
-personal lists) and never touches a list it did not create.
-
-#### What runs in CI, and what does not
-
-- **Floppy runs automatically in CI**, as the `E2E - Floppy` job of
-  `.github/workflows/ci.yml`, on every pull request to `main`/`develop` — the same trigger as
-  `lint`, `build` and `test`. It stands up its own throwaway containers (Redis + the upstream
-  Floppy image) and mints its API token inside them, so it needs **no repository secret**. That
-  makes it safe even for pull requests from forks, and it is a first-class gate rather than an
-  opt-in extra.
-- **Trakt and mdblist are deliberately local-only.** They write to **real third-party accounts**,
-  so the owner wants to decide, run by run, which credentials are used. They are not part of any
-  workflow and depend on no repository secret — there is nothing to leak and nothing that can
-  quietly burn a metered quota (mdblist's free tier is capped at 1000 requests/day and a handful
-  of lists) or churn a real Trakt profile. Run them by hand, with the commands above.
-- **The FlixPatrol drift suite runs weekly**, as `.github/workflows/flixpatrol-drift.yml`
-  (`schedule` + `workflow_dispatch`). The job stands up its own FlareSolverr container, so it needs
-  no secret either. It is deliberately **not** wired to `pull_request`: as this README warns, using
-  the project carries a risk of being IP banned from FlixPatrol, and GitHub runners share a small
-  set of published address ranges — scraping the site on every pull request would be both hostile
-  to a third party and a good way to get those ranges blocked. Drift is a slow-moving failure, so
-  weekly is enough to shorten the time to notice from months to days. A failure fails the job
-  loudly and, when a `DISCORD_WEBHOOK` repository secret exists, posts which assertions drifted;
-  without the secret the notification step skips and the run simply stays red.
+`npm run test:e2e` runs the opt-in end-to-end suites against real services — a real Floppy
+instance, a real Trakt account, a real mdblist account, the live FlixPatrol site. Each suite is
+enabled by its own environment variables and **skips cleanly** when they are missing, so running
+it with no environment at all skips everything and exits green. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the variables, the local infrastructure and what runs in CI.
 
 ## License
 
