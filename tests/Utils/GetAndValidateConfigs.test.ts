@@ -414,14 +414,14 @@ describe('GetAndValidateConfigs', () => {
       it('returns disabled defaults when the FlareSolverr block is absent', () => {
         vi.mocked(config.has).mockReturnValue(false);
         const result = GetAndValidateConfigs.getFlareSolverrOptions();
-        expect(result).toEqual({ enabled: false, maxTimeout: 60000 });
+        expect(result).toEqual({ enabled: false, maxTimeout: 60000, disableMedia: false });
       });
 
       it('returns disabled defaults without error when present but disabled', () => {
         vi.mocked(config.has).mockReturnValue(true);
         vi.mocked(config.get).mockReturnValue({ enabled: false });
         const result = GetAndValidateConfigs.getFlareSolverrOptions();
-        expect(result).toEqual({ enabled: false, maxTimeout: 60000 });
+        expect(result).toEqual({ enabled: false, maxTimeout: 60000, disableMedia: false });
       });
 
       it('returns a valid enabled configuration', () => {
@@ -431,7 +431,7 @@ describe('GetAndValidateConfigs', () => {
         });
         const result = GetAndValidateConfigs.getFlareSolverrOptions();
         expect(result).toEqual({
-          enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 90000,
+          enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 90000, disableMedia: false,
         });
       });
 
@@ -440,6 +440,22 @@ describe('GetAndValidateConfigs', () => {
         vi.mocked(config.get).mockReturnValue({ enabled: true, url: 'http://localhost:8191/v1' });
         const result = GetAndValidateConfigs.getFlareSolverrOptions();
         expect(result.maxTimeout).toBe(60000);
+      });
+
+      it('defaults disableMedia to false when omitted', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({ enabled: true, url: 'http://localhost:8191/v1' });
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result.disableMedia).toBe(false);
+      });
+
+      it('carries disableMedia through when set', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue({
+          enabled: true, url: 'http://localhost:8191/v1', disableMedia: true,
+        });
+        const result = GetAndValidateConfigs.getFlareSolverrOptions();
+        expect(result.disableMedia).toBe(true);
       });
 
       it('throws when enabled with no url', () => {
