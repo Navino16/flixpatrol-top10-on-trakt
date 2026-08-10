@@ -68,9 +68,7 @@ jobs:
           docker logs "$FLARESOLVERR_CONTAINER"
           exit 1
 
-      # The output is kept so the Discord message can name the expressions that
-      # moved. Only the FlareSolverr variable is exported, so the Trakt and
-      # mdblist suites self-skip: they write to real third-party accounts.
+      # The output is kept so the Discord message can name the expressions that moved.
       - name: Run FlixPatrol drift suite
         env:
           E2E_FLARESOLVERR_URL: http://127.0.0.1:${{ env.FLARESOLVERR_PORT }}/v1

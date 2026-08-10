@@ -94,13 +94,8 @@ jobs:
           report_type: test_results
           fail_ci_if_error: false
 
-  # Floppy is self-hostable, so this job stands up its own throwaway instance and
-  # mints its own token: it needs no repository secret, which makes it safe to run
-  # on pull requests from forks.
-  #
-  # The other two E2E suites are deliberately absent from CI: Trakt and mdblist
-  # write to real third-party accounts, so they stay local-only and are run by
-  # hand with owner-controlled credentials.
+  # Stands up its own throwaway instance and mints its own token, so it needs no
+  # repository secret and is safe on pull requests from forks.
   e2e-floppy:
     name: E2E - Floppy
     runs-on: ubuntu-latest
