@@ -55,10 +55,10 @@ export class FlixPatrol {
     this.impit = new Impit({ browser: 'chrome', timeout: 30000 });
     this.flareSolverr = flareSolverr;
     if (cacheOptions.enabled) {
-      // A single, backend-agnostic cache: it stores what FlixPatrol says about the
-      // media (title + year), not the identifier of one given platform.
-      // New path and new namespace, so the 2.17 caches are ignored rather than
-      // overwritten — a rollback still finds its own caches intact.
+      // One backend-agnostic cache, storing what FlixPatrol says about the media
+      // (title + year) rather than any platform's identifier. Its own path and
+      // namespace, so caches written by an older version are neither read nor
+      // overwritten and a rollback still finds its own intact.
       this.detailCache = Cache({
         basePath: `${cacheOptions.savePath}/details`,
         ns: 'flixpatrol-detail',
@@ -89,12 +89,11 @@ export class FlixPatrol {
     const url = `${this.options.url}${path}`;
     logger.silly(`Accessing URL: ${url}`);
 
-    // When FlareSolverr is configured, every request goes through it. We do not try
-    // impit first: FlixPatrol currently answers 403 (cf-mitigated: challenge) to
-    // any non-browser client, and making the bypass conditional on that exact
-    // header would silently stop working if Cloudflare changed the signal.
-    // No retry loop here — FlareSolverr retries internally, and wrapping a 12s
-    // challenge solve in a 3x exponential backoff produces pathological runtimes.
+    // When FlareSolverr is configured every request goes through it, with no attempt at
+    // impit first: making the bypass conditional on the exact `cf-mitigated` header would
+    // silently stop working the day Cloudflare changed that signal. No retry loop either,
+    // since FlareSolverr retries internally and wrapping a slow challenge solve in an
+    // exponential backoff produces pathological runtimes.
     if (this.flareSolverr) {
       return this.flareSolverr.get(url);
     }
@@ -107,8 +106,8 @@ export class FlixPatrol {
           return await res.text();
         }
         if (!RETRY_STATUS_CODES.has(res.status) || attempt === MAX_RETRIES) {
-          // Cloudflare sets cf-mitigated when it blocks or challenges a request, which is the
-          // difference between "FlixPatrol is down" and "we got bot-blocked".
+          // Cloudflare sets cf-mitigated when it blocks or challenges a request, which
+          // separates "FlixPatrol is down" from "we got bot-blocked".
           const cfMitigated = res.headers?.get('cf-mitigated');
           const cfSuffix = cfMitigated ? ` (cf-mitigated: ${cfMitigated})` : '';
           logger.error(`Giving up on ${url}: HTTP ${res.status}${cfSuffix}`);
@@ -171,10 +170,10 @@ export class FlixPatrol {
       shows = await this.convertResultsToItems(showsRaw.slice(0, config.limit));
     }
 
-    // Behaviour change vs. 2.17: the fallback now triggers when the page yields no
-    // result at all, no longer when no backend id could be resolved. A title listed
-    // by FlixPatrol but unknown to the backend is reported as unmatched instead of
-    // silently swapping the whole list for another location's.
+    // The fallback triggers only when the page yields no result at all, never when the
+    // backend failed to resolve one: a title FlixPatrol lists but the backend does not
+    // know is reported unmatched rather than swapping the whole list for another
+    // location's.
     if (movies.length === 0 && shows.length === 0 && config.fallback !== false && !config.kids) {
       // Fallback to world if no match (not applicable for kids)
       logger.warn(`No items found for ${config.platform}, falling back to ${config.fallback} search`);
@@ -193,9 +192,9 @@ export class FlixPatrol {
   }
 
   /**
-   * Narrows an arbitrary cached payload to a MediaItem. Validates the shape it is
-   * about to trust rather than casting on the presence of one key: a hand-edited or
-   * half-written cache file must miss, not poison every run until the TTL expires.
+   * Narrows an arbitrary cached payload to a MediaItem, validating the whole shape rather
+   * than casting on one key: a hand-edited or half-written cache file must miss, not
+   * poison every run until the TTL expires.
    */
   private static isMediaItem(value: unknown): value is MediaItem {
     if (value === null || typeof value !== 'object') return false;
@@ -205,17 +204,14 @@ export class FlixPatrol {
   }
 
   private async getMediaItem(result: FlixPatrolMatchResult): Promise<MediaItem> {
-    // Single choke point for every detail-page path: whatever a listing links at,
-    // only the canonical `/title/<slug>/` page is ever fetched. Doing it here rather
-    // than in each getter means a listing family added later cannot reintroduce the
-    // sub-page title bug by forgetting to opt in.
+    // Single choke point for every detail-page path, so only the canonical
+    // `/title/<slug>/` page is ever fetched. Canonicalising here rather than in each
+    // getter means a listing family added later cannot reintroduce the sub-page title
+    // bug by forgetting to opt in.
     //
-    // Normalised BEFORE the cache lookup, deliberately. The detail cache is keyed on
-    // the path, so canonicalising first makes `/title/x/hours/`, `/title/x/trailers/`
-    // and `/title/x/` share one entry — correct, since all three describe the same
-    // media, and cheaper, since a title charting in two families is fetched once.
-    // Normalising after the lookup would key the cache on the listing's spelling and
-    // store the same media once per link shape, each fetched separately.
+    // Deliberately before the cache lookup: the cache is keyed on the path, so the
+    // sub-page and canonical spellings of one media share a single entry instead of
+    // being stored and fetched once per link shape.
     const path = toCanonicalTitlePath(result);
 
     if (this.detailCache !== null) {
@@ -234,10 +230,9 @@ export class FlixPatrol {
     const { title, year } = parseDetailPage(html);
     const item: MediaItem = { title, year };
 
-    // Only cache a fully successful parse. A missing year is not a benign gap: it is
-    // exactly what disambiguates the later backend search, so persisting one would
-    // degrade every match for the whole TTL (7 days by default) after a single
-    // transient markup drift or half-rendered detail page. A miss costs one re-scrape.
+    // Only a fully successful parse is cached. The year is what disambiguates the later
+    // backend search, so persisting a missing one would degrade every match for the whole
+    // TTL after a single transient markup drift. A miss costs one re-scrape.
     if (title.length > 0 && year !== null && this.detailCache !== null) {
       await this.detailCache.set(path, item);
     }

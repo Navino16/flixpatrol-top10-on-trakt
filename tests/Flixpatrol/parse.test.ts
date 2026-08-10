@@ -12,14 +12,12 @@ import {
   toCanonicalTitlePath,
 } from '../../src/Flixpatrol/parse';
 
-// These tests take HTML in and assert on plain data out: no HTTP mock, no cache,
-// no config. That is the whole point of the parsing module living on its own —
-// the XPath chains are the part of the scraper that silently rots when FlixPatrol
-// changes its markup, so they must be cheap to pin down against small fixtures.
+// HTML in, plain data out: the XPath chains rot silently when FlixPatrol changes
+// its markup, so they are pinned here against small fixtures.
 
 // The site-wide marketing blurb that lives in `div.mb-6` on every detail page. It ends
-// in a hardcoded "2021", which a text-scanning year fallback would happily pick up and
-// stamp onto every single title.
+// in a hardcoded "2021", which a text-scanning year fallback would stamp onto every
+// single title, so the detail fixtures below deliberately carry it.
 const MARKETING_BLURB_HTML = '<div class="mb-6">FlixPatrol tracks the most popular '
   + 'TV shows in 2021 across all streaming platforms.</div>';
 
@@ -92,7 +90,7 @@ describe('FlixPatrol parsing', () => {
 
     it('falls back to the tolerant headline match when the h3 text is not exact', () => {
       // The strict expression compares the whole h3 text, so any decoration around
-      // the headline kills it and the second expression has to catch the section.
+      // the headline kills it and the tolerant expression has to catch the section.
       const html = `
         <html><body>
           <div>
@@ -106,11 +104,8 @@ describe('FlixPatrol parsing', () => {
     });
 
     it('returns nothing rather than borrowing tables when no headline matches at all', () => {
-      // There used to be a third, untyped rung taking "the first two tables on the
-      // page" whatever they held. On a market publishing only a Movies chart it
-      // answered the TV Shows question with the movie rows, and the shows list was
-      // filled with films that no downstream check could reject. No data is the
-      // correct answer here, so the caller can leave the existing list alone.
+      // Borrowing untyped tables would answer a TV Shows question with movie rows,
+      // which nothing downstream can reject. No data is the safe answer.
       const html = `
         <html><body>
           <table><tr><td><a class="hover:underline" href="/title/table-1">T1</a></td></tr></table>
@@ -123,8 +118,6 @@ describe('FlixPatrol parsing', () => {
     });
 
     it('never answers one media type with the other type chart', () => {
-      // The `go3/latvia` shape, reduced to a fixture: a page publishing a Movies
-      // chart and no TV Shows heading at all.
       const html = `
         <html><body>
           <div>
@@ -293,19 +286,16 @@ describe('FlixPatrol parsing', () => {
   });
 
   describe('toCanonicalTitlePath', () => {
-    // The bug this exists for: several listings do NOT link at the title page.
-    // Most-watched links at `/title/<slug>/hours/` and YouTube Popular at
-    // `/title/<slug>/trailers/#toc-...`, and those sub-pages print the section name
-    // inside their own `h1` — "KPop Demon Hunters Hours", "Primetime Trailers".
-    // The href is the only safe place to repair that: see the note in parse.ts on
-    // why trimming the suffix off the title would mutilate "72 Hours".
+    // Several listings do not link at the title page: most-watched links at
+    // `/title/<slug>/hours/` and YouTube Popular at `/title/<slug>/trailers/#toc-...`,
+    // and those sub-pages append the section name to their own `h1`. The href is the
+    // only safe place to repair that, since a real title may itself end in "Hours".
     const canonical = '/title/kpop-demon-hunters/';
 
     it('drops a sub-page segment', () => {
       expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours/')).toBe(canonical);
       expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours')).toBe(canonical);
       expect(toCanonicalTitlePath('/title/kpop-demon-hunters/trailers/')).toBe(canonical);
-      // Deeper nesting collapses just the same: only the slug survives.
       expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours/by-country/')).toBe(canonical);
     });
 
@@ -323,14 +313,14 @@ describe('FlixPatrol parsing', () => {
 
     it('leaves an already-canonical path untouched', () => {
       expect(toCanonicalTitlePath('/title/inception/')).toBe('/title/inception/');
-      // The site links with a trailing slash; a bare slug resolves to the same page
-      // and is normalised onto one single spelling so it shares one cache entry.
+      // A bare slug resolves to the same page, and is normalised onto one spelling
+      // so both share a single cache entry.
       expect(toCanonicalTitlePath('/title/inception')).toBe('/title/inception/');
     });
 
     it('leaves a path that is not a title page alone', () => {
-      // Conservative by design: nothing outside `/title/<slug>` may be rewritten,
-      // or a future listing family would start fetching a page that does not exist.
+      // Nothing outside `/title/<slug>` may be rewritten, or a future listing family
+      // would start fetching a page that does not exist.
       const untouched = [
         '/top10/netflix/world',
         '/most-watched/2025/movies',
@@ -356,11 +346,6 @@ describe('FlixPatrol parsing', () => {
       expect(parseDetailPage(html)).toEqual({ title: 'The Matrix', year: 1999 });
     });
 
-    // Regression: FlixPatrol's markup drifted and the year XPath went dead. The old code
-    // fell back to a regex over `div.mb-6`, which had become a site-wide marketing blurb
-    // ending in "the most popular TV shows in 2021" — so every scraped title was dated
-    // 2021, and the "exact title AND year" branch of the match cascade confidently
-    // selected homonyms (Paulette 2012 resolved to an unrelated 2021 film).
     it('extracts the real premiere year even when the 2021 marketing blurb is present', () => {
       const html = detailHeader(`
         <div class="md:flex items-baseline justify-between"><h1 class="mb-4 text-h1">Paulette</h1></div>
@@ -381,8 +366,7 @@ describe('FlixPatrol parsing', () => {
     });
 
     it('reads the year of an MM/DD/YYYY premiere date whose day exceeds 12', () => {
-      // A day above 12 removes any doubt about which component is read: only the
-      // trailing year may ever be picked up.
+      // A day above 12 rules out reading the day as a month.
       const html = detailHeader(`
         <h1 class="mb-4 text-h1">Turbulence</h1>
         ${premiereBlock('05/18/2025')}

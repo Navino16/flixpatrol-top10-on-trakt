@@ -4,8 +4,8 @@ import { logger } from './Logger';
 import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../types';
 
 /**
- * Scraping cache directories of 2.x. The move to a two-level cache
- * (`details` plus `resolution-<backend>`) left them behind, unread.
+ * Scraping cache directories of 2.x, left unread by the move to a two-level cache
+ * (`details` plus `resolution-<backend>`).
  */
 const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows'] as const;
 

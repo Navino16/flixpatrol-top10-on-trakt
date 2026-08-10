@@ -67,13 +67,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
   && value !== null
   && !Array.isArray(value);
 
-/**
- * Root-level credential blocks that 3.0.0 does not read. Only `Trakt` ever
- * shipped, in 2.17.0 and earlier. `Floppy` and `Mdblist` existed solely in an
- * unreleased intermediate shape of this branch; they are listed here so anyone
- * running that intermediate shape gets the same guidance, and they are
- * deliberately absent from the user-facing documentation.
- */
+/** Root-level credential blocks that 3.0.0 no longer reads. */
 const OBSOLETE_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
 
 type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
@@ -85,10 +79,9 @@ const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
 };
 
 /**
- * Fields the 3.0.0 `Target` block must carry per backend, with the placeholder
- * shown when the value cannot be recovered from the user's own configuration.
- * Placeholders are never secrets: only values actually read from the user's
- * file are echoed back.
+ * Fields the `Target` block must carry per backend, with the placeholder shown when the
+ * value cannot be recovered from the user's own configuration. Only values read from
+ * that file are ever echoed back, so a placeholder is never a secret.
  */
 const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: string }[]> = {
   trakt: [
@@ -122,9 +115,8 @@ function renderTargetBlock(
 }
 
 /**
- * Builds the migration message. It shows the block to write rather than dumping
- * a schema error, because the raw Zod output on an unmigrated file ("invalid
- * discriminator value") tells the user nothing about what to do next.
+ * Builds the migration message. It shows the block to write rather than the schema
+ * error, whose "invalid discriminator value" says nothing about what to do next.
  */
 function buildMigrationMessage(
   type: TargetBackendName,
@@ -147,8 +139,8 @@ function buildMigrationMessage(
     '',
     head,
     '',
-    // An already-migrated `Target` wins over an obsolete root-level block, so a
-    // partial migration is echoed back with the values the user most recently wrote.
+    // `Target` is listed first so a partial migration echoes back the values the user
+    // wrote most recently rather than the obsolete block's.
     renderTargetBlock(type, [targetRecord, obsoleteRecord]),
     '',
     tail,
@@ -156,10 +148,9 @@ function buildMigrationMessage(
 }
 
 /**
- * Names the obsolete root-level blocks a migrated configuration still carries.
- * Dead config is harmless — it is never read — so this is a single warning and
- * never an error: refusing to start would turn a successful migration into an
- * outage.
+ * Names the obsolete root-level blocks a migrated configuration still carries. Dead
+ * config is never read, so this warns rather than failing: refusing to start would turn
+ * a successful migration into an outage.
  */
 function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): void {
   if (presentObsoleteBlocks.length === 0) return;
@@ -171,10 +162,7 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
     + `read and can be deleted.`);
 }
 
-/**
- * Where the real credentials come from, per backend. Only backends that ship
- * template credentials need an entry — today, only `trakt`.
- */
+/** Where the real credentials come from. Only backends shipping templates need an entry. */
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
   trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
     + 'client id and client secret into the `Target` block.',
@@ -187,14 +175,12 @@ function formatFieldList(names: string[]): string {
 }
 
 /**
- * Refuses to start while the `Target` block still carries the credentials
- * shipped in the configuration template. They satisfy every schema, so without
- * this the run starts, scrapes FlixPatrol for twenty seconds and only then
- * collapses into a wall of `403 Forbidden` responses and `No match` warnings,
- * with nothing anywhere naming the configuration as the cause.
+ * Refuses to start while the `Target` block still carries the template credentials.
+ * They satisfy every schema, so without this the failure surfaces much later as
+ * `403 Forbidden` and `No match` noise that never names the configuration as the cause.
  *
- * Checked field by field, so replacing only one of the two credentials is still
- * caught and the message names the one left over.
+ * Checked field by field, so replacing only some of the credentials is still caught and
+ * the message names the ones left over.
  */
 function checkForTemplateCredentials(target: TargetOptions): void {
   const templates = TEMPLATE_CREDENTIALS[target.type];
@@ -264,14 +250,11 @@ export class GetAndValidateConfigs {
   }
 
   /**
-   * Returns the actionable migration message when the configuration has not been
-   * migrated to the 3.0.0 `Target` block, `null` when the schema should report
-   * the problem itself.
+   * Returns the migration message for a configuration that has not moved to the
+   * `Target` block, or null when the schema should report the problem itself.
    *
-   * Only reached once `Target` has failed to satisfy the union, so it never sees
-   * an already-migrated file. Two signals mark an unmigrated one: a root-level
-   * credential block that nothing reads any more, and a `Target` that carries
-   * only the selector — including no `Target` at all.
+   * Two signals mark an unmigrated file: a root-level credential block nothing reads
+   * any more, and a `Target` carrying only the selector — including no `Target` at all.
    */
   private static detectUnmigratedConfig(
     rawTarget: unknown,
@@ -279,8 +262,8 @@ export class GetAndValidateConfigs {
   ): string | null {
     const targetRecord = isRecord(rawTarget) ? rawTarget : undefined;
 
-    // A `Target` that is present but not an object is not an unmigrated shape:
-    // let the schema report it instead of guessing a migration.
+    // A `Target` present but not an object is not an unmigrated shape, so let the schema
+    // report it instead of guessing a migration.
     if (rawTarget !== undefined && targetRecord === undefined) {
       if (presentObsoleteBlocks.length === 0) return null;
       return buildMigrationMessage('trakt', presentObsoleteBlocks, undefined, undefined);
@@ -290,8 +273,8 @@ export class GetAndValidateConfigs {
       || Object.keys(targetRecord).every((key) => key === 'type');
     if (presentObsoleteBlocks.length === 0 && !selectorOnly) return null;
 
-    // Which backend to show: what the user selected, else the single obsolete
-    // block they kept, else the historical default.
+    // Which backend to show: what the user selected, else the single obsolete block they
+    // kept, else the default.
     const selected = targetRecord?.type;
     let type: TargetBackendName = 'trakt';
     if (isBackendName(selected)) {
@@ -316,13 +299,11 @@ export class GetAndValidateConfigs {
       const presentObsoleteBlocks = OBSOLETE_CREDENTIAL_BLOCKS.filter((block) => config.has(block));
       const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
 
-      // A valid `Target` is a migrated configuration, whatever else is lying
-      // around: obsolete root-level blocks are dead config, worth a warning and
-      // never a failed startup.
+      // A valid `Target` means a migrated configuration whatever else is lying around.
       const parsed = TargetSchema.safeParse(rawTarget);
       if (parsed.success) {
-        // Before the obsolete-block warning: unreplaced credentials are fatal,
-        // so advice about dead config would only be noise ahead of the error.
+        // Ordered before the obsolete-block warning: unreplaced credentials are fatal, so
+        // advice about dead config would only be noise ahead of the error.
         checkForTemplateCredentials(parsed.data);
         warnAboutObsoleteBlocks(presentObsoleteBlocks);
         return parsed.data;
@@ -339,12 +320,10 @@ export class GetAndValidateConfigs {
   }
 
   /**
-   * Cross-check between the selected backend and every list entry. It cannot
-   * live in a Zod schema: the `config` package loads `Target` and the list
-   * blocks independently, so the two halves only exist together here.
-   *
-   * Also the single place where the backend-wide startup warnings are emitted —
-   * once per run, never once per list entry.
+   * Cross-check between the selected backend and every list entry. It cannot live in a
+   * Zod schema, because `config` loads `Target` and the list blocks independently and
+   * the two halves only meet here. Also the one place the backend-wide startup warnings
+   * are emitted, so they appear once per run rather than once per list entry.
    */
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
     if (target.type !== 'trakt') {

@@ -103,7 +103,7 @@ describe('MdblistTarget', () => {
 
   it('creates a private list when privacy is private', async () => {
     fetchMock
-      .mockResolvedValueOnce(json([])) // GET /lists/user
+      .mockResolvedValueOnce(json([]))
       .mockResolvedValueOnce(json({ id: 42, slug: 'my-list' }, 201))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
@@ -178,11 +178,8 @@ describe('MdblistTarget', () => {
   });
 
   /**
-   * Regression guard on the fused write. A `type: "both"` list used to be pushed
-   * TWICE: `GET /lists/user` and `GET /lists/{id}/items` ran twice — and the
-   * items endpoint already returns BOTH buckets, so half of each response was
-   * discarded — plus one remove and one add per kind. That is 8 requests where 4
-   * suffice, on an API that meters a daily quota.
+   * `GET /lists/{id}/items` returns BOTH buckets, so a `type: "both"` list needs
+   * a single read, and remove/add each take one bulk call for the two kinds.
    */
   it('writes a "both" list with one lookup, one items read and one bulk call per direction', async () => {
     fetchMock
@@ -217,8 +214,7 @@ describe('MdblistTarget', () => {
     expect(JSON.parse(fetchMock.mock.calls[3][1].body as string)).toEqual({ movies: [{ tmdb: 3 }] });
   });
 
-  // An empty array is a deliberate wipe: the removal happens, and the add call is
-  // skipped rather than sent with an empty payload.
+  // An empty array is a deliberate wipe, unlike an absent key.
   it('removes a bucket handed an empty array and skips the pointless add', async () => {
     fetchMock
       .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }]))
@@ -249,17 +245,8 @@ describe('MdblistTarget', () => {
 });
 
 /**
- * Pagination of `GET /lists/{id}/items`.
- *
- * mdblist pages at 1,000 items, which is far above anything this tool writes, so
- * unlike Floppy this has never bitten in production — and it is deliberately NOT
- * covered by an E2E suite: the test account is a real person's metered free
- * tier, and building a 1,000-item list there to cross the boundary is not an
- * acceptable cost. A fake multi-page server covers it instead.
- *
- * What is asserted is that the read which decides what gets REMOVED sees the
- * whole list: a truncated read would leave stale items behind while the fresh
- * ones are added on top.
+ * Pagination of `GET /lists/{id}/items`. That read decides what gets REMOVED, so
+ * a truncated one would leave stale items behind while fresh ones are added.
  */
 describe('MdblistTarget pagination', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -302,8 +289,6 @@ describe('MdblistTarget pagination', () => {
 
     await target.pushToList({ movie: ['3'] }, 'my-list', 'public');
 
-    // The first page keeps the exact request shape it always had, and the
-    // second is asked for at the offset the server's own envelope dictates.
     expect(urlOf(fetchMock, 1)).not.toContain('offset=');
     expect(urlOf(fetchMock, 2)).toContain('/lists/42/items?offset=1');
     expect(JSON.parse(fetchMock.mock.calls[3][1].body as string))
@@ -348,13 +333,9 @@ describe('MdblistTarget pagination', () => {
 });
 
 /**
- * The memo over `GET /lists/user`. That endpoint returns the user's WHOLE list
- * collection, so re-fetching it per config entry means N identical round trips
- * on an API that meters a daily quota.
- *
- * These tests drive a stateful fake server rather than a queue of canned
- * responses: the point is which requests are NOT made, and what the server ends
- * up holding, neither of which a fixed response sequence can express.
+ * The memo over `GET /lists/user`, which returns the user's WHOLE list collection.
+ * These tests drive a stateful fake server rather than a queue of canned responses:
+ * the point is which requests are NOT made, and what the server ends up holding.
  */
 describe('MdblistTarget list index memo', () => {
   interface FakeList { id: number; name: string }
@@ -409,16 +390,13 @@ describe('MdblistTarget list index memo', () => {
     await t.pushToList({ movie: ['2'] }, 'list-b', 'public');
 
     expect(indexFetches(handler)).toBe(1);
-    // Both lists were still written, to their own id.
     expect(wroteTo(handler, 42)).toBe(true);
     expect(wroteTo(handler, 43)).toBe(true);
   });
 
   /**
-   * The daemon-staleness guarantee. The adapter is built once per process and
-   * shared by every scheduled run, so an instance-lifetime memo would keep
-   * serving a list the user deleted from the web UI hours earlier, and the
-   * adapter would write to a dead id.
+   * The adapter is built once per process and shared by every scheduled run, so an
+   * instance-lifetime memo would keep serving an id the user deleted hours earlier.
    */
   it('drops the memo on connect(), so the next run re-reads the index instead of trusting a dead id', async () => {
     const { handler, state } = fakeServer([{ id: 42, name: 'list-a' }]);
@@ -436,15 +414,13 @@ describe('MdblistTarget list index memo', () => {
     await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
 
     expect(indexFetches(handler)).toBe(2);
-    // The run noticed the deletion: it recreated the list and wrote to the NEW id.
     expect(creations(handler)).toBe(1);
     expect(wroteTo(handler, 100)).toBe(true);
   });
 
   /**
-   * Belt and braces: a miss on a populated memo is not proof of absence. On a
-   * backend capped at four static lists on the free tier, creating a duplicate
-   * is a visible mistake, so the index is re-read before any creation.
+   * A miss on a populated memo is not proof of absence, and a duplicate list is a
+   * visible mistake, so the index is re-read before any creation.
    */
   it('re-fetches the index on a memo miss and creates nothing when the list does exist', async () => {
     const { handler, state } = fakeServer([{ id: 42, name: 'list-a' }]);
@@ -452,8 +428,7 @@ describe('MdblistTarget list index memo', () => {
 
     await t.connect();
     await t.pushToList({ movie: ['1'] }, 'list-a', 'public');
-    // "list-b" appears after the index was taken — another process, or a run
-    // that created it just now.
+    // "list-b" appears after the index was taken, e.g. from another process.
     state.lists.push({ id: 43, name: 'list-b' });
 
     await t.pushToList({ movie: ['2'] }, 'list-b', 'public');
@@ -475,8 +450,6 @@ describe('MdblistTarget list index memo', () => {
 
     await t.pushToList({ show: ['2'] }, 'new-list', 'public');
 
-    // The creation registered the id in the memo: no re-read, and above all no
-    // second list of the same name.
     expect(indexFetches(handler)).toBe(1);
     expect(creations(handler)).toBe(1);
     expect(state.lists).toEqual([{ id: 100, name: 'new-list' }]);

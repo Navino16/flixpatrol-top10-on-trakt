@@ -3,8 +3,8 @@ import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
 import { logger } from '../../src/Utils/Logger';
 import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHours } from '../../src/types';
 
-// Mock impit: single shared `mockFetch` is returned from every `new Impit(...)`,
-// mirroring the previous `vi.mock('axios')` behavior where all instances shared one mock.
+// A single shared `mockFetch` is returned from every `new Impit(...)`, so a test can
+// arm the responses without knowing how many instances the scraper builds.
 const mockFetch = vi.fn();
 vi.mock('impit', () => ({
   // Use a regular `function` (not an arrow) so it can be invoked with `new`.
@@ -13,7 +13,7 @@ vi.mock('impit', () => ({
   }),
 }));
 
-// Helper to build an impit-style response from the legacy { status, data } shape used by the tests.
+// Builds an impit-style response from the { status, data } shape the tests use.
 const mockHtmlResponse = (input: { status: number; data: unknown; headers?: Record<string, string> }) => ({
   status: input.status,
   headers: new Headers(input.headers ?? {}),
@@ -59,8 +59,8 @@ const NO_YEAR_DETAIL_HTML = '<div class="info-grid"><div class="info-grid-header
   + '<h1 class="mb-4 text-h1">Movie Without Year</h1></div></div>';
 
 // The site-wide marketing blurb that lives in `div.mb-6` on every detail page. It ends
-// in a hardcoded "2021", which a text-scanning year fallback would happily pick up and
-// stamp onto every single title. Fixtures below embed it to keep that regression fenced.
+// in a hardcoded "2021", which a text-scanning year fallback would stamp onto every
+// single title, so the detail fixtures below deliberately carry it.
 const MARKETING_BLURB_HTML = '<div class="mb-6">FlixPatrol tracks the most popular '
   + 'TV shows in 2021 across all streaming platforms.</div>';
 
@@ -392,10 +392,6 @@ describe('FlixPatrol', () => {
   });
 
   describe('HTML parsing (via static methods)', () => {
-    // Test parsePage indirectly through the public static parseTop10Page pattern
-    // We need to make the parsing methods accessible for testing
-    // Since they're private, we test the behavior through integration
-
     describe('parseTop10Page behavior', () => {
       let flixpatrol: FlixPatrol;
 
@@ -423,8 +419,6 @@ describe('FlixPatrol', () => {
           data: mockHtml,
         }));
 
-        // We can't directly test parseTop10Page since it's private
-        // But we can verify getFlixPatrolHTMLPage returns the HTML
         const result = await flixpatrol.getFlixPatrolHTMLPage('/top10/netflix/world');
         expect(result).toBe(mockHtml);
       });
@@ -710,7 +704,6 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getTop10Sections(config);
 
-      // Fallback should have been triggered
       expect(mockFetch).toHaveBeenCalledTimes(3); // Initial + fallback + detail
       expect(result.movies).toEqual([{ title: 'Fallback Movie', year: 2024 }]);
     });
@@ -952,7 +945,6 @@ describe('FlixPatrol', () => {
       expect(result.shows).toEqual([]);
       expect(result.rawCounts.movies).toBe(0);
       expect(result.rawCounts.shows).toBe(0);
-      // Should not make any HTTP requests
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -973,7 +965,6 @@ describe('FlixPatrol', () => {
       expect(result.shows).toEqual([]);
       expect(result.rawCounts.movies).toBe(0);
       expect(result.rawCounts.shows).toBe(0);
-      // Should not make any HTTP requests
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -995,7 +986,6 @@ describe('FlixPatrol', () => {
 
       const result = await flixpatrol.getTop10Sections(config);
 
-      // Fallback should NOT be triggered for kids
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.movies).toEqual([]);
       expect(result.shows).toEqual([]);
@@ -1020,8 +1010,8 @@ describe('FlixPatrol', () => {
     });
 
     it('does not fall back when the page yields results that simply have no year', async () => {
-      // Guard rail for the semantics change: present-but-poor results must no longer
-      // trigger a silent fallback to another location.
+      // Present-but-poor results must not trigger a silent fallback to another
+      // location: a missing year is not a missing result.
       routeFetch(TOP10_REGIONAL_HTML, NO_YEAR_DETAIL_HTML);
 
       const result = await flixpatrol.getTop10Sections({
@@ -1816,11 +1806,6 @@ describe('FlixPatrol', () => {
       expect(result).toEqual([{ title: 'Fallback Title', year: null }]);
     });
 
-    // Regression: FlixPatrol's markup drifted and the year XPath went dead. The old code
-    // fell back to a regex over `div.mb-6`, which had become a site-wide marketing blurb
-    // ending in "the most popular TV shows in 2021" — so every scraped title was dated
-    // 2021, and the "exact title AND year" branch of the match cascade confidently
-    // selected homonyms (Paulette 2012 resolved to an unrelated 2021 film).
     it('extracts the real premiere year even when the 2021 marketing blurb is present', async () => {
       const popularHtml = `
         <html>
@@ -1872,8 +1857,8 @@ describe('FlixPatrol', () => {
       expect(result).toEqual([{ title: 'Paulette', year: 2012 }]);
     });
 
-    // The premiere date is MM/DD/YYYY. A day above 12 removes any doubt about which
-    // component the parser reads: only the trailing year may ever be picked up.
+    // The premiere date is MM/DD/YYYY, and a day above 12 rules out reading the day
+    // as a month.
     it('reads the year from an MM/DD/YYYY premiere date whose day exceeds 12', async () => {
       const popularHtml = `
         <html>
@@ -1971,11 +1956,9 @@ describe('FlixPatrol', () => {
       expect(afterSecond - afterFirst).toBe(3);
     });
 
-    // A listing that links at a SUB-page of the title instead of the title itself.
-    // YouTube Popular does exactly this in production, and `/title/<slug>/trailers/`
-    // prints "Primetime Trailers" in its `h1` — the section name welded onto the
-    // media name. Fetching the href verbatim searches every backend under a name
-    // nobody uses, so the href is canonicalised before anything else happens to it.
+    // A listing that links at a SUB-page of the title, as YouTube Popular does. Those
+    // sub-pages append the section name to their own `h1`, so fetching the href
+    // verbatim would search the backends under a name nobody uses.
     const SUBPAGE_LIST_HTML = `
       <html>
         <body>

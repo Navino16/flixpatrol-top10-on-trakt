@@ -16,8 +16,8 @@ import type {
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
   /**
-   * Built once by the caller (app.ts) so the daemon auth gate and every run
-   * share a single adapter instance — and therefore a single resolution cache.
+   * Built once by the caller so the daemon auth gate and every run share one adapter
+   * instance, and therefore one resolution cache.
    */
   target: ListTarget;
   flixPatrolTop10: FlixPatrolTop10[];
@@ -36,10 +36,9 @@ export interface RunPipelineDeps {
 /**
  * Owns the FlareSolverr session lifetime, which is exactly one run.
  *
- * createSession() runs before any list is processed so an unreachable container
- * fails the run immediately instead of midway through. destroySession() runs in a
- * finally — including on the early `return summary` abort paths — because a leaked
- * session keeps a Chrome resident in the container between runs in daemon mode.
+ * The session is created before any list so an unreachable container fails the run
+ * immediately rather than midway, and destroyed in a `finally` — early abort paths
+ * included — because a leaked session keeps a Chrome resident between daemon runs.
  */
 export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
   const flareSolverr = deps.flareSolverrOptions?.enabled
@@ -85,7 +84,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
   // Only the backend name is logged: every other field of the target config is a
-  // credential (token, apiKey, clientSecret) or an internal url.
+  // credential or an internal url.
   logger.silly(`target: ${JSON.stringify({ backend: deps.target.backend })}`);
   logger.silly(`flixPatrolTop10: ${JSON.stringify(deps.flixPatrolTop10)}`);
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
@@ -111,12 +110,11 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   /**
    * Resolves the scraped items of one kind to backend ids.
    *
-   * The gap between `items` and `ids` is the *resolution* loss (the backend has no
-   * match for a title): it is distinct from the scraping loss reported by the
-   * callers from `rawCounts`, so both are warned about separately.
+   * The gap between `items` and `ids` is resolution loss — the backend knows no match
+   * for a title — which is a different failure from the scraping loss the callers report
+   * from `rawCounts`, hence two separate warnings.
    *
-   * Returns null when the kind must be LEFT UNTOUCHED, which the caller expresses
-   * by omitting its key from the ListContent it hands to pushToList.
+   * Returns null when the kind must be left untouched.
    */
   const resolveSection = async (
     items: MediaItem[],
@@ -124,13 +122,10 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     listName: string,
   ): Promise<string[] | null> => {
     const ids = await target.resolveMany(items, kind);
-    // pushToList REPLACES the content of every kind whose key is present, so
-    // handing it an empty array wipes that kind. A scrape that produced items but
-    // resolved to nothing means the backend is failing (outage, expired key, bad
-    // search day), not that the list should be emptied — hence null, so the key
-    // is omitted and the kind survives untouched while the other one is still
-    // written. A genuinely empty scrape is a different case and keeps its
-    // previous behaviour: an empty array, hence a wipe of that kind.
+    // Items scraped but nothing resolved means the backend is failing, not that the list
+    // should be emptied — so return null and let the key be omitted, which spares this
+    // kind while the other is still written. A genuinely empty scrape returns an empty
+    // array instead, and does wipe the kind.
     if (items.length > 0 && ids.length === 0) {
       logger.warn(`None of the ${items.length} ${kind}s scraped from FlixPatrol could be matched on `
         + `${target.backend} — list "${listName}" left unchanged`);
@@ -146,11 +141,11 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   };
 
   /**
-   * Writes a list ONCE, both kinds included, so everything the backend does per
-   * list rather than per kind is paid a single time.
+   * Writes a list once with both kinds, so whatever the backend does per list rather
+   * than per kind is paid a single time.
    *
-   * Returns true when a shutdown signal was seen before the write, in which case
-   * nothing was written and the caller must stop the run.
+   * Returns true when a shutdown signal arrived before the write, meaning nothing was
+   * written and the run must stop.
    */
   const writeList = async (
     content: ListContent,
@@ -161,9 +156,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     if (kinds.length === 0) {
       return false;
     }
-    // With a single write per list the abort checkpoint naturally sits between
-    // two lists: a stop can no longer land between the movie half and the show
-    // half of the same list.
+    // One write per list puts the abort checkpoint between two lists, so a stop cannot
+    // land between the movie half and the show half of the same list.
     if (await abortedBeforeWrite()) {
       return true;
     }
@@ -182,9 +176,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   await target.connect();
 
-  // Fire-and-forget: do not block the pipeline on the notification round-trip.
-  // The dispatch is tracked by the caller so it gets flushed before any process.exit
-  // (even on a fast-failing run).
+  // Fire-and-forget so the pipeline never waits on a notification round-trip. The caller
+  // tracks the dispatch and flushes it before any process.exit.
   void deps.dispatch('run_start', {
     title: `${dryRunTag}${deps.appName} v${deps.appVersion} run started`,
     body: `Processing ${totalLists} lists`,
@@ -203,8 +196,6 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     const content: ListContent = {};
     if (movies.length > 0) {
       logger.info('==============================');
-      // Scraping loss: a detail page without a usable title, or a duplicate
-      // (title, year) already collected from another row of the same page.
       if (rawCounts.movies > movies.length) {
         logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
       }

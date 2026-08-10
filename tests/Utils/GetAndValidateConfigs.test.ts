@@ -9,7 +9,6 @@ import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
 import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 
-// Mock the config module
 vi.mock('config', () => ({
   default: {
     get: vi.fn(),
@@ -542,8 +541,8 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toMatch(/invalid|expected|Target\.type:/i);
         });
 
-        // The selector-only `Target` never shipped: it existed briefly while 3.0.0
-        // was being built. Detected all the same, for anyone who ran that build.
+        // A selector-only `Target` was only ever produced by a pre-release build,
+        // and is detected all the same for anyone who ran it.
         it('carries the root Floppy values across when Target only selects the backend', () => {
           useConfig({
             Target: { type: 'floppy' },

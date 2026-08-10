@@ -22,8 +22,8 @@ interface TraktAPIRuntimeOptions extends TraktAPIOptions {
 export type TraktMediaType = Extract<TraktType, 'movie' | 'show'>;
 
 /**
- * Ids to write per media type. An ABSENT key means "leave that type untouched",
- * a present key (even empty) means "replace that type's content".
+ * Ids to write per media type. An absent key leaves that type untouched; a present key,
+ * even empty, replaces its content.
  */
 export type TraktListContent = Partial<Record<TraktMediaType, TraktTVIds>>;
 
@@ -112,9 +112,8 @@ export class TraktAPI {
       }
     }
 
-    // Trakt's API has been observed returning HTTP 200 with an empty body
-    // (`list === ""`) instead of a proper 404 for some missing-list lookups,
-    // so the success path needs its own shape check before we trust the response.
+    // Trakt answers some missing-list lookups with HTTP 200 and an empty body
+    // (`list === ""`) rather than a 404, so the success path needs its own shape check.
     if (!notFound && !TraktAPI.isValidList(list)) {
       logger.debug(`Trakt returned malformed response for "${listName}" (got ${JSON.stringify(list)}), treating as not-found`);
       notFound = true;
@@ -147,21 +146,15 @@ export class TraktAPI {
   }
 
   /**
-   * Reads the WHOLE list, deliberately unfiltered.
+   * Reads the whole list, deliberately unfiltered.
    *
-   * There is no server-side type filter to lean on here. `trakt.tv` maps
-   * `users.list.items.get` to `/users/:username/lists/:id/items?type=`, i.e. it
-   * sends `type` as a QUERY parameter, while the Trakt API expects it as a PATH
-   * segment (`/items/:type`). The query parameter is silently ignored and the
-   * endpoint returns every item whatever `type` is passed. Passing it therefore
-   * bought nothing but a false sense of filtering: the caller believed it held
-   * only shows while holding the movies it had just written, and logged that
-   * count as a show count.
+   * The `trakt.tv` client sends `type` as a query parameter, while the Trakt API expects
+   * it as a path segment (`/items/:type`). Trakt silently ignores the query parameter and
+   * returns every item whatever `type` is passed, so filtering has to happen in memory —
+   * callers narrow on `item.type` via `filterByType`.
    *
-   * So the read happens once per list, and callers narrow it in memory on
-   * `item.type` via `filterByType`. Do NOT "optimise" this back into a
-   * server-side filter without first checking that the client puts `type` in
-   * the path.
+   * Do not "optimise" this back into a server-side filter without first checking that the
+   * client puts `type` in the path.
    */
   private async getListItems(list: TraktList): Promise<TraktItem[]> {
     // In dry-run mode with mock list (id=0), return empty array
@@ -288,14 +281,10 @@ export class TraktAPI {
   }
 
   /**
-   * Writes both media types in a single pass over the list.
-   *
-   * The list lookup/creation, the privacy alignment and the "Last Updated"
-   * description are per-LIST and happen exactly once, whatever the number of
-   * types written — the previous per-type signature paid them twice, including
-   * two rate-limit sleeps and a description write that overwrote its twin.
-   * The items read is per-LIST too: it is not type-filtered server side (see
-   * `getListItems`), so one read serves every kind, narrowed in memory.
+   * Writes both media types in a single pass over the list, so the per-list work — lookup
+   * or creation, privacy alignment, the "Last Updated" description, and the items read —
+   * happens exactly once whatever the number of types written. That read cannot be
+   * type-filtered server side (see `getListItems`), so one read serves every kind.
    */
   public async pushToList(content: TraktListContent, listName: string, privacy: TraktPrivacy) {
     const types = TRAKT_MEDIA_TYPES.filter((type) => content[type] !== undefined);
@@ -315,7 +304,7 @@ export class TraktAPI {
       }
     }
 
-    // One read for the whole list; each kind is narrowed from it in memory.
+    // One read for the whole list, narrowed per kind in memory.
     const listItems = await this.getListItems(list);
 
     let added = false;

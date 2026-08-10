@@ -26,58 +26,31 @@ import type {
 /**
  * E2E suite: an early-warning canary for FlixPatrol markup drift.
  *
- * WHY IT EXISTS. Every XPath expression in `src/Flixpatrol/parse.ts` is matched
- * against a third-party site nobody here controls. The site once drifted so that
- * BOTH detail-page expressions died: the title survived only through its bare
- * `//h1` fallback, and the year fell through to a regex over `div.mb-6`, which
- * had become a marketing blurb ending in "the most popular TV shows in 2021".
- * Every single title came back dated 2021 and wrong films were written to real
- * user lists for months — with a fully green unit suite, because the fixtures
- * had been captured from the already-broken markup.
+ * Every XPath in `src/Flixpatrol/parse.ts` runs against a third-party site nobody
+ * here controls, as a chain whose later rungs are deliberately tolerant. Fallbacks
+ * mask drift, so a suite asserting only "a title and a year came back" stays green
+ * while production silently runs on a fallback and writes wrong films to real user
+ * lists. This suite instead asserts that the PRIMARY rung of each chain still
+ * matches, and treats a fallback taking over as a failure. The rung lists are
+ * imported from the parser, so they cannot diverge from what production runs.
  *
- * WHAT IT ASSERTS, AND WHY IT IS NOT "does parsing work".
- * A test asserting "a title and a year came back" would have passed throughout
- * that whole incident: 2021 is a perfectly plausible year. Fallbacks mask drift
- * — that is their job, and that is precisely the problem. So this suite asserts
- * that the PRIMARY rung of each expression chain still matches, and treats a
- * fallback taking over as a failure in its own right. The rung lists are
- * imported from the parser rather than copied, so they cannot silently diverge
- * from what production actually runs.
+ * It never asserts today's content — only shapes, counts and rung identity — and
+ * pins nothing to a calendar. The one content-independent invariant: distinct
+ * titles must NOT all report the same year, which is what a year read from page
+ * furniture rather than from the media looks like. Each family spans several
+ * deliberately DIFFERENT page layouts, since an expression can die on one and
+ * still match on another, and every case is table-driven so a red CI line names
+ * the page and the rung.
  *
- * It also asserts one cross-page invariant that holds no matter what the site
- * lists today: several distinct titles must NOT all report the same year. That
- * is the exact signature of the 2021 bug.
+ * Top 10 URLs carry a date because FlixPatrol publishes a day progressively: the
+ * undated page is the CURRENT day and, at the hour the canary runs, is still
+ * missing the Kids charts. An unpublished chart is not drift and an always-red
+ * canary is one nobody reads, so that family asks for the last COMPLETED day —
+ * see `TOP10_DATE` for why exactly one day back.
  *
- * WHAT IT NEVER ASSERTS: today's content. FlixPatrol's charts change daily, so
- * only shapes, counts and rung identity are checked — never a specific title.
- * Nothing is pinned to a calendar either: the most-watched years and the Top 10
- * date are derived from `new Date()`, so no page path rots on a fixed date.
- *
- * WHY THE TOP 10 URLS CARRY A DATE. FlixPatrol publishes a day progressively:
- * `/top10/netflix/united-states` is the CURRENT day, and early in the morning it
- * holds the two main charts but not yet the Kids ones. Measured at 08:30 UTC, the
- * undated page was 81 KB with no "Kids" anywhere, while the previous day's URL was
- * 99 KB and carried both Kids sections. Against the undated URL this suite would
- * therefore have reported twelve Kids failures every week — the canary runs on a
- * weekly cron at 06:30 UTC, squarely inside the incomplete window — and a canary
- * that is always red is a canary nobody reads. An unpublished chart is not drift,
- * so the Top 10 family asks for the last COMPLETED day instead. See `TOP10_DATE`
- * for why it is exactly one day and never two.
- *
- * WHY SEVERAL PAGES PER FAMILY. One page per family only proves the expression
- * survives on that one layout. FlixPatrol renders a big catalogue, a small one,
- * a niche regional platform and a language-tabbed report differently enough that
- * an expression can die on one shape while still matching on another. Each
- * family below therefore spans three to six deliberately DIFFERENT pages, and
- * every case is table-driven so a red CI line names the page and the rung
- * without anyone opening this file.
- *
- * MECHANICS. FlixPatrol sits behind Cloudflare, so the suite needs FlareSolverr
- * and is gated on `E2E_FLARESOLVERR_URL`; without it, it skips cleanly. Each
- * page is fetched exactly ONCE during bootstrap and shared by every assertion —
- * `fetchPage` is memoised and the suite asserts its own request count against a
- * hard budget, because this is someone else's server and the polite ceiling is
- * the one thing that must not creep upwards unnoticed.
+ * FlixPatrol sits behind Cloudflare, so the suite needs FlareSolverr and is gated
+ * on `E2E_FLARESOLVERR_URL`. Each page is fetched exactly ONCE during bootstrap,
+ * and the request count is asserted against a hard budget: someone else's server.
  */
 const flareSolverrUrl = process.env.E2E_FLARESOLVERR_URL ?? '';
 
@@ -87,24 +60,14 @@ const BASE_URL = 'https://flixpatrol.com';
 const REQUEST_DELAY_MS = 1500;
 
 /**
- * Hard ceiling on live page loads for the whole suite, asserted at the end.
- *
- * The suite currently plans 22 listing pages plus 8 detail pages derived from
- * them. The budget leaves a small margin and no more: it exists so that adding
- * "just one more page" is a deliberate act that shows up in a diff, rather than
- * something that quietly triples the load on a site that owes us nothing.
- *
- * RAISED FROM 30 when `go3/lithuania` and `go3/estonia` joined `go3/latvia` as
- * empty-chain subjects. Those two pages took the plan to exactly 30, which would
- * have left the ceiling doing nothing: at zero margin the assertion no longer
- * distinguishes "someone added a page" from "something is re-fetching", because
- * the very next request of any kind trips it. The margin is deliberately the same
- * two slots it has always been, so raising it stays a visible act rather than a
- * habit — the number is not meant to track the plan upwards.
+ * Hard ceiling on live page loads, asserted at the end. It sits two slots above
+ * what the tables below plan and no more, that margin being what lets the
+ * assertion tell "someone added a page" from "something is re-fetching". Raising
+ * it must stay a deliberate act visible in a diff.
  */
 const REQUEST_BUDGET = 32;
 
-/** Whole-suite budget: ~30 page loads, the first of which solves a challenge. */
+/** Whole-suite budget: every page load, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
 
 const MEDIA_TYPES: readonly FlixPatrolType[] = ['Movies', 'TV Shows'];
@@ -114,24 +77,16 @@ const currentYear = new Date().getFullYear();
 /**
  * The day every Top 10 URL asks for: the day before the run, in UTC.
  *
- * ONE day, and never more. FlixPatrol gives away a short rolling window of daily
- * history and paywalls everything older: measured today, the six previous days
- * came back complete (99 KB, both Kids charts) while the seventh returned a 32 KB
- * stub reading "only available to paid subscribers". So the last completed day is
- * the freshest date that is guaranteed both published AND free, and reaching
- * further back trades a false positive for a slow march towards the paywall. There
- * is deliberately no retry chain: a date that does not answer is a signal, and
- * silently walking backwards until something does would suppress exactly the
- * signal this suite exists to raise.
+ * ONE day, and never more: FlixPatrol gives away only a short rolling window of
+ * daily history and paywalls everything older, so the last completed day is the
+ * freshest date guaranteed both published AND free. There is deliberately no retry
+ * chain either — a date that does not answer is a signal, and walking backwards
+ * until something does would suppress it while marching towards the paywall.
  *
- * DERIVED IN UTC, which is the one assumption here that could quietly reintroduce
- * the failure it fixes. If FlixPatrol's own calendar ran behind UTC, "yesterday in
- * UTC" could still be TODAY for the site, i.e. incomplete again. Measured against
- * the live site: at 08:30 UTC the undated page served the UTC date, the UTC date's
- * own dated URL served the same partial page, and the NEXT date returned "Page Not
- * Found" — so the site's notion of today is the UTC date, not one behind it. The
- * dated-page guard below turns any future divergence into a named failure instead
- * of twelve mysterious empty-chart ones.
+ * UTC because the site's notion of today is the UTC date. Were that to change,
+ * "yesterday in UTC" would still be TODAY for the site, i.e. incomplete; the
+ * dated-page guard below turns that into a named failure rather than a dozen
+ * empty-chart ones.
  */
 const TOP10_DATE = ((): string => {
   const date = new Date();
@@ -140,26 +95,22 @@ const TOP10_DATE = ((): string => {
 })();
 
 /**
- * The dated form FlixPatrol serves a completed day under, trailing slash included:
- * `/top10/<platform>/<country>/YYYY-MM-DD/`. Verified against the live site — the
- * form without the trailing slash answers too, but only via a redirect, so the
- * slash is spelled out rather than paid for on every request.
+ * The dated form FlixPatrol serves a completed day under:
+ * `/top10/<platform>/<country>/YYYY-MM-DD/`. The trailing slash is spelled out
+ * because the form without it answers only via a redirect.
  */
 const onPreviousDay = (path: string): string => `${path}/${TOP10_DATE}/`;
 
 /**
  * The phrase FlixPatrol replaces a chart with once the day has aged past its free
- * window. Present exactly once on a paywalled day and on no page that is served in
- * full — the site's own upsell links say "FlixPatrol Premium" everywhere, so the
- * shorter string would match every page and detect nothing.
+ * window. Not the shorter "FlixPatrol Premium": the site's own upsell links carry
+ * that on every page, so it would match everywhere and detect nothing.
  */
 const PAYWALL_NOTICE = 'only available to paid subscribers';
 
 /**
- * Top 10 (world) — one page per platform, chosen for catalogue size rather than
- * popularity: Netflix and Disney+ render long, dense charts, Apple TV+ a sparse
- * one, and HBO Max sits in between. A world chart has a single expression with
- * no fallback, so all four have to hold it up on their own.
+ * Top 10 (world) — one page per platform, chosen for catalogue size so the layouts
+ * differ. A world chart has a single expression with no fallback behind it.
  */
 const TOP10_WORLD_PATHS: readonly string[] = [
   onPreviousDay('/top10/netflix/world'),
@@ -172,32 +123,21 @@ interface RegionalPage {
   path: string;
   location: FlixPatrolTop10Location;
   /**
-   * True when this market may legitimately publish a short chart, or none at
-   * all, for a given media type. Only pages flagged here are allowed to report
-   * "no chart"; anywhere else a missing chart is drift and fails.
+   * True when this market may legitimately publish a short chart, or none at all,
+   * for a media type. Anywhere else a missing chart is drift and fails.
    */
   mayBeShortOrAbsent: boolean;
 }
 
 /**
- * Top 10 (regional) — the three-rung chain, across six different platform and
- * country pairings.
+ * Top 10 (regional) — the rung chain across six platform and country pairings.
  *
- * The three `go3` Baltic markets are the deliberate small-market case: pages that
- * publish a Movies chart but, routinely, no TV Shows chart at all. That is not a
- * hypothetical — it is the situation an untyped fallback rung used to corrupt: with
- * no TV Shows chart the typed rungs correctly matched nothing and the chain fell
- * through to a positional "first two tables" rung, which handed the movie rows back
- * as shows. That rung is gone, so the chain now returns empty here — asserted
- * below. A page with no data must still be recognised as such and reported
- * distinctly, never as drift.
- *
- * Asking for a COMPLETED day is what keeps that distinction sharp. On the current
- * day a missing chart is ambiguous — the market may not chart it, or the site may
- * simply not have got round to publishing it yet. On a finished day only the first
- * reading survives, so the skip below means what it says. Verified on the live
- * site: all three `go3` markets publish a full Movies chart and no TV Shows heading
- * at all on a completed day.
+ * The three `go3` Baltic markets are the deliberate small-market case: they publish
+ * a Movies chart but, routinely, no TV Shows chart at all. Both rungs name the media
+ * type, so the missing one must come back EMPTY rather than with the rows the market
+ * does publish, relabelled — asserted below. Asking for a COMPLETED day is what
+ * keeps that unambiguous: on the current day the site may simply not have published
+ * the chart yet.
  */
 const TOP10_REGION_PAGES: readonly RegionalPage[] = [
   { path: onPreviousDay('/top10/netflix/france'), location: 'france', mayBeShortOrAbsent: false },
@@ -209,15 +149,13 @@ const TOP10_REGION_PAGES: readonly RegionalPage[] = [
 ];
 
 /**
- * Top 10 Kids — Netflix only (the app refuses any other platform) and regional
- * only, so the variation available is the country. France is reused from the
- * regional table above rather than fetched twice, which only works because both
- * tables date their paths identically.
+ * Top 10 Kids — Netflix only (the app refuses any other platform) and regional only,
+ * so the country is the only variation available. France is reused from the regional
+ * table rather than fetched twice, which only works because both tables date their
+ * paths identically.
  *
- * This is the family the dated URL exists for: Kids is the LAST section of a day
- * to be published, so it is the one the undated URL is systematically missing at
- * cron time. All four countries were verified to carry both Kids charts on a
- * completed day.
+ * This is the family the dated URL exists for: Kids is the LAST section of a day to
+ * be published, so it is the one the undated URL is missing at cron time.
  */
 const TOP10_KIDS_PATHS: readonly string[] = [
   onPreviousDay('/top10/netflix/france'),
@@ -230,45 +168,32 @@ interface PopularPage {
   path: string;
   /**
    * Whether this source links straight at `/title/<slug>/`. Wikipedia does;
-   * YouTube links at `/title/<slug>/trailers/#toc-...` instead.
-   *
-   * This is documentation of the site's shape, NOT a correctness requirement:
-   * the scraper canonicalises every href before fetching it, so a sub-page link
-   * is harmless. What must hold for both sources alike is that the title parsed
-   * from the canonical page matches what the listing printed — asserted in the
-   * detail section below, where both Wikipedia and YouTube now have a spec.
+   * YouTube links at `/title/<slug>/trailers/#toc-...` instead. Documentation of
+   * the site's shape, NOT a correctness requirement: the scraper canonicalises
+   * every href before fetching it, so a sub-page link is harmless.
    */
   directTitleLinks: boolean;
 }
 
 /**
- * Popular — both sources the app accepts, plus both media types for Wikipedia.
- *
- * NOT dated, and not merely because it does not need to be: these are cumulative
- * all-time rankings, not a chart for a given day. Appending a date was tried
- * against the live site and is actively misleading — the extra segment is
- * swallowed and the CURRENT ranking comes back under a URL that claims to be a
- * historical one, so the suite would be asserting against a page it had
- * misunderstood.
+ * Popular — both sources the app accepts, plus both media types for Wikipedia. NOT
+ * dated: these are cumulative all-time rankings, and appending a date is actively
+ * misleading — the segment is swallowed and the CURRENT ranking comes back under a
+ * URL claiming to be a historical one.
  */
 const POPULAR_PAGES: readonly PopularPage[] = [
   { path: '/popular/movies/wikipedia', directTitleLinks: true },
   { path: '/popular/tv-shows/wikipedia', directTitleLinks: true },
-  // YouTube publishes one single trailer chart: `/popular/tv-shows/youtube`
-  // currently returns byte-identical rows, so fetching it too would spend a
-  // request on a page already covered.
+  // YouTube publishes one single trailer chart, so `/popular/tv-shows/youtube`
+  // returns the same rows and fetching it would spend a request for nothing.
   { path: '/popular/movies/youtube', directTitleLinks: false },
 ];
 
 /**
- * Most watched — two different years and both media shapes. Years are derived,
- * never written down: the last completed year is always published, so these
- * paths stay valid forever instead of rotting. The `original: true` variant is
- * a second expression over the SAME page, so it costs no extra request.
- *
- * Already dated, by YEAR, and that is the only granularity the route has: a day
- * appended to it returns "Page Not Found" on the live site. Same for Most hours
- * below, which is a per-title lifetime total with no daily dimension at all.
+ * Most watched — two derived years, so no path rots, and both media shapes. The
+ * `original: true` variant is a second expression over the SAME page, so it costs no
+ * extra request. YEAR is the only granularity this route has: a day appended to it
+ * returns "Page Not Found". Same for Most hours below, a lifetime total.
  */
 const MOST_WATCHED_PAGES: readonly { path: string }[] = [
   { path: `/most-watched/${currentYear - 1}/movies` },
@@ -280,14 +205,13 @@ interface MostHoursPage {
   path: string;
   period: FlixPatrolMostHoursPeriod;
   /**
-   * Whether the period publishes per-language tabs. `total` does not, which is
-   * the entire reason the second rung exists — so on `total` the fallback is the
-   * CORRECT answer and rung 0 must legitimately match nothing.
+   * Whether the period publishes per-language tabs. `total` does not, which is the
+   * entire reason the second rung exists — so there the fallback is the CORRECT
+   * answer and rung 0 must legitimately match nothing.
    */
   hasLanguageTabs: boolean;
 }
 
-/** Most hours — all three periods the app can request. */
 const MOST_HOURS_PAGES: readonly MostHoursPage[] = [
   { path: '/streaming-services/most-hours-total/netflix/', period: 'total', hasLanguageTabs: false },
   { path: '/streaming-services/most-hours-first-week/netflix/', period: 'first-week', hasLanguageTabs: true },
@@ -298,15 +222,13 @@ const MOST_HOURS_LANGUAGES: readonly FlixPatrolMostHoursLanguage[] = ['all', 'en
 
 /**
  * Detail pages are NEVER hardcoded: individual title pages disappear as the site
- * prunes them, and a fixed list would rot within months. Each spec names a
- * listing already fetched for another family and the expression to pull an href
- * out of it, so the set heals itself every run.
+ * prunes them. Each spec names a listing already fetched for another family and
+ * the expression to pull an href out of it, so the set heals itself every run.
  *
- * The seven specs deliberately span movies and TV shows, world and regional
- * charts, a kids chart (animation, frequently older and non-English) and the two
- * evergreen Wikipedia charts (which reach much further back than any Top 10) —
- * so the release years have every reason to differ, which is what the
- * cross-page "not all the same year" invariant needs in order to mean anything.
+ * They deliberately span movies and TV shows, world and regional charts, a kids
+ * chart and the evergreen Wikipedia charts, so the release years have every reason
+ * to differ — which is what the "not all the same year" invariant needs to mean
+ * anything.
  */
 interface DetailSpec {
   /** Names the family in the test title, so a red line points at a listing. */
@@ -352,11 +274,8 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
     expression: mostWatchedExpression(false),
   },
   {
-    // The second listing family that links at a sub-page rather than at the title.
-    // It went uncovered while the sub-page bug was live — and asserting it then
-    // would have locked the defect in, so it is added now that the scraper
-    // canonicalises hrefs, precisely so a regression cannot pass unnoticed here
-    // just because it happens to be a different family than most-watched.
+    // The second listing family that links at a sub-page rather than at the title,
+    // so the canonicalisation is covered on more than one page shape.
     family: 'popular-movie-youtube',
     listingPath: '/popular/movies/youtube',
     expression: POPULAR_EXPRESSION,
@@ -364,9 +283,8 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
 ];
 
 /**
- * Every Top 10 page the suite loads, deduplicated — all of them dated, which is
- * what lets the guard below assert the day was served in full exactly once per URL
- * rather than once per media type.
+ * Every Top 10 page the suite loads, deduplicated, so the guard below asserts the
+ * day was served in full once per URL rather than once per media type.
  */
 const DATED_TOP10_PATHS: readonly string[] = Array.from(new Set<string>([
   ...TOP10_WORLD_PATHS,
@@ -374,7 +292,6 @@ const DATED_TOP10_PATHS: readonly string[] = Array.from(new Set<string>([
   ...TOP10_KIDS_PATHS,
 ]));
 
-/** Every listing page the suite loads, deduplicated. */
 const LISTING_PATHS: readonly string[] = Array.from(new Set<string>([
   ...DATED_TOP10_PATHS,
   ...POPULAR_PAGES.map((entry) => entry.path),
@@ -390,14 +307,12 @@ const DIRECT_TITLE_HREF = /^\/title\/[^/]+\/$/;
 
 /** A media detail page pulled at runtime out of one of the listing pages. */
 interface DerivedDetail {
-  /** Which listing family the URL came from, so a failure names the family. */
   family: string;
   /** The href exactly as the listing printed it, which may be a sub-page. */
   listingHref: string;
   /** The page actually fetched: the canonical `/title/<slug>/` form of the href. */
   path: string;
   html: string;
-  /** The label the listing itself printed for that href. */
   listingLabel: string;
 }
 
@@ -407,9 +322,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeo
 const collapse = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
 /**
- * One DOM per page, built once. Several pages are multi-megabyte and every
- * assertion evaluates a fresh expression over them; re-parsing each time turns a
- * fast suite into a slow one for no benefit.
+ * One DOM per page, built once: several pages are multi-megabyte and every
+ * assertion evaluates a fresh expression over them.
  */
 const doms = new Map<string, JSDOM>();
 
@@ -424,10 +338,9 @@ const domOf = (html: string): JSDOM => {
 };
 
 /**
- * Evaluates one XPath over an HTML string, exactly as the parser does. The
- * evaluation is re-implemented here on purpose: what is under test is the
- * EXPRESSIONS, so re-using the parser's own chain-walking would hide which rung
- * produced the result.
+ * Evaluates one XPath over an HTML string, as the parser does. Re-implemented on
+ * purpose: what is under test is the EXPRESSIONS, so re-using the parser's own
+ * chain-walking would hide which rung produced the result.
  */
 const matches = (expression: string, html: string): string[] => {
   const dom = domOf(html);
@@ -461,23 +374,18 @@ const stringValue = (expression: string, html: string): string => {
 };
 
 /**
- * Index of the first rung that matches, or -1 when the whole chain is dead.
- * Anything other than the rung a page is supposed to be served by means
- * production is currently running on a fallback, which is the early warning this
- * suite exists to raise.
+ * Index of the first rung that matches, or -1 when the chain is dead. Any rung
+ * other than the expected one means production is running on a fallback.
  */
 const firstMatchingRung = (expressions: string[], html: string): number => expressions
   .findIndex((expression) => matches(expression, html).length > 0);
 
 /**
- * Does the page publish a chart for this media type AT ALL?
- *
- * Deliberately independent of the expressions under test: it looks for the
- * section heading, not for the anchors the parser selects. That separation is
- * what makes "this small market has no TV Shows chart today" distinguishable
- * from "the expression that selects TV Shows anchors has drifted". The match is
- * exact rather than `contains`, so "TOP 10 Kids Movies" is not mistaken for the
- * main Movies chart.
+ * Does the page publish a chart for this media type AT ALL? Deliberately
+ * independent of the expressions under test — it looks for the section heading, not
+ * the anchors the parser selects — which is what makes "this market publishes no TV
+ * Shows chart" distinguishable from "the TV Shows expression has drifted". Exact
+ * rather than `contains`, so "TOP 10 Kids Movies" is not read as the main chart.
  */
 const publishesChart = (type: FlixPatrolType, html: string): boolean => matches(
   `//h3[normalize-space(.) = "TOP 10 ${type}"]`,
@@ -511,9 +419,8 @@ const top10RegionCases: RegionalCase[] = TOP10_REGION_PAGES
   .flatMap((entry) => MEDIA_TYPES.map((type) => ({ ...entry, type })));
 
 /**
- * The subset allowed to publish no chart at all — today, the three `go3` Baltic
- * markets. These are the only cases where "the chain returns nothing" is a
- * legitimate outcome and therefore the only ones where it can be asserted as such.
+ * The subset allowed to publish no chart at all: the only cases where "the chain
+ * returns nothing" is a legitimate outcome, hence assertable as such.
  */
 const top10AbsentChartCases: RegionalCase[] = top10RegionCases
   .filter((entry) => entry.mayBeShortOrAbsent);
@@ -556,10 +463,7 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     return derived;
   };
 
-  /**
-   * Memoised: a path already loaded is served from memory, so no URL is ever
-   * requested twice however many assertions read it.
-   */
+  /** Memoised, so no URL is requested twice however many assertions read it. */
   const fetchPage = async (path: string): Promise<string> => {
     const cached = pages.get(path);
     if (cached !== undefined) {
@@ -586,10 +490,9 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       return;
     }
     // Fetch what production fetches. Several listings link at a sub-page of the
-    // title (`/hours/`, `/trailers/#toc-...`) whose `h1` is the media name with
-    // the section name welded onto it; the scraper reduces every href to its
-    // canonical `/title/<slug>/` form first, so the suite must do the same or it
-    // would be exercising a code path the app no longer takes.
+    // title (`/hours/`, `/trailers/#toc-...`) whose `h1` welds the section name
+    // onto the media name, and the scraper canonicalises every href before
+    // fetching, so the suite must do the same or it exercises a dead code path.
     const canonicalPath = toCanonicalTitlePath(hrefs[0]);
     details.set(spec.family, {
       family: spec.family,
@@ -620,19 +523,16 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
   });
 
   /**
-   * Declared FIRST on purpose. Every Top 10 assertion below reads a page for one
-   * specific day, and all of them are meaningless if the site did not serve that
-   * day. Without this block a paywalled or unpublished date would surface as a
-   * dozen "the strict rung matched nothing" failures pointing at the expressions —
-   * which is drift's signature, and would send whoever reads the CI line hunting
-   * markup that never changed.
+   * Declared FIRST on purpose: every Top 10 assertion below is meaningless if the
+   * site did not serve the day it reads. Without this block, a paywalled or
+   * unpublished date surfaces as a dozen "the strict rung matched nothing" failures
+   * — drift's signature — and sends the reader hunting markup that never changed.
    */
   describe('Dated Top 10 pages', () => {
     it('asks for exactly one day back, never further into the paywalled archive', () => {
-      // Guards the derivation itself rather than the site. Two days back is not a
-      // safer fallback, it is a step towards the paywall — so a refactor that
-      // widens the offset has to fail here instead of quietly working until the
-      // free window shifts under it.
+      // Guards the derivation, not the site: two days back is not a safer
+      // fallback but a step towards the paywall, so a refactor widening the offset
+      // has to fail here rather than work until the free window shifts under it.
       const target = Date.parse(`${TOP10_DATE}T00:00:00Z`);
       const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
       expect((today - target) / 86_400_000).toBe(1);
@@ -642,12 +542,11 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       '$path — FlixPatrol served that day in full, neither paywalled nor unpublished',
       ({ path }) => {
         const html = page(path);
-        // Three outcomes, told apart by two checks. A day served in full echoes
-        // its own date in the canonical link and the og:url. A day past the free
-        // window keeps the date in its <title> but drops it from the canonical
-        // link and swaps the charts for an upsell. A day that does not exist yet
-        // returns "Page Not Found" and mentions no date anywhere. The paywall is
-        // checked first, so the more specific diagnosis wins.
+        // Three outcomes, told apart by two checks: a day served in full echoes its
+        // date in the canonical link, a day past the free window drops it and swaps
+        // the charts for an upsell, and a day that does not exist yet returns "Page
+        // Not Found" with no date anywhere. The paywall is checked first so the more
+        // specific diagnosis wins.
         expect(
           html.includes(PAYWALL_NOTICE),
           `${path} is behind the FlixPatrol Premium paywall: the free history window has narrowed`,
@@ -665,11 +564,10 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       '$path — the single $type expression still selects exactly the chart',
       ({ path, type }) => {
         const expressions = top10Expressions(type, 'world');
-        // World has a single rung by design: if it dies, nothing catches it.
         expect(expressions).toHaveLength(1);
         const hrefs = matches(expressions[0], page(path));
-        // A "TOP 10" section holds ten entries. A different count means the
-        // expression is now reaching into neighbouring markup.
+        // A "TOP 10" section holds ten entries; any other count means the
+        // expression is reaching into neighbouring markup.
         expect(hrefs).toHaveLength(10);
         expect(hrefs.every((href) => DIRECT_TITLE_HREF.test(href))).toBe(true);
         expect(new Set(hrefs).size).toBe(10);
@@ -685,8 +583,7 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       }, ctx) => {
         const html = page(path);
         const expressions = top10Expressions(type, location);
-        // Two rungs, both typed. A third, untyped one was removed: it matched on
-        // table position alone and so answered one media type with the other's rows.
+        // Two rungs, both naming the media type: nothing selects by table position.
         expect(expressions).toHaveLength(2);
 
         if (!publishesChart(type, html)) {
@@ -697,30 +594,23 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
               + 'in full, so an unpublished chart is not one of the possibilities',
             );
           }
-          // A market with no chart is not drift. Prove the two agree — the page
-          // says there is nothing, and NO rung of the chain finds anything — then
-          // bow out with a message that cannot be mistaken for a passing assertion.
-          //
-          // This branch means "this market does not chart this media type" and
-          // nothing else. The third reading it could once have had, "the day is
-          // not fully published yet", is ruled out upstream: the page is a
-          // completed day and the guard above already asserted the site served it.
+          // A market with no chart is not drift. Prove the two agree — the page says
+          // there is nothing and NO rung finds anything — then bow out with a message
+          // that cannot be mistaken for a passing assertion.
           expect(firstMatchingRung(expressions, html)).toBe(-1);
           ctx.skip(`${path} publishes no "TOP 10 ${type}" chart today: no drift signal available for this case`);
           return;
         }
 
         const rung = firstMatchingRung(expressions, html);
-        // rung 0 is the only acceptable answer. rung 1 means the site drifted and
-        // production is silently running on the looser heading match. -1 means the
-        // whole chain is dead on a page that visibly does publish the chart.
+        // rung 1 means production is silently running on the looser heading match;
+        // -1 means the chain is dead on a page that visibly publishes the chart.
         expect(rung).toBe(0);
 
         const hrefs = matches(expressions[0], html);
         if (mayBeShortOrAbsent) {
-          // A small market may chart fewer than ten titles; what must never
-          // happen is more than ten, which would mean the expression escaped
-          // its own section.
+          // A small market may chart fewer than ten titles; more than ten would mean
+          // the expression escaped its own section.
           expect(hrefs.length).toBeGreaterThan(0);
           expect(hrefs.length).toBeLessThanOrEqual(10);
         } else {
@@ -732,46 +622,28 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     );
 
     /**
-     * Three subjects, and the redundancy between them is SHALLOW — read this before
-     * trusting the count.
+     * The redundancy between the subjects is SHALLOW: each self-skips as soon as its
+     * market starts charting the missing type, and all of them are the same platform,
+     * so one platform-wide feed change skips them all at once. A mono-type market on
+     * another platform would be worth more here than a fourth Baltic one.
      *
-     * Each subject self-skips when its market starts charting the missing type, so a
-     * single subject meant one market flipping silently deleted all live coverage of
-     * the behaviour. Two more mono-type markets make that harder. But all three are
-     * the SAME platform, `go3`: whatever makes one of them start publishing a TV
-     * Shows chart is far more likely to be a platform-wide feed change than a
-     * per-country one, and then all three skip together and the coverage is gone
-     * exactly as before. Three subjects are therefore NOT three independent chances.
-     *
-     * A second platform would be the real fix, and none is available: every non-go3
-     * market probed for this (`viaplay/iceland`, `vidio/indonesia`,
-     * `catchplay/taiwan`, `osn/kuwait`, `voyo/slovakia`) charts BOTH media types, so
-     * none of them can exercise an absent chart. If a mono-type market on another
-     * platform ever turns up, it is worth more here than a fourth Baltic one.
-     *
-     * What is never at stake is the guarantee itself: `tests/Flixpatrol/parse.test.ts`
-     * asserts the empty-chain behaviour unconditionally against a fixture. All that
-     * can be lost here is its verification against the real site.
+     * Only the live verification is at stake: `tests/Flixpatrol/parse.test.ts`
+     * asserts the empty-chain behaviour unconditionally against a fixture.
      */
     it.for(top10AbsentChartCases)(
       '$path — an unpublished $type chart yields EMPTY, never the other type rows',
       ({ path, location, type }, ctx) => {
         const html = page(path);
-        // The counterpart of the rung assertions above, and the reason the untyped
-        // rung was removed. Both remaining rungs name the media type, so a market
-        // that charts one type and not the other must come back with nothing for
-        // the missing one — not with the rows it does publish, relabelled.
         if (publishesChart(type, html)) {
           ctx.skip(`${path} publishes a "TOP 10 ${type}" chart today: no absent-chart case to exercise`);
           return;
         }
-        // The page is not blank: it charts the OTHER media type, so anything
+        // The page is not blank — it charts the OTHER media type — so anything
         // positional would have plenty to grab here.
         const other: FlixPatrolType = type === 'Movies' ? 'TV Shows' : 'Movies';
         expect(publishesChart(other, html)).toBe(true);
         expect(matches(top10Expressions(other, location)[0], html).length).toBeGreaterThan(0);
-        // Asserted through the parser's own chain walk, which is what production
-        // runs: an empty result is what makes the caller leave the list untouched.
+        // Through the parser's own chain walk, which is what production runs.
         expect(parseTop10Page(type, location, html)).toEqual([]);
       },
     );
@@ -798,16 +670,12 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       '$path — the single expression still selects the card table',
       ({ path, directTitleLinks }) => {
         const hrefs = matches(POPULAR_EXPRESSION, page(path));
-        // No fallback exists here, so this expression dying is an outright outage
-        // rather than a silent degradation — but it is still worth catching early.
         expect(hrefs.length).toBeGreaterThanOrEqual(10);
         expect(hrefs.every((href) => TITLE_HREF.test(href))).toBe(true);
         expect(new Set(hrefs).size).toBe(hrefs.length);
         if (directTitleLinks) {
-          // Wikipedia rows must keep pointing at the title itself. The day they
-          // point at a sub-page instead, every title the app reads from this
-          // chart acquires the sub-page's heading — the exact failure mode the
-          // most-watched chart already exhibits.
+          // Pinned so a source that starts linking at a sub-page is noticed here
+          // rather than through titles that quietly acquire a section name.
           expect(hrefs.every((href) => DIRECT_TITLE_HREF.test(href))).toBe(true);
         }
       },
@@ -830,9 +698,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
         const html = page(path);
         const all = matches(mostWatchedExpression(false), html);
         const originals = matches(mostWatchedExpression(true), html);
-        // The `[.//svg]` predicate is the whole point of `original: true`. Empty
-        // means the originals badge moved out of the anchor; equal to `all` means
-        // the predicate has become a no-op and the option silently does nothing.
+        // The `[.//svg]` predicate is the whole point of `original: true`: empty means
+        // the badge moved out of the anchor, equal to `all` means it is a no-op.
         expect(originals.length).toBeGreaterThan(0);
         expect(originals.length).toBeLessThan(all.length);
         expect(originals.every((href) => all.includes(href))).toBe(true);
@@ -850,15 +717,12 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
         expect(expressions).toHaveLength(2);
         const rung = firstMatchingRung(expressions, page(path));
         if (hasLanguageTabs) {
-          // On a period that HAS tabs, falling back to rung 1 means every
-          // language now returns the same undifferentiated rows and the
-          // `language` setting has silently become decorative.
+          // Falling back to rung 1 here would mean every language returns the same
+          // undifferentiated rows and `language` has silently become decorative.
           expect(rung).toBe(0);
         } else {
-          // `total` publishes no language tabs, so rung 1 is the CORRECT answer
-          // and rung 0 must match nothing. Rung 0 suddenly matching here would
-          // mean the report gained tabs and the app is now reading one arbitrary
-          // language instead of the whole period.
+          // Rung 0 matching here would mean the report gained tabs and the app is now
+          // reading one arbitrary language instead of the whole period.
           expect(rung).toBe(1);
           expect(matches(expressions[0], page(path))).toHaveLength(0);
           expect(matches(expressions[1], page(path)).length).toBeGreaterThan(0);
@@ -875,11 +739,9 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
         const sectionWide = matches(mostHoursExpressions(type, 'all')[1], html);
         expect(english.length).toBeGreaterThan(0);
         expect(nonEnglish.length).toBeGreaterThan(0);
-        // If the tab attribute drifted, the language expressions would collapse
-        // onto one another and `language` would become a decorative setting.
-        // Disjointness is the strongest form of that check and, unlike a
-        // comparison of counts, it does not depend on how many rows the site
-        // decides to publish today.
+        // A drifted tab attribute would collapse the language expressions onto one
+        // another. Disjointness is the strongest form of that check and, unlike
+        // comparing counts, does not depend on how many rows the site publishes.
         const englishSet = new Set(english);
         expect(nonEnglish.filter((href) => englishSet.has(href))).toEqual([]);
         // And the tab narrowing must still narrow: the section holds every tab.
@@ -894,10 +756,9 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
         const rows = MOST_HOURS_LANGUAGES
           .map((language) => matches(mostHoursExpressions(type, language)[1], html));
         expect(rows[0].length).toBeGreaterThan(0);
-        // Documents the shape of the `total` period rather than asserting it is
-        // desirable: with no tabs to narrow, all three languages are one list.
-        // The day this stops holding, `total` has gained a per-language split
-        // that the parser is not reading.
+        // Documents the shape of `total` rather than asserting it is desirable: the
+        // day it stops holding, the period has gained a per-language split the
+        // parser is not reading.
         for (const row of rows) {
           expect(row).toEqual(rows[0]);
         }
@@ -907,21 +768,19 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
 
   describe('Detail pages', () => {
     it('derived one detail page per spec, spanning movies and TV shows', () => {
-      // Guards the derivation itself: without it, every assertion below would
-      // vacuously pass over an empty set.
+      // Without this, every assertion below would vacuously pass over an empty set.
       expect([...details.keys()].sort()).toEqual(DETAIL_SPECS.map((spec) => spec.family).sort());
     });
 
     it('reduces every listing href to a canonical title page before fetching it', () => {
       const derived = [...details.values()];
-      // The hard invariant: nothing below `/title/<slug>/` is ever requested, so
-      // no `h1` carrying a section name can reach the backends.
+      // Nothing below `/title/<slug>/` is ever requested, so no `h1` carrying a
+      // section name can reach the backends.
       for (const entry of derived) {
         expect(DIRECT_TITLE_HREF.test(entry.path), `fetched ${entry.path} for ${entry.family}`).toBe(true);
       }
-      // And the guard must still be exercised: if no listing published a sub-page
-      // href today, the assertions below would pass without ever touching the
-      // normalisation, and a regression in it would go unnoticed here.
+      // And the normalisation must still be exercised: with no sub-page href among
+      // the specs, a regression in it would go unnoticed here.
       const viaSubPage = derived.filter((entry) => !DIRECT_TITLE_HREF.test(entry.listingHref));
       expect(viaSubPage.length, 'no listing published a sub-page href to normalise').toBeGreaterThan(0);
     });
@@ -929,9 +788,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     it.for(DETAIL_SPECS)(
       '$family — the PRIMARY title expression matches, not the bare //h1 fallback',
       ({ family }) => {
-        // This is the exact assertion the 2021 incident needed. The second rung is
-        // a bare `//h1`, which matches on virtually any page and would keep the
-        // parse "working" while the real container had vanished.
+        // The second rung is a bare `//h1`, which matches on virtually any page and
+        // would keep the parse "working" after the real container had vanished.
         const derived = detail(family);
         expect(stringValue(DETAIL_TITLE_EXPRESSIONS[0], derived.html), `on ${derived.path}`).not.toBe('');
       },
@@ -942,9 +800,9 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       ({ family }) => {
         const derived = detail(family);
         const premiere = stringValue(DETAIL_PREMIERE_EXPRESSION, derived.html);
-        // No fallback exists for the year on purpose: a wrong year is silently
-        // destructive, so the premiere block is the only source. If it moves, the
-        // year goes null everywhere and the backend match degrades to title-only.
+        // The year has no fallback on purpose: a guessed year silently selects the
+        // wrong film, so the premiere block is the only source. If it moves, the year
+        // goes null everywhere and the backend match degrades to title-only.
         expect(DETAIL_YEAR_PATTERN.test(premiere), `premiere block on ${derived.path}: "${premiere}"`).toBe(true);
         const { year } = parseDetailPage(derived.html);
         expect(year).not.toBeNull();
@@ -957,9 +815,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       const parsed = [...details.values()].map((derived) => parseDetailPage(derived.html));
       const years = parsed.map((derived) => derived.year);
       expect(years.every((year) => year !== null)).toBe(true);
-      // THE signature of the 2021 bug: unrelated titles pulled from unrelated
-      // charts sharing one year means the year is coming from page furniture,
-      // not from the media. Holds regardless of what the site lists today.
+      // Unrelated titles from unrelated charts sharing one year means the year is
+      // coming from page furniture rather than from the media.
       expect(new Set(years).size).toBeGreaterThan(1);
       expect(new Set(parsed.map((derived) => derived.title)).size).toBe(parsed.length);
     });
@@ -967,19 +824,14 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     it.for(DETAIL_SPECS)(
       '$family — the parsed title is what the listing printed for the same href',
       ({ family }) => {
-        // Cross-check between two independent parts of the site, and the only way
-        // to catch a title read off the wrong page. Most watched links at
-        // `/title/<slug>/hours/` and YouTube Popular at `/title/<slug>/trailers/`,
-        // and both sub-pages print the section name inside their own `h1`
-        // ("KPop Demon Hunters Hours"). The item would then be searched for in
-        // every backend under a name nobody uses, and no assertion on shape alone
-        // would notice. Both families have a spec above, so the canonicalisation
-        // that prevents it is covered wherever the site publishes a sub-page link.
+        // The only way to catch a title read off the wrong page: a sub-page of a title
+        // prints the section name inside its own `h1` ("KPop Demon Hunters Hours"),
+        // and the item would then be searched for in every backend under a name nobody
+        // uses, which no assertion on shape alone would notice.
         //
-        // The listing label is a prefix test, not an equality one: some listings
-        // append metadata (type, country, premiere date) inside the same anchor,
-        // while the detail page prints the bare title. A title that is NOT the
-        // leading text of its own listing label is a genuine mismatch.
+        // A prefix test rather than equality: some listings append metadata inside the
+        // same anchor while the detail page prints the bare title, so only a title
+        // that is not the LEADING text of its label is a genuine mismatch.
         const derived = detail(family);
         if (derived.listingLabel === '') {
           return;
@@ -993,9 +845,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
 
   describe('Politeness', () => {
     it('fetched every page exactly once and stayed within the request budget', () => {
-      // Every assertion above reads from the bootstrap cache, so the number of
-      // live requests is exactly the number of distinct URLs. If this ever
-      // exceeds the number of pages the tables declare, something is re-fetching.
+      // Every assertion above reads from the bootstrap cache, so live requests must
+      // equal the number of distinct URLs; more means something is re-fetching.
       expect(requestCount).toBe(pages.size);
       expect(requestCount).toBeLessThanOrEqual(REQUEST_BUDGET);
     });

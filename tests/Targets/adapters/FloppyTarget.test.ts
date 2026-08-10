@@ -105,9 +105,9 @@ describe('FloppyTarget', () => {
 
   it('adds a known media with a single PUT', async () => {
     fetchMock
-      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] })) // GET /lists/
-      .mockResolvedValueOnce(json({ results: [] })) // GET /lists/7/items/
-      .mockResolvedValueOnce(json([{ list_id: 7 }])); // PUT
+      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
+      .mockResolvedValueOnce(json({ results: [] }))
+      .mockResolvedValueOnce(json([{ list_id: 7 }]));
     await target.pushToList({ movie: ['tmdb:27205'] }, 'my-list', 'public');
     expect(methodOf(fetchMock, 2)).toBe('PUT');
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/27205/lists/7/');
@@ -134,10 +134,9 @@ describe('FloppyTarget', () => {
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
       .mockResolvedValueOnce(json({ results: [] }))
       .mockResolvedValueOnce(json([{ list_id: 7 }]))
-      // The three calls above are all this test expects. The responses below
-      // exist only so a regression that reaches the bootstrap gets valid
-      // responses instead of undefined: the assertion on DELETE must be what
-      // trips, not a TypeError from an exhausted mock.
+      // The responses below are unreachable unless a regression starts the
+      // bootstrap: they are queued so the DELETE assertion is what trips,
+      // not a TypeError from an exhausted mock.
       .mockResolvedValueOnce(json({ id: 1 }, 201)) // POST /media/movie/
       .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT retry
       .mockResolvedValue(json({}, 204)); // DELETE tracking, and anything after
@@ -166,7 +165,7 @@ describe('FloppyTarget', () => {
           { item: { media_id: '2', source: 'tmdb', media_type: 'tv' } },
         ],
       }))
-      .mockResolvedValueOnce(json({}, 204)) // DELETE of the only movie
+      .mockResolvedValueOnce(json({}, 204))
       .mockResolvedValueOnce(json([{ list_id: 7 }]));
     await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/');
@@ -183,18 +182,15 @@ describe('FloppyTarget', () => {
   });
 
   /**
-   * Regression guard on the fused write. A `type: "both"` list used to be pushed
-   * TWICE, so the list lookup and the items read each ran twice — 6 requests for
-   * one movie and one show where 4 suffice. The per-item PUTs are inherent to
-   * Floppy, which exposes no bulk write, and are deliberately NOT what this
-   * asserts on.
+   * The per-item PUTs are inherent to Floppy, which exposes no bulk write, so what
+   * a "both" write must not duplicate is the list lookup and the items read.
    */
   it('looks the list up and reads its items once for a "both" write', async () => {
     fetchMock
-      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] })) // GET /lists/?search=
-      .mockResolvedValueOnce(json({ results: [] })) // GET /lists/7/items/
-      .mockResolvedValueOnce(json([{ list_id: 7 }])) // PUT movie
-      .mockResolvedValueOnce(json([{ list_id: 7 }])); // PUT show
+      .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
+      .mockResolvedValueOnce(json({ results: [] }))
+      .mockResolvedValueOnce(json([{ list_id: 7 }]))
+      .mockResolvedValueOnce(json([{ list_id: 7 }]));
 
     await target.pushToList({ movie: ['tmdb:1'], show: ['tmdb:2'] }, 'my-list', 'public');
 
@@ -218,8 +214,8 @@ describe('FloppyTarget', () => {
           { item: { media_id: '2', source: 'tmdb', media_type: 'tv' } },
         ],
       }))
-      .mockResolvedValueOnce(json({}, 204)) // DELETE of the only movie
-      .mockResolvedValue(json([{ list_id: 7 }])); // PUT of the replacement movie
+      .mockResolvedValueOnce(json({}, 204))
+      .mockResolvedValue(json([{ list_id: 7 }]));
 
     await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
 
@@ -227,7 +223,7 @@ describe('FloppyTarget', () => {
     expect(deletes).toEqual(['http://floppy:8000/api/v1/media/movie/tmdb/1/lists/7/']);
   });
 
-  // An empty array is a deliberate wipe: the DELETE happens, no PUT follows.
+  // An empty array is a deliberate wipe, unlike an absent key.
   it('removes the items of a kind handed an empty array', async () => {
     fetchMock
       .mockResolvedValueOnce(json({ results: [{ id: 7, name: 'my-list' }] }))
@@ -263,16 +259,10 @@ describe('FloppyTarget', () => {
 });
 
 /**
- * Pagination. Floppy serves 20 entries per page on every collection, and both
- * reads `pushToList` depends on are collections.
- *
- * The severe one is the items read: it is what decides which entries get
- * REMOVED. Stopping at the first page leaves everything past the twentieth item
- * in place while the fresh content is added on top, so the list grows at every
- * run and mixes stale entries with current ones.
- *
- * The second is the list lookup: `search` is a PARTIAL match, so a common
- * substring can push the exact name onto page two, where a single-page read
+ * Pagination. Floppy serves 20 entries per page, and both reads `pushToList`
+ * depends on are collections. The items read decides what gets REMOVED, so a
+ * truncated one leaves stale entries behind. And `search` on the list lookup is a
+ * PARTIAL match, so the exact name can sit on page two, where a single-page read
  * reports it absent and creates a DUPLICATE list.
  */
 describe('FloppyTarget pagination', () => {
@@ -301,16 +291,15 @@ describe('FloppyTarget pagination', () => {
 
   it('removes the existing items living past the first page of the items read', async () => {
     fetchMock
-      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }])) // GET /lists/?search=
+      .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
       .mockResolvedValueOnce(page('http://floppy:8000/api/v1/lists/7/items/?limit=20&offset=20', [movieEntry('1')]))
       .mockResolvedValueOnce(page(null, [movieEntry('21')]))
-      .mockResolvedValueOnce(json({}, 204)) // DELETE of the page-1 item
-      .mockResolvedValueOnce(json({}, 204)) // DELETE of the page-2 item
-      .mockResolvedValue(json([{ list_id: 7 }])); // PUT of the replacement
+      .mockResolvedValueOnce(json({}, 204))
+      .mockResolvedValueOnce(json({}, 204))
+      .mockResolvedValue(json([{ list_id: 7 }]));
 
     await target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public');
 
-    // The second page was asked for, at the offset the cursor dictated.
     expect(urlOf(fetchMock, 2)).toBe('http://floppy:8000/api/v1/lists/7/items/?limit=20&offset=20');
 
     const deletes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE').map((c) => c[0] as string);
@@ -327,7 +316,7 @@ describe('FloppyTarget pagination', () => {
         [{ id: 3, name: 'my-list-kids' }],
       ))
       .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
-      .mockResolvedValueOnce(page(null, [])) // GET /lists/7/items/
+      .mockResolvedValueOnce(page(null, []))
       .mockResolvedValue(json([{ list_id: 7 }]));
 
     await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');

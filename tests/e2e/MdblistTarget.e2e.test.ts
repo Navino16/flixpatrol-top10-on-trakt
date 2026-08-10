@@ -4,27 +4,20 @@ import {
 import { MdblistTarget } from '../../src/Targets/adapters/MdblistTarget';
 
 /**
- * E2E suite: it talks to the real mdblist service and is only enabled when
- * `E2E_MDBLIST_API_KEY` is provided. Without it the suite is skipped, so that a
- * CI without secrets stays green.
+ * E2E suite against the real mdblist service, enabled only when
+ * `E2E_MDBLIST_API_KEY` is set; skipped otherwise so a CI without secrets stays
+ * green. The account is a real person's free account, which imposes three rules:
+ * lists are always created `private`, `afterAll` deletes the list it created
+ * (the free tier tolerates only four static lists), and the suite stays well
+ * under the budget of 1,000 requests per day.
  *
- * The test account is a free account belonging to a real person, which imposes
- * three absolute rules:
- * - every list created is created as `private`, never otherwise;
- * - `afterAll` deletes the list it created, the free tier only tolerating four
- *   static lists;
- * - the budget is 1,000 requests per day, so the suite stays under about twenty
- *   calls and logs the remaining quota at the end.
- *
- * Everything that is checked is checked by querying the service directly with
- * `fetch`, never through the adapter: the real state of the service is what
- * counts.
+ * Assertions read the service directly with `fetch`, never through the adapter.
  */
 const apiKey = process.env.E2E_MDBLIST_API_KEY ?? '';
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 const BASE = 'https://api.mdblist.com';
 
-// Unique name per run: two concurrent runs do not destroy each other.
+// Unique per run: two concurrent runs do not destroy each other's list.
 const listName = `e2e-probe-${process.pid}-${Date.now().toString(36)}`;
 
 const INCEPTION = 27205;
@@ -90,7 +83,7 @@ const readListItems = async (listId: number): Promise<{ movies: number[]; shows:
 
 describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   let target: MdblistTarget;
-  // Shared between cases: re-reading them would cost requests from the daily budget.
+  // Shared between cases: re-reading them would cost daily-budget requests.
   let listId = 0;
   let updatedBeforeReplace = '';
 
@@ -99,8 +92,8 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   });
 
   afterAll(async () => {
-    // The list must disappear whatever happens: the free tier only tolerates
-    // four of them, and an orphaned list would burn the account's quota.
+    // Must run whatever happened above: an orphaned list burns a slot of the
+    // four the free tier allows.
     const list = await findList(listName);
     if (list === null) {
       console.warn(`[E2E] mdblist list "${listName}" was already absent, nothing to clean`);
@@ -122,7 +115,6 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
 
     const list = await findList(listName);
     expect(list).not.toBeNull();
-    // Requirement from the account owner: never anything other than private.
     expect(list?.private).toBe(true);
 
     listId = list?.id ?? 0;

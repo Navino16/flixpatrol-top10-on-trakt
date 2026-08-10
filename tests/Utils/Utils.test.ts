@@ -5,7 +5,6 @@ import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../sr
 import fs from 'fs';
 import path from 'path';
 
-// Mock fs module
 vi.mock('fs', () => ({
   default: {
     existsSync: vi.fn(),
@@ -16,7 +15,6 @@ vi.mock('fs', () => ({
   },
 }));
 
-// Mock process.exit
 const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
   throw new Error('process.exit called');
 }) as unknown as (code?: number) => never);
@@ -44,11 +42,9 @@ describe('Utils', () => {
       const startTime = Date.now();
       const sleepPromise = Utils.sleep(1000);
 
-      // Fast-forward time
       vi.advanceTimersByTime(1000);
 
       await sleepPromise;
-      // The promise should resolve
       expect(true).toBe(true);
     });
 
@@ -155,7 +151,6 @@ describe('Utils', () => {
     });
 
     it('should create config directory and file if they do not exist', () => {
-      // First call for config file, second for config directory
       vi.mocked(fs.existsSync)
         .mockReturnValueOnce(false) // config/default.json does not exist
         .mockReturnValueOnce(false); // config directory does not exist
@@ -192,15 +187,13 @@ describe('Utils', () => {
       const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
       const content = writeCall[1] as string;
 
-      // Verify it's valid JSON
       const parsed = JSON.parse(content);
       expect(parsed).toHaveProperty('FlixPatrolTop10');
       expect(parsed).toHaveProperty('FlixPatrolPopular');
       expect(parsed).toHaveProperty('FlixPatrolMostWatched');
       expect(parsed).toHaveProperty('Cache');
       expect(parsed).toHaveProperty('Schedule');
-      // 3.0.0: the credentials live inside Target, and no root-level Trakt
-      // block is generated any more.
+      // The credentials live inside Target: no root-level Trakt block is generated.
       expect(parsed).not.toHaveProperty('Trakt');
       expect(parsed.Target).toEqual({
         type: 'trakt',

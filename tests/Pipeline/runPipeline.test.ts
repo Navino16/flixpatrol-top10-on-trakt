@@ -118,8 +118,8 @@ function baseDeps(overrides: Partial<RunPipelineDeps> = {}): RunPipelineDeps {
   };
 }
 
-// Default: every scraped item resolves, so tests that do not care about
-// resolution losses keep a 1:1 mapping between scraped items and pushed ids.
+// Every scraped item resolves, keeping a 1:1 mapping between scraped items and
+// pushed ids for the tests that do not care about resolution losses.
 function resolveAll(): void {
   resolveMany.mockImplementation(
     (items: MediaItem[]) => Promise.resolve(items.map((_, i) => `id-${i}`)),
@@ -252,10 +252,9 @@ describe('runPipeline target wiring', () => {
     expect(messages.some((m) => m.includes('trakt') && m.includes('1 matched'))).toBe(true);
   });
 
-  // Regression guard: pushToList REPLACES a list's content, so writing an empty
-  // array on a total resolution failure (backend outage, expired key) would wipe
-  // a list the user has accumulated. Guard on the RESOLVED count, never the
-  // scraped one — restoring an `items.length > 0` guard here must fail this test.
+  // pushToList REPLACES a list's content, so writing an empty array on a total
+  // resolution failure would wipe a list the user has accumulated. The guard is on
+  // the RESOLVED count, never the scraped one.
   it('leaves the list untouched when the scrape yielded items but none resolved', async () => {
     target.backend = 'mdblist';
     resolveMany.mockResolvedValueOnce([]);
@@ -276,9 +275,8 @@ describe('runPipeline target wiring', () => {
     });
     resolveMany.mockResolvedValueOnce([]); // movies fail
     const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
-    // ONE fused write, carrying the shows only: the movie key is ABSENT, which is
-    // how "write the shows, leave the movies exactly as they are" is expressed.
-    // A `movie: []` here would wipe the movies the backend simply failed to match.
+    // The movie key is ABSENT, not empty: `movie: []` would wipe the movies the
+    // backend simply failed to match.
     expect(pushToList).toHaveBeenCalledOnce();
     expect(pushToList).toHaveBeenCalledWith({ show: ['id-0'] }, expect.any(String), expect.any(String));
     expect(kindsOfWrite(0)).toEqual(['show']);
@@ -288,7 +286,7 @@ describe('runPipeline target wiring', () => {
   });
 
   // A genuinely empty scrape is NOT a resolution failure: the Top10 block skips it
-  // entirely, so neither a write nor the "left unchanged" warning happens.
+  // entirely, so neither a write nor a warning happens.
   it('does not warn about resolution when the scrape itself returned nothing', async () => {
     getTop10Sections.mockResolvedValue({
       movies: [], shows: [], rawCounts: { movies: 0, shows: 0 },
@@ -370,9 +368,6 @@ describe('runPipeline Popular section', () => {
     expect(summary.showsAdded).toBe(1);
   });
 
-  // The fused write, seen from the pipeline: a `type: "both"` entry costs ONE
-  // pushToList call, not two. Everything the backends do per list — list lookup,
-  // items read, description stamp — is therefore paid once.
   it('writes both media kinds of a list in a single push', async () => {
     const deps = baseDeps({ flixPatrolPopulars: popularConfig() });
     const summary = await runPipeline(deps);
@@ -384,8 +379,6 @@ describe('runPipeline Popular section', () => {
     expect(summary.showsAdded).toBe(1);
   });
 
-  // Two `type: "both"` lists are still two writes: the fusion is per list, never
-  // across lists.
   it('still writes once per list, never merging two lists into one call', async () => {
     const deps = baseDeps({
       flixPatrolPopulars: [
@@ -400,8 +393,6 @@ describe('runPipeline Popular section', () => {
     expect(listNameOfWrite(1)).toBe('second');
   });
 
-  // Leave-untouched semantics on a fused write: the shows failed to resolve, the
-  // movies did. The single call must carry the movies and OMIT the shows.
   it('omits the failing kind from the fused write and still writes the other', async () => {
     resolveMany
       .mockResolvedValueOnce(['m-1']) // movies resolve
@@ -415,8 +406,8 @@ describe('runPipeline Popular section', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('left unchanged'));
   });
 
-  // A genuinely empty scrape is NOT a failure: the key is present and empty, which
-  // asks the backend to clear that kind.
+  // An empty scrape is not a failure: the key is present and empty, which asks the
+  // backend to clear that kind.
   it('sends an empty array for a kind the scrape returned empty', async () => {
     getPopular.mockResolvedValueOnce([]).mockResolvedValueOnce(oneItem);
     await runPipeline(baseDeps({ flixPatrolPopulars: popularConfig() }));
@@ -656,10 +647,8 @@ describe('runPipeline dry-run reporting', () => {
 describe('runPipeline abort between lists', () => {
   it('completes the in-flight list write, then stops before the next list', async () => {
     const controller = new AbortController();
-    // Abort as soon as the first LIST write lands. With one write per list the
-    // checkpoint can only sit between two lists, so the first list is written
-    // WHOLE — both kinds in the same call — and the second is not written at all.
-    // A stop can no longer land between the movie half and the show half.
+    // Abort as soon as the first LIST write lands: the checkpoint sits between two
+    // lists, so the first list is written whole and the second not at all.
     pushToList.mockImplementationOnce(() => {
       controller.abort();
       return Promise.resolve();
@@ -679,7 +668,6 @@ describe('runPipeline abort between lists', () => {
     expect(contentOfWrite(0)).toEqual({ movie: ['id-0'], show: ['id-0'] });
     expect(summary.moviesAdded).toBe(1);
     expect(summary.showsAdded).toBe(1);
-    // The first list completed, so it counts; the second was never written.
     expect(summary.listsProcessed).toBe(1);
   });
 

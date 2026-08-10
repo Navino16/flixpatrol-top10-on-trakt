@@ -44,9 +44,8 @@ export class TraktTarget implements ListTarget {
   }
 
   /**
-   * Backend-specific half of the resolution. There is no shared match cascade
-   * here: the Trakt client already returns a single best result, so the matching
-   * happens server-side.
+   * Backend-specific half of the resolution. The shared match cascade is not used here:
+   * the Trakt client already returns a single best result, matched server-side.
    */
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     // Trakt expects a number: 0 means "year unknown", and its search then
@@ -61,9 +60,8 @@ export class TraktTarget implements ListTarget {
     listName: string,
     privacy: ListPrivacy,
   ): Promise<void> {
-    // The absent/present distinction is preserved on the way down: a kind the
-    // caller omitted must stay omitted, never become an empty array, or the
-    // Trakt layer would wipe it.
+    // A kind the caller omitted must stay omitted rather than become an empty array,
+    // which the Trakt layer would read as an instruction to wipe it.
     const content: TraktListContent = {};
     if (ids.movie !== undefined) content.movie = ids.movie.map(Number);
     if (ids.show !== undefined) content.show = ids.show.map(Number);

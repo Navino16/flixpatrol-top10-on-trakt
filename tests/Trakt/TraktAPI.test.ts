@@ -5,7 +5,6 @@ import { Utils } from '../../src/Utils/Utils';
 import { logger } from '../../src/Utils/Logger';
 import fs from 'fs';
 
-// Mock fs module
 vi.mock('fs', () => ({
   default: {
     existsSync: vi.fn(),
@@ -15,7 +14,6 @@ vi.mock('fs', () => ({
   },
 }));
 
-// Create mock functions for trakt.tv
 const mockImportToken = vi.fn();
 const mockExportToken = vi.fn();
 const mockGetCodes = vi.fn();
@@ -28,7 +26,6 @@ const mockListItemsRemove = vi.fn();
 const mockListsCreate = vi.fn();
 const mockSearchText = vi.fn();
 
-// Mock trakt.tv module with a proper class
 vi.mock('trakt.tv', () => {
   return {
     default: class MockTrakt {
@@ -89,7 +86,6 @@ describe('TraktAPI', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockToken));
 
       const trakt = new TraktAPI(mockOptions);
-      // Access private trakt instance via prototype
       const traktInstance = (trakt as unknown as { trakt: { import_token: ReturnType<typeof vi.fn> } }).trakt;
       traktInstance.import_token.mockResolvedValue(mockToken);
 
@@ -364,10 +360,6 @@ describe('TraktAPI', () => {
     });
 
     it('normalizes list names with brackets to match Trakt slug format', async () => {
-      // Regression for the crash observed with LIST_NAME_PREFIX="[TEST]":
-      // naive slug `[test]netflix-france-...` did not match Trakt's canonical
-      // `test-netflix-france-...`, so `.get()` returned partial data and the
-      // privacy-update path crashed on `list.ids.slug` (ids was undefined).
       const mockList = {
         name: '[TEST]netflix-france-top10-with-world-fallback',
         privacy: 'private',
@@ -397,10 +389,8 @@ describe('TraktAPI', () => {
     });
 
     it('treats Trakt returning an empty-string body as not-found and creates the list', async () => {
-      // Regression: Trakt's API has been observed returning HTTP 200 with an
-      // empty body (`""`) instead of a proper 404 for some missing-list
-      // lookups. The previous code accepted that as a valid response, then
-      // crashed on `list.ids.slug` in the privacy-update branch.
+      // Trakt answers some missing-list lookups with HTTP 200 and an empty body
+      // (`""`) instead of a 404.
       const createdList = {
         name: '[TEST]new-list',
         privacy: 'private',
@@ -495,16 +485,8 @@ describe('TraktAPI', () => {
     };
 
     /**
-     * Regression guard on the fused write. A `type: "both"` list used to be
-     * pushed TWICE, so the per-list work was paid twice: two `users.list.get`,
-     * two description updates (the second silently overwriting the first) and
-     * four rate-limit sleeps — two of which were pure waste, i.e. two seconds
-     * per list. Reintroducing a per-kind call must break these numbers.
-     *
-     * The items read joined the per-LIST budget once the phantom server-side
-     * type filter was dropped: Trakt returns the whole list whatever `type` is
-     * passed, so the second read was a duplicate of the first. Two reads per
-     * `type: "both"` list, now one.
+     * These numbers pin what is paid per LIST versus per KIND. Reintroducing a
+     * per-kind list lookup, description update or items read must break them.
      */
     it('pays the per-list work once when both kinds are written together', async () => {
       armHappyPath();
@@ -512,15 +494,14 @@ describe('TraktAPI', () => {
 
       await trakt.pushToList({ movie: [123], show: [456] }, 'Test List', 'private');
 
-      // Per LIST: once each (was twice).
+      // Per LIST.
       expect(mockListGet).toHaveBeenCalledTimes(1);
       expect(mockListUpdate).toHaveBeenCalledTimes(1);
       // Per LIST too: the read is unfiltered, so one read serves both kinds.
       expect(mockListItemsGet).toHaveBeenCalledTimes(1);
       // Per KIND: the add genuinely carries a per-kind payload.
       expect(mockListItemsAdd).toHaveBeenCalledTimes(2);
-      // Two adds + one description update; the two sleeps that guarded the
-      // duplicated list read and description write are gone.
+      // One sleep per write: two adds plus the description update.
       expect(Utils.sleep).toHaveBeenCalledTimes(3);
     });
 
@@ -545,7 +526,6 @@ describe('TraktAPI', () => {
       await trakt.pushToList({ movie: [123] }, 'Test List', 'private');
 
       expect(mockListItemsGet).toHaveBeenCalledTimes(1);
-      // The list holds a show only, and only movies were asked for: nothing to remove.
       expect(mockListItemsRemove).not.toHaveBeenCalled();
     });
 
@@ -574,14 +554,9 @@ describe('TraktAPI', () => {
   });
 
   /**
-   * `users.list.items.get` is NOT filtered by Trakt: `trakt.tv` sends `type` as
-   * a query parameter where the API wants a path segment, so the whole list
-   * comes back whatever type is asked for. Observed live: 23 movies were
-   * written, the list was re-read for the show pass, and the code announced
-   * "contain 23 show, removing them" — those were the movies it had just
-   * written. Nothing was lost only because the removal payload carried movie
-   * ids under `shows`, which matched nothing. These tests pin the in-memory
-   * narrowing that makes the behaviour intentional rather than accidental.
+   * `users.list.items.get` is NOT filtered by Trakt: `trakt.tv` sends `type` as a
+   * query parameter where the API wants a path segment, so the whole list comes back
+   * whatever type is asked for. Narrowing by type therefore happens in memory.
    */
   describe('list items are narrowed by type in memory', () => {
     const foundList = {
@@ -590,7 +565,6 @@ describe('TraktAPI', () => {
       ids: { trakt: 7, slug: 'mixed-list' },
     };
 
-    // A list holding BOTH kinds, as any `type: "both"` list does after a run.
     const mixedItems = [
       { type: 'movie', movie: { ids: { trakt: 111 } } },
       { type: 'show', show: { ids: { trakt: 222 } } },
@@ -646,7 +620,6 @@ describe('TraktAPI', () => {
       });
     });
 
-    // The false data-loss alarm was raised by this log line, not by a write.
     it('logs the real count of the requested kind, not the whole list size', async () => {
       armMixedList();
       const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
@@ -658,7 +631,6 @@ describe('TraktAPI', () => {
         .map((c) => String(c[0]))
         .filter((message) => message.includes('removing them'));
       expect(removalLogs).toHaveLength(1);
-      // One show in the list, not the three items it holds.
       expect(removalLogs[0]).toContain('contain 1 show');
       infoSpy.mockRestore();
     });

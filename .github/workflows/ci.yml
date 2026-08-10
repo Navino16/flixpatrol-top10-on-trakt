@@ -94,17 +94,13 @@ jobs:
           report_type: test_results
           fail_ci_if_error: false
 
-  # First-class gate, triggered exactly like `lint`, `build` and `test`.
-  #
   # Floppy is self-hostable, so this job stands up its own throwaway instance and
-  # mints its own token: it needs NO repository secret, which makes it safe on
-  # pull requests from forks and means it can share the workflow trigger verbatim
-  # rather than hiding behind a `paths` filter.
+  # mints its own token: it needs no repository secret, which makes it safe to run
+  # on pull requests from forks.
   #
   # The other two E2E suites are deliberately absent from CI: Trakt and mdblist
   # write to real third-party accounts, so they stay local-only and are run by
-  # hand with owner-controlled credentials. They self-skip here anyway, since
-  # only the Floppy variables are ever exported.
+  # hand with owner-controlled credentials.
   e2e-floppy:
     name: E2E - Floppy
     runs-on: ubuntu-latest
@@ -129,9 +125,7 @@ jobs:
       # Plain `docker run` rather than `services:` or a committed compose file:
       # the bootstrap is a sequence (start -> poll health -> `docker exec` a token
       # out of the app container), and `services:` offers no hook between "started"
-      # and "ready" for a container whose cold start is ~90s. Keeping the three
-      # steps inline also means the whole procedure is readable in one place
-      # instead of being split across a second file.
+      # and "ready" for a container whose cold start is ~90s.
       - name: Start Redis and Floppy
         run: |
           docker network create "$DOCKER_NETWORK"
@@ -145,9 +139,9 @@ jobs:
             -e DEMO_ACCOUNT_ENABLED=False \
             ghcr.io/dannyvfilms/floppy:latest
 
-      # Cold start is roughly 90s (measured: ~96s from `docker run` to the first
-      # 200). A fixed `sleep` would be flaky in both directions, so poll and fail
-      # loudly — with the container logs — if readiness never arrives.
+      # Cold start is roughly 90s, so a fixed `sleep` would be flaky in both
+      # directions: poll instead, and dump the container logs if readiness never
+      # arrives.
       - name: Wait for Floppy to be ready
         run: |
           start=$(date +%s)
@@ -164,10 +158,10 @@ jobs:
           docker logs "$FLOPPY_CONTAINER"
           exit 1
 
-      # The token is printed by the Django shell; mask it before it can reach any
-      # later log line, and hand it over through the environment rather than an
-      # argument. stderr is dropped and `tail -n1` applied because the shell also
-      # prints its auto-import banner.
+      # Mask the token before it can reach any later log line, and hand it over
+      # through the environment rather than an argument. stderr is dropped and
+      # `tail -n1` applied because the Django shell also prints an auto-import
+      # banner around the value.
       - name: Mint an API token
         run: |
           token=$(docker exec "$FLOPPY_CONTAINER" python manage.py shell \

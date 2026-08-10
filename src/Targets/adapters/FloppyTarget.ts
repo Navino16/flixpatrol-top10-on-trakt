@@ -38,9 +38,8 @@ const readResults = (payload: unknown): unknown[] => {
 };
 
 /**
- * Path component of a base URL, without its trailing slash — `''` when the API
- * sits at the root of its host. Used to re-anchor the absolute cursor Floppy
- * returns onto the base URL this adapter was configured with.
+ * Path component of a base URL without its trailing slash, used to re-anchor the
+ * absolute cursor Floppy returns onto the URL this adapter was configured with.
  */
 const pathnameOf = (url: string): string => {
   try {
@@ -53,22 +52,18 @@ const pathnameOf = (url: string): string => {
 /**
  * Floppy adapter, a self-hosted media tracker exposing a REST API under `/api/v1`.
  *
- * Two peculiarities of this API dictate the shape of the adapter:
- * - shows are `tv` there, not `show`;
- * - a list's visibility and description cannot be driven, so no `PATCH` is ever
- *   emitted and the `privacy` argument is deliberately ignored.
+ * Two API peculiarities shape it: shows are `tv` rather than `show`, and a list's
+ * visibility and description cannot be driven at all, so the `privacy` argument is
+ * deliberately ignored and no `PATCH` is ever emitted.
  */
 export class FloppyTarget implements ListTarget {
   public readonly backend: TargetBackend = 'floppy';
 
-  /** The API key is enough: no device flow, no human interaction. */
   public readonly requiresInteractiveAuth = false;
 
   /**
-   * Ceiling on the number of pages a single paginated read may follow. Floppy
-   * serves 20 entries per page by default, so this covers 10,000 entries — far
-   * beyond anything this tool writes — while still bounding a `next` cursor that
-   * loops or never clears.
+   * Ceiling on the pages one paginated read may follow, far beyond anything this tool
+   * writes, so that a `next` cursor which loops or never clears still terminates.
    */
   private static readonly MAX_PAGES = 500;
 
@@ -92,8 +87,7 @@ export class FloppyTarget implements ListTarget {
   }
 
   public isAuthenticated(): boolean {
-    // The API key is validated by the configuration schema: if the adapter
-    // exists, it has what it needs to work.
+    // The configuration schema already validated the API key.
     return true;
   }
 
@@ -101,8 +95,8 @@ export class FloppyTarget implements ListTarget {
     // Nothing to negotiate: authentication is a static header.
   }
 
-  // Identifier encoding: `${source}:${media_id}` — Floppy needs both to build
-  // its routes. Only this adapter encodes and decodes that form.
+  // Floppy needs both halves to build its routes, so ids travel as `source:media_id`.
+  // Only this adapter encodes and decodes that form.
   private static encodeId(source: string, mediaId: string | number): string {
     return `${source}:${mediaId}`;
   }
@@ -156,8 +150,8 @@ export class FloppyTarget implements ListTarget {
       .filter((entry): entry is FloppySearchResult => entry !== null);
   }
 
-  // The two readers below take already-concatenated entries rather than a
-  // single payload: their sources are read across every page, not page by page.
+  // The two readers below take already-concatenated entries rather than one payload,
+  // because their sources are read across every page.
   private static readLists(entries: unknown[]): FloppyList[] {
     return entries
       .map((entry) => FloppyTarget.toList(entry))
@@ -171,12 +165,11 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Single point of passage to the API: authentication header, URL building,
-   * content header when there is a body. Any status outside `expected` throws a
-   * FloppyError mentioning the method, the path and the status.
+   * Single point of passage to the API. Any status outside `expected` throws a
+   * FloppyError.
    *
-   * No delay between two calls: the server is self-hosted, one second per item
-   * would make a list of ten elements absurdly slow.
+   * Unlike the Trakt path there is no delay between calls: the server is self-hosted,
+   * so the per-item sleep rate limits exist to respect would only slow it down.
    */
   private async request(
     method: HttpMethod,
@@ -207,17 +200,15 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Turns the `pagination.next` cursor of a Floppy response into a path this
-   * adapter can request, or null once the collection is exhausted.
+   * Turns the `pagination.next` cursor of a Floppy response into a path this adapter
+   * can request, or null once the collection is exhausted.
    *
-   * `next` comes back as an ABSOLUTE URL built from the origin the server sees,
-   * which is not necessarily the one the adapter was configured with — think
-   * reverse proxy or container hostname. Only its path and query are kept, and
-   * the base path is stripped so `request` can re-anchor them on `this.url`.
+   * `next` is an absolute URL built from the origin the server sees, which behind a
+   * reverse proxy or a container hostname is not the one configured here. Only path and
+   * query survive, base path stripped, so `request` re-anchors them on `this.url`.
    *
-   * A cursor that is present but unusable throws rather than being treated as
-   * the end of the collection: silently stopping there is exactly the truncated
-   * read this whole mechanism exists to prevent.
+   * A cursor that is present but unusable throws instead of being read as the end of
+   * the collection, which would be the truncated read this mechanism exists to prevent.
    */
   private nextPathOf(payload: unknown): string | null {
     if (!isRecord(payload) || !isRecord(payload.pagination)) return null;
@@ -240,15 +231,12 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Reads a paginated collection to exhaustion and returns every `results`
-   * entry, concatenated.
+   * Reads a paginated collection to exhaustion and returns every `results` entry.
    *
-   * The cursor is followed rather than a large `limit` being asked for: a
-   * hardcoded page size is a bet on a maximum that silently truncates the day it
-   * is exceeded, which is the very failure this guards against. The page count
-   * is capped all the same, and hitting the cap THROWS instead of returning a
-   * partial collection — `pushToList` derives what to remove from this read, so
-   * a partial answer would leave stale items behind and grow the list.
+   * The cursor is followed rather than a large `limit` requested, since a hardcoded
+   * page size silently truncates the day it is exceeded. Hitting the page cap throws
+   * instead of returning a partial collection, because callers derive what to remove
+   * from this read and a short answer would leave stale items behind.
    */
   private async requestAllPages(path: string): Promise<unknown[]> {
     const entries: unknown[] = [];
@@ -282,12 +270,9 @@ export class FloppyTarget implements ListTarget {
   /**
    * Backend-specific half of the resolution: search, then the shared match cascade.
    *
-   * This read is deliberately NOT paginated. `/api/v1/search/` is paginated like
-   * every Floppy collection and reports thousands of hits for a common word, but
-   * `limit=20` here is a relevance window, not a page: the results come back
-   * ranked, and a title that matches neither by name nor by year within the top
-   * twenty is not a candidate. Reading it whole would mean thousands of requests
-   * per item to consider matches nobody wants.
+   * Unlike the list reads this one is deliberately not paginated, though the route is:
+   * `limit=20` on ranked results is a relevance window, not a page, and a title absent
+   * from the top hits is not a candidate.
    */
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = FloppyTarget.mediaType(kind);
@@ -299,12 +284,11 @@ export class FloppyTarget implements ListTarget {
   }
 
   private async getOrCreateList(listName: string): Promise<number> {
-    // Read to exhaustion: `search` is a PARTIAL match, so a name sharing a
-    // substring with many others can push the exact match past the first page.
-    // Stopping at page one would report it absent and create a duplicate list.
+    // Floppy's `search` is a partial match, which forces both of the next two lines:
+    // read every page, since a name sharing a substring with many others can push the
+    // exact match past page one and make it look absent, then require strict equality
+    // so "netflix-france-top10-kids" is not reused for "netflix-france-top10".
     const found = await this.requestAllPages(`/api/v1/lists/?search=${encodeURIComponent(listName)}`);
-    // `search` is a partial match on the Floppy side: we require strict equality
-    // so "netflix-france-top10-kids" is not reused instead of "netflix-france-top10".
     const exact = FloppyTarget.readLists(found).find((l) => l.name === listName);
     if (exact) return exact.id;
 
@@ -320,12 +304,11 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Adds a media to a list. The PUT is tried FIRST, and this is not an
-   * optimisation: it only triggers the creation sequence on a 404, hence for a
-   * media absent from the catalogue, hence necessarily not tracked by the
-   * user. The DELETE of step 3 can therefore never erase a status or a rating
-   * entered by hand. Should a future version of Floppy purge orphan catalogue
-   * entries, this path would simply go through the full sequence again.
+   * Adds a media to a list. The `PUT` is attempted before any catalogue creation, and
+   * that ordering is a data-safety guarantee rather than an optimisation: only a 404
+   * starts the creation sequence, so it only ever runs for a media absent from the
+   * catalogue and therefore not tracked by the user. That is what makes the closing
+   * `DELETE` unable to erase a watch status or rating entered by hand.
    */
   private async addItem(id: string, listId: number, kind: MediaKind): Promise<void> {
     const { source, mediaId } = FloppyTarget.decodeId(id);
@@ -333,37 +316,33 @@ export class FloppyTarget implements ListTarget {
     const listRoute = `/api/v1/media/${type}/${source}/${mediaId}/lists/${listId}/`;
 
     const first = await this.request('PUT', listRoute, undefined, [200, 404, 409]);
-    // Only a 404 proves the media is absent from the catalogue (200 = added,
-    // 409 = already in the list). Any other status means the media is known to
-    // Floppy, and the bootstrap below — which ends on a DELETE that would wipe
-    // the user's watch status, rating and history — must never run for it.
+    // Only a 404 proves the media is absent from the catalogue (200 = added, 409 =
+    // already in the list). For any other status the media is known to Floppy, and the
+    // bootstrap below must never run: its closing DELETE would wipe the user's watch
+    // status, rating and history.
     if (first.status !== 404) return;
 
-    // The media is unknown to the catalogue: we create it there, which also
-    // creates a tracking entry with a Planning status that we do not want.
+    // Creating the media also creates a tracking entry with a Planning status, which is
+    // what the DELETE below exists to undo.
     await this.request('POST', `/api/v1/media/${type}/`, { source, media_id: mediaId }, [200, 201]);
     await this.request('PUT', listRoute, undefined, [200, 409]);
     await this.request('DELETE', `/api/v1/media/${type}/${source}/${mediaId}/`, undefined, [204, 404]);
   }
 
   /**
-   * Writes both media kinds in a single pass over the list.
+   * Writes both media kinds in a single pass over the list, so the per-list work
+   * (lookup or creation, items read) happens once. Floppy exposes no bulk write, so the
+   * adds and removes themselves stay one request per item.
    *
-   * Floppy exposes no bulk write, so adds and removes stay one HTTP request per
-   * item — that is inherent to the API. What is fused here is the per-LIST work:
-   * the list lookup/creation and the items read now happen once instead of once
-   * per kind.
-   *
-   * A kind whose key is absent from `ids` is never looked at, so its existing
-   * items are left in place.
+   * A kind whose key is absent from `ids` is never looked at, so its items stay put.
    */
   public async pushToList(
     ids: ListContent,
     listName: string,
     privacy: ListPrivacy,
   ): Promise<void> {
-    // `privacy` is deliberately unused: the Floppy API exposes no way to set the
-    // visibility of a list. See the spec, "Floppy special case" section.
+    // `privacy` is deliberately unused: the Floppy API exposes no way to set a list's
+    // visibility.
     void privacy;
 
     const kinds = MEDIA_KINDS.filter((kind) => ids[kind] !== undefined);
@@ -380,10 +359,9 @@ export class FloppyTarget implements ListTarget {
       return;
     }
 
-    // Read to exhaustion: this read decides what gets REMOVED. Floppy serves 20
-    // items per page, so stopping at the first one would leave every item past
-    // the twentieth in place while the fresh ones are added on top — the list
-    // would grow at every run and mix stale content with current content.
+    // Read to exhaustion: this read decides what gets removed, so stopping at page one
+    // would leave later items in place while fresh ones are added on top, growing the
+    // list at every run.
     const existingItems = FloppyTarget.readListItems(
       await this.requestAllPages(`/api/v1/lists/${listId}/items/`),
     );

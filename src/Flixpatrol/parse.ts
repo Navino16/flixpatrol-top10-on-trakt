@@ -9,41 +9,24 @@ import type {
 /**
  * Pure parsing layer for FlixPatrol pages: HTML string in, plain data out.
  *
- * Nothing here fetches, caches or knows about the configuration — which is the
- * point. Every XPath expression below is matched against a live third-party site
- * that no test can validate, so they are only ever exercised through fixtures.
- * Keep them, and the order in which they are attempted, exactly as they are:
- * a "tidied" expression is an untestable production break.
+ * The XPath expressions below are matched against a live third-party site, so unit
+ * tests can only ever exercise them through fixtures. Their order is load-bearing.
  */
 
 /** One raw match: the href FlixPatrol prints for a media, e.g. `/title/inception`. */
 export type FlixPatrolMatchResult = string;
 
-/**
- * A detail-page path: its canonical head, plus whatever the listing appended to it
- * (a sub-page segment, a query string, a fragment). Anything that does not look
- * like `/title/<slug>` simply does not match.
- */
+/** Canonical head of a detail-page path, plus any sub-page, query or fragment. */
 const TITLE_PATH_PATTERN = /^(\/title\/[^/?#]+)(?:[/?#].*)?$/;
 
 /**
  * Reduces a listing href to the canonical detail page it belongs to, `/title/<slug>/`.
  *
- * Not every listing links at the title page itself. Most-watched links at
- * `/title/<slug>/hours/`, and YouTube Popular at `/title/<slug>/trailers/#toc-...`.
- * Those sub-pages carry a DIFFERENT `h1`: the section name is appended to the media
- * name, so the very same expressions that read a title correctly on `/title/<slug>/`
- * read "KPop Demon Hunters Hours" and "Primetime Trailers" one level below. Fetching
- * the href verbatim therefore searches every backend under a name nobody uses.
- *
- * The repair belongs to the URL, and only to the URL. Trimming a " Hours" suffix off
- * the parsed title looks equivalent and is not: "72 Hours" is a real film that charts
- * on Netflix, and it would come back as "72". Once a section name has been
- * concatenated onto a title there is no way to tell the two apart, so the
- * concatenation must never be allowed to happen in the first place.
- *
- * Conservative by construction: a path that is not a title page is returned
- * untouched, and an already-canonical one is returned unchanged.
+ * Some listings link at a sub-page instead (`/title/<slug>/hours/`,
+ * `/title/<slug>/trailers/`), whose `h1` appends the section name to the media name.
+ * The repair has to happen on the URL rather than by trimming that suffix off the
+ * parsed title, because a title may legitimately end in the same word — "72 Hours"
+ * would come back as "72".
  */
 export function toCanonicalTitlePath(path: string): string {
   const match = TITLE_PATH_PATTERN.exec(path);
@@ -57,9 +40,9 @@ export interface FlixPatrolDetail {
 }
 
 /**
- * Evaluates one XPath expression over an HTML string and returns every matched
- * text content. Returns an empty array rather than throwing, so a caller trying
- * a chain of expressions can simply move on to the next one.
+ * Evaluates one XPath expression over an HTML string and returns every matched text
+ * content. Returns an empty array rather than throwing, so a caller walking a chain
+ * of expressions can move on to the next one.
  */
 function parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
   const dom = new JSDOM(html);
@@ -90,12 +73,10 @@ function parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
 /**
  * Every expression tried for the Top10 section, strictest first.
  *
- * Exported so the drift suite can assert WHICH rung matched against the live
- * site, instead of only that the chain as a whole produced something. A fallback
- * quietly taking over is itself the early warning, and it can only be observed
- * from outside if the rungs are addressable one by one — duplicating the strings
- * in the test would defeat the purpose, since the copy could not drift with the
- * original.
+ * Exported so the drift suite can assert which rung matched, not merely that the
+ * chain produced something: a fallback quietly taking over is the early warning.
+ * Copying the strings into the test would defeat that, as the copy could not drift
+ * with the original.
  */
 export function top10Expressions(
   type: FlixPatrolType,
@@ -106,43 +87,20 @@ export function top10Expressions(
       `//div[h2[span[contains(., "TOP ${type}")]]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
     ];
   }
-  // Both rungs are TYPED: each one names the media type in the heading it matches,
-  // so neither can ever answer the Movies question with the TV Shows chart or the
-  // other way round.
-  //
-  // There used to be a third, untyped rung — `((//table)[1] | (//table)[2])//a[...]`
-  // — whose only instruction was "take the first two tables on the page". It
-  // existed to absorb a redesign of the section headings, and it no longer earns
-  // its keep: `tests/e2e/FlixPatrolXPath.e2e.test.ts` now watches the PRIMARY rung
-  // of every chain against the live site on a weekly cron, so a heading drift is
-  // reported within a week instead of being silently absorbed.
-  //
-  // What that rung did in the meantime was strictly worse than returning nothing.
-  // It ignored the `type` argument entirely, so on a market publishing no TV chart
-  // (`go3/latvia`, measured) the Movies call matched rung 0 while the TV Shows call
-  // fell through to it and returned the movie rows plus whatever else sat in the
-  // first two tables — 18 hrefs where the movie chart had 10. Those are real films
-  // that resolve perfectly on the backend, so nothing downstream could object: the
-  // user's shows list was quietly filled with films. Same failure shape as the
-  // `div.mb-6` year fallback that stamped 2021 onto every title for months.
-  //
-  // With both typed rungs dead the chain now returns an empty array, the caller
-  // leaves that media type alone, and the pipeline guard keeps the existing list
-  // rather than replacing it with wrong content.
+  // Both rungs name the media type in the heading they match, so neither can answer
+  // the Movies question with the TV Shows chart. When both fail the chain returns
+  // empty rather than guessing, which is what keeps a market that charts only one
+  // type from filling the other type's list.
   return [
-    // Original strict
     `//div[h3[text() = "TOP 10 ${type}"]]/parent::div//a[contains(@class,'hover:underline')]/@href`,
-    // More tolerant headline match
     `//h3[contains(., "TOP 10") and contains(., "${type === 'Movies' ? 'Movies' : 'TV Shows'}")]/ancestor::div[1]/following-sibling::div[1]//a[contains(@class,'hover:underline')]/@href`,
   ];
 }
 
 /**
- * Top10 section of a platform page. The world page and the regional pages do not
- * share the same markup, and the regional headings have drifted enough over time
- * to warrant two expressions, strictest first — both of them typed. An empty
- * result means "this page publishes no chart for this media type", which callers
- * must treat as no data rather than substituting anything.
+ * Top10 section of a platform page. The world page and the regional pages do not share
+ * the same markup. An empty result means the page publishes no chart for this media
+ * type — it is not an error.
  */
 export function parseTop10Page(
   type: FlixPatrolType,
@@ -164,9 +122,7 @@ export function parseTop10Page(
 export function top10KidsExpressions(type: FlixPatrolType): string[] {
   const kidsType = type === 'Movies' ? 'Kids Movies' : 'Kids TV Shows';
   return [
-    // Match h3 with "TOP 10 Kids Movies/TV Shows" followed by table
     `//h3[text() = "TOP 10 ${kidsType}"]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
-    // Fallback with contains for more tolerance
     `//h3[contains(., "TOP 10") and contains(., "${kidsType}")]/parent::div/following-sibling::table//a[@class="hover:underline"]/@href`,
   ];
 }
@@ -195,7 +151,7 @@ export function parseTop10KidsPage(
 /** The single expression a Popular page relies on. There is no fallback rung. */
 export const POPULAR_EXPRESSION = '//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href';
 
-/** Popular page: a single card table, no fallback. */
+/** Popular page: a single card table. */
 export function parsePopularPage(
   html: string,
 ): FlixPatrolMatchResult[] {
@@ -222,15 +178,10 @@ export function parseMostWatchedPage(
 }
 
 /**
- * Most-hours page: one section per media type, and — outside the `total` period —
- * one table per language tab.
- */
-/**
- * The two expressions a Most-hours page relies on, strictest first: the
- * language-tab table, then the whole section. The second rung exists for the
- * `total` period, which publishes no language tabs at all — so a fallback there
- * is normal, while a fallback on a period that DOES have tabs means the tab
- * markup drifted and every language now returns the same rows.
+ * The two expressions a Most-hours page relies on, strictest first: the language-tab
+ * table, then the whole section. Falling through is normal for the `total` period,
+ * which publishes no language tabs; on any other period it means the tab markup
+ * drifted and every language is now returning the same rows.
  */
 export function mostHoursExpressions(
   type: FlixPatrolType,
@@ -245,10 +196,8 @@ export function mostHoursExpressions(
   const langTab = langMap[language];
 
   return [
-    // For language-specific tables, we need to find the correct table within the section
-    // The tables use x-show="isCurrent('all-languages')" etc.
+    // The language tabs are Alpine-driven: each table carries x-show="isCurrent('<tab>')".
     `//div[@id="${sectionId}"]//table[contains(@x-show, "'${langTab}'")]//a[@class="flex gap-2 group items-center"]/@href`,
-    // Fallback for 'total' period which doesn't have language tabs
     `//div[@id="${sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href`,
   ];
 }
@@ -269,15 +218,9 @@ export function parseMostHoursPage(
 }
 
 /**
- * Title as FlixPatrol prints it on a detail page.
- * The two expressions and their order are load-bearing against the live site:
- * do not touch them without re-checking a real detail page.
- * The title lives in `div.info-grid-header`, a direct child of `div.info-grid`.
- */
-/**
- * The two title expressions, strictest first. The second one is a bare `//h1`,
- * which matches on essentially any page and therefore hides a drift of the first
- * completely: the suite has to be able to interrogate rung 1 on its own.
+ * The two title expressions, strictest first. Rung 1 is a bare `//h1`, which matches
+ * on almost any page and so hides a drift of rung 0 entirely — hence the drift suite
+ * needs to interrogate each rung on its own.
  */
 export const DETAIL_TITLE_EXPRESSIONS = [
   '//div[contains(@class,"info-grid-header")]//h1/text()',
@@ -285,7 +228,6 @@ export const DETAIL_TITLE_EXPRESSIONS = [
 ];
 
 export function parseDetailTitle(dom: JSDOM): string {
-  // Title with fallback (kept)
   for (const expression of DETAIL_TITLE_EXPRESSIONS) {
     const title = dom.window.document.evaluate(
       expression,
@@ -304,17 +246,13 @@ export function parseDetailTitle(dom: JSDOM): string {
 /**
  * Release year, or null when the detail page exposes nothing usable.
  *
- * The year is read only from the premiere block inside `div.info-grid-header`
- * (`<div title="Premiere">`), whose date is formatted MM/DD/YYYY. Only the year is
- * needed, so the day/month ambiguity never has to be resolved: a four-digit run
- * starting with 19 or 20 cannot appear before the year in that format.
+ * Read only from the premiere block, whose date is formatted MM/DD/YYYY — only the
+ * year is wanted, and a four-digit run starting with 19 or 20 cannot occur earlier in
+ * that format, so the day/month ambiguity never has to be resolved.
  *
- * There is deliberately NO fallback. A previous version scanned the text of
- * `div.mb-6`, which the site now uses for a marketing blurb ending in
- * "the most popular TV shows in 2021" — that stamped 2021 onto every single title
- * and made the "exact title AND year" branch of the backend match cascade select
- * the wrong film with full confidence. A missing year degrades the cascade to
- * title-only and is not cached; a wrong year is silently destructive. Never guess.
+ * There is deliberately no fallback expression. A missing year is safe; a guessed one
+ * silently selects the wrong film, because an exact title-and-year match is trusted
+ * over a title-only one. Never guess.
  */
 export const DETAIL_PREMIERE_EXPRESSION = '//div[contains(@class,"info-grid-header")]//div[@title="Premiere"]';
 
@@ -338,9 +276,8 @@ export function parseDetailYear(dom: JSDOM): number | null {
 }
 
 /**
- * Whole detail page in one pass. The DOM is built once and handed to both
- * extractors, which is the only reason they take a prepared DOM rather than the
- * raw HTML: parsing a detail page twice would double the cost of every scrape.
+ * Whole detail page in one pass. The extractors take a prepared DOM rather than raw
+ * HTML so the page is only parsed once per scrape.
  */
 export function parseDetailPage(html: string): FlixPatrolDetail {
   const dom = new JSDOM(html);

@@ -3,13 +3,11 @@ import type { MediaItem, MediaKind } from './ListTarget';
 import type { ResolutionCache } from './ResolutionCache';
 
 /**
- * Walks `items` in order, resolving one at a time, and collects the identifiers.
+ * Shared `ListTarget.resolveMany` behaviour: input order preserved, unresolved items
+ * dropped, duplicates discarded.
  *
- * The contract of `ListTarget.resolveMany` lives here: input order is preserved,
- * unresolved items are dropped, and duplicates are discarded. The resolution
- * stays strictly sequential — the backends this feeds are rate-limited or
- * quota-metered, so firing the searches in parallel would trade correctness for
- * a speed-up nobody asked for.
+ * Resolution stays strictly sequential because every backend behind it is either
+ * rate-limited or quota-metered.
  */
 export async function resolveSequentially(
   items: MediaItem[],
@@ -37,13 +35,12 @@ export interface CachedResolution {
 }
 
 /**
- * Wraps a backend search with the level-2 cache and the warn-and-drop policy the
- * three adapters share: a hit short-circuits the search, a miss warns and
- * returns null, and only a successful resolution is written back.
+ * Wraps a backend search with the resolution cache and the warn-and-drop policy the
+ * three adapters share.
  *
- * A miss is deliberately NOT cached: it usually means the backend's catalogue
- * lags behind FlixPatrol, and the next run should get a fresh chance rather than
- * inherit the gap for the whole TTL.
+ * A miss is deliberately not cached: it usually means the backend's catalogue lags
+ * behind FlixPatrol, and the next run should get a fresh chance rather than inherit
+ * the gap for the whole TTL.
  */
 export async function resolveThroughCache(resolution: CachedResolution): Promise<string | null> {
   const {

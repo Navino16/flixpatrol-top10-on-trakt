@@ -5,18 +5,12 @@ import { defineConfig } from 'vitest/config';
 const ENV_FILE = '.env.e2e';
 
 /**
- * Reads `.env.e2e` into a plain record, so the suites can be launched with a
- * bare `npm run test:e2e` instead of a line of exported variables.
+ * Reads the git-ignored `.env.e2e`, which holds credentials for real
+ * third-party accounts, so the suites can run from a bare `npm run test:e2e`.
+ * Variables already set in the environment win, so one-off overrides work.
  *
- * The file is git-ignored and holds credentials for real third-party accounts,
- * so it is never committed and never read from anywhere else. Variables already
- * present in the environment win, which keeps one-off overrides possible:
- *
- *     E2E_MDBLIST_API_KEY=other-key npm run test:e2e
- *
- * Deliberately hand-parsed rather than pulling in `dotenv`: the format needed
- * here is `KEY=value` with `#` comments, and a production dependency for a
- * test-only convenience is not worth it.
+ * Hand-parsed rather than adding `dotenv`: the format is `KEY=value` with `#`
+ * comments, not worth a production dependency for a test-only convenience.
  */
 function readEnvFile(): Record<string, string> {
   const file = path.resolve(process.cwd(), ENV_FILE);
@@ -41,8 +35,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/e2e/**/*.e2e.test.ts'],
-    // Real network calls are slow and must not step on each other: one file at
-    // a time, with a generous timeout.
+    // These suites hit real third-party accounts and API quotas, so files must
+    // not step on each other: one at a time.
     fileParallelism: false,
     testTimeout: 60000,
     hookTimeout: 60000,

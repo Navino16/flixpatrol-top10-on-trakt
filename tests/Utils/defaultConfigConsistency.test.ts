@@ -6,8 +6,7 @@ import { Utils } from '../../src/Utils/Utils';
 import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 
 // Partial mock: only the three calls ensureConfigExist() makes are stubbed, so it
-// generates in memory instead of touching the working tree. Everything else — in
-// particular readFileSync, used below to read the tracked config — stays real.
+// generates in memory. readFileSync stays real, to read the tracked config below.
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
   const stubbed = {
@@ -41,20 +40,10 @@ function sortKeysDeep(value: unknown): unknown {
 }
 
 /**
- * There are two sources of default configuration and they must agree:
- *
- *  - `config/default.json`, the version-controlled reference file, used by anyone
- *    running from a clone of the repository;
- *  - the `defaultConfig` literal inside `Utils.ensureConfigExist()`, written only
- *    when `config/default.json` is missing — a fresh install (Docker with an empty
- *    config volume, or a downloaded binary).
- *
- * Nothing in the language keeps them in sync, and they had genuinely drifted:
- * `FlixPatrolMostHours` and the Kids Top10 entry existed only in the generator,
- * and two entries were missing `normalizeName: false` — so the same release
- * produced differently-named Trakt lists depending on how it had been installed.
- *
- * This test is the lock. Add a block to one source, add it to the other.
+ * Two sources of default configuration must agree: the tracked `config/default.json`
+ * used when running from a clone, and the `defaultConfig` literal inside
+ * `Utils.ensureConfigExist()` written on a fresh install. Nothing in the language
+ * keeps them in sync, so this test is the lock.
  */
 describe('default configuration consistency', () => {
   beforeEach(() => {
@@ -76,12 +65,9 @@ describe('default configuration consistency', () => {
   });
 
   /**
-   * The startup guard refuses to run on the credentials shipped in the template,
-   * and recognises them by comparing against these constants. `config/default.json`
-   * is a plain JSON file that cannot import them, so this is what keeps the two
-   * from drifting: reword the template without touching the constants and the
-   * guard would silently stop matching, handing users back the wall of 403s it
-   * exists to prevent.
+   * The startup guard recognises template credentials by comparing against these
+   * constants. `config/default.json` is plain JSON and cannot import them, so
+   * rewording the template alone would silently stop the guard from matching.
    */
   it('config/default.json ships exactly the template credentials the guard matches', () => {
     const tracked = JSON.parse(readFileSync('config/default.json', 'utf8')) as {

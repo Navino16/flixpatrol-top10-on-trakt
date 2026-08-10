@@ -7,23 +7,16 @@ export interface MatchableCandidate {
 }
 
 /**
- * Picks the candidate that best matches `wanted`, following a single cascade
- * every backend shares: exact title AND year, then title alone, then year
- * alone.
+ * Picks the candidate best matching `wanted` through the one cascade every backend
+ * shares: exact title and year, then title alone, then year alone. Parameterised by
+ * `read` so the cascade cannot drift between adapters.
  *
  * There is deliberately no last-resort fallback on the first candidate: falling
- * through the whole cascade means neither the title nor the year matched, so any
- * candidate left is a mismatch by definition. Returning null lets the caller
- * warn and drop the item rather than write a confidently wrong entry.
+ * through the cascade means neither field matched, so whatever is left is a mismatch.
+ * Null lets the caller drop the item instead of writing a confidently wrong entry.
  *
- * This lives here, parameterised by `read`, precisely so the cascade cannot
- * drift between backends: a copy per adapter is how one backend once produced
- * correct matches while another produced confidently wrong ones from the same
- * broken year.
- *
- * Candidate ELIGIBILITY stays with the caller — mdblist drops results without a
- * TMDB id before calling this, because such a result could not be written at
- * all, which is a different question from how well it matches.
+ * Candidate eligibility stays with the caller — mdblist drops results without a TMDB
+ * id beforehand, since those could not be written at all.
  */
 export function pickBestMatch<T>(
   candidates: T[],

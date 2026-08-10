@@ -9,8 +9,8 @@ export function createTarget(
   cacheOptions: CacheOptions,
   dryRun: boolean,
 ): ListTarget {
-  // Each branch narrows to the variant carrying exactly that backend's
-  // credentials, which is structurally the options object every adapter expects.
+  // Each branch narrows the union to the variant carrying that backend's credentials,
+  // which is the options object its adapter expects.
   switch (options.type) {
     case 'floppy':
       return new FloppyTarget(options, cacheOptions, dryRun);

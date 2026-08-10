@@ -1,19 +1,12 @@
 name: FlixPatrol Drift
 
-# Weekly canary over the live FlixPatrol markup, plus a manual button.
+# Weekly canary over the live FlixPatrol markup.
 #
-# Deliberately NOT triggered on `pull_request`, and this is not an oversight:
-# the README warns that using this project carries a risk of being IP banned
-# from FlixPatrol. GitHub runners come from a small, published set of shared
-# address ranges, so scraping the site on every pull request would mean sending
-# bursts of traffic from addresses many other people also depend on — hostile to
-# a third party that owes us nothing, and a good way to get those ranges (and
-# therefore this workflow) blocked. Once a week is enough: XPath drift is a
-# slow-moving failure, and the suite exists to shorten the time to notice it
-# from months to days, not to gate individual changes.
+# Deliberately not triggered on `pull_request`: scraping FlixPatrol risks an IP
+# ban, and GitHub runners share a small published set of address ranges with
+# everyone else. XPath drift is slow-moving, so weekly is enough.
 on:
   schedule:
-    # Mondays, 06:30 UTC.
     - cron: '30 6 * * 1'
   workflow_dispatch:
 
@@ -46,9 +39,8 @@ jobs:
 
       # FlixPatrol sits behind Cloudflare and answers 403 to any non-browser
       # client, so the suite cannot reach it without a challenge solver. Plain
-      # `docker run` rather than `services:`, matching the Floppy job: the
-      # bootstrap is a sequence (start -> poll until the solver answers) and
-      # `services:` offers no hook between "started" and "ready".
+      # `docker run` rather than `services:`, which offers no hook between
+      # "started" and "ready" for a bootstrap that must poll for readiness.
       - name: Start FlareSolverr
         run: |
           docker run -d --name "$FLARESOLVERR_CONTAINER" \
@@ -57,8 +49,7 @@ jobs:
             ghcr.io/flaresolverr/flaresolverr:latest
 
       # FlareSolverr boots a headless Chrome, which takes a few tens of seconds.
-      # `sessions.list` is the cheapest command that proves the whole stack is up
-      # rather than just the HTTP listener.
+      # `sessions.list` proves the whole stack is up, not just the HTTP listener.
       - name: Wait for FlareSolverr to be ready
         run: |
           start=$(date +%s)
@@ -77,11 +68,9 @@ jobs:
           docker logs "$FLARESOLVERR_CONTAINER"
           exit 1
 
-      # A failure here must fail the job loudly: drift is exactly what we want to
-      # be told about. The output is kept so the Discord message can name the
-      # expressions that moved instead of just linking a red run.
-      # The other E2E suites (Trakt, mdblist) self-skip: only the FlareSolverr
-      # variable is exported, and they hit real third-party accounts.
+      # The output is kept so the Discord message can name the expressions that
+      # moved. Only the FlareSolverr variable is exported, so the Trakt and
+      # mdblist suites self-skip: they write to real third-party accounts.
       - name: Run FlixPatrol drift suite
         env:
           E2E_FLARESOLVERR_URL: http://127.0.0.1:${{ env.FLARESOLVERR_PORT }}/v1
@@ -94,9 +83,8 @@ jobs:
         if: failure()
         run: docker logs --tail 200 "$FLARESOLVERR_CONTAINER"
 
-      # Optional by design. A repository without DISCORD_WEBHOOK still gets a red
-      # run; it just gets no ping. Secrets cannot be read in a step-level `if:`,
-      # so the guard is a shell test on the value, and it exits 0 — a missing
+      # Secrets cannot be read in a step-level `if:`, so the guard on a missing
+      # DISCORD_WEBHOOK is a shell test, and it exits 0 — an unconfigured
       # notification channel must never be reported as a drift failure.
       - name: Notify Discord on drift
         if: failure()

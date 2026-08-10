@@ -21,9 +21,9 @@
 #
 #     docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v
 #
-# Note the first start takes roughly 90 seconds: Floppy runs migrations and warms
-# its Celery workers before answering /api/v1/health. `--wait` blocks until the
-# healthcheck passes, so the suites never race the boot.
+# The first start is slow — Floppy runs migrations and warms its Celery workers before
+# answering /api/v1/health — so use `--wait`, which blocks until the healthcheck passes
+# and keeps the suites from racing the boot.
 services:
   floppy-e2e:
     image: ghcr.io/dannyvfilms/floppy:latest
@@ -44,15 +44,13 @@ services:
     # token the test suite prints, so it must never be reachable from the network.
     ports:
       - "127.0.0.1:8000:8000"
-    # Deliberately NO volume for /floppy/db. A fresh, empty catalogue on every
-    # `up` is what makes the cold-path bootstrap test meaningful: against a
-    # long-lived instance it consumes one uncatalogued id per run and eventually
-    # degrades to the warm path, testing nothing.
+    # Deliberately no volume for /floppy/db: a fresh, empty catalogue on every `up` is
+    # what keeps the cold-path bootstrap test meaningful, since a long-lived instance
+    # degrades to the warm path once its uncatalogued ids run out.
     healthcheck:
-      # Two traps here, both measured against the image rather than assumed:
-      # wget and not curl, because the image ships no curl; and 127.0.0.1 and
-      # not localhost, because localhost resolves to ::1 in this container while
-      # the server binds IPv4 only, so `localhost` yields Connection refused.
+      # Two traps: wget rather than curl, because the image ships no curl; and 127.0.0.1
+      # rather than localhost, which resolves to ::1 in this container while the server
+      # binds IPv4 only, so `localhost` yields Connection refused.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/health"]
       interval: 10s
       timeout: 5s
@@ -62,7 +60,7 @@ services:
   redis-e2e:
     image: redis:8-alpine
     container_name: redis-e2e
-    # Bounded memory with TTL-only eviction: Redis defaults to unlimited growth
-    # plus noeviction, which on a small host ends as an OOM rather than an
-    # eviction. `--save ""` drops RDB snapshots, pointless for a throwaway.
+    # Bounded memory with TTL-only eviction: Redis defaults to unlimited growth plus
+    # noeviction, which on a small host ends as an OOM rather than an eviction.
+    # `--save ""` drops RDB snapshots, pointless for a throwaway instance.
     command: redis-server --save "" --maxmemory 256mb --maxmemory-policy volatile-lru

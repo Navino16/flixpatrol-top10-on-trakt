@@ -15,10 +15,9 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: [
         'src/types/**',
-        // Process-level entry point: signal handlers, `process.exit` paths and
-        // bootstrap wiring. Unit-testing it would mean asserting on the process
-        // lifecycle rather than on behaviour, so it is deliberately excluded —
-        // the logic it orchestrates is covered through Pipeline/ and Scheduler/.
+        // Signal handlers, `process.exit` paths and bootstrap wiring: testing it would
+        // assert on the process lifecycle rather than behaviour, and the logic it
+        // orchestrates is covered through Pipeline/ and Scheduler/.
         'src/app.ts',
       ],
       // Vitest reads threshold keys as glob patterns; a `global` key (the Jest

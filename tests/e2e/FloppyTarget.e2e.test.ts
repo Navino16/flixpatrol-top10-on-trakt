@@ -4,31 +4,26 @@ import {
 import { FloppyTarget } from '../../src/Targets/adapters/FloppyTarget';
 
 /**
- * E2E suite: it talks to a real Floppy instance and is only enabled when
- * `E2E_FLOPPY_URL` and `E2E_FLOPPY_API_KEY` are provided. Without them the
- * suite is skipped, so that a CI without secrets stays green.
+ * E2E suite against a real Floppy instance, enabled only when `E2E_FLOPPY_URL`
+ * and `E2E_FLOPPY_API_KEY` are provided; skipped otherwise so a CI without
+ * secrets stays green. Assertions query the server directly with `fetch`, never
+ * through the adapter.
  *
- * Everything that is checked is checked by querying the server directly with
- * `fetch`, never through the adapter: the real state of the service is what
- * counts.
+ * THE CATALOGUE TRAP. Floppy's media catalogue is shared across the whole
+ * instance, not specific to the user, and it only ever grows. An
+ * already-catalogued media answers 200 to the first `PUT` (the "warm" path, a
+ * single write); a media absent from it answers 404 and triggers the bootstrap
+ * sequence `POST` → `PUT` → `DELETE` (the "cold" path).
  *
- * ── The catalogue trap ───────────────────────────────────────────────────────
- * Floppy's media catalogue is **shared across the whole instance**, not specific
- * to the user, and it only ever grows. An already-catalogued media answers 200
- * to the first `PUT` (the "warm" path, a single write); a media absent from the
- * catalogue answers 404 and triggers the bootstrap sequence
- * `POST` → `PUT` → `DELETE` (the "cold" path).
- *
- * Both paths are covered here, and the cold path picks its media
- * **dynamically**: freezing an id would doom it to become warm as soon as
- * somebody adds it to the instance, and the test would then silently pass
- * without covering anything anymore.
+ * Both paths are covered, and the cold path picks its media dynamically:
+ * freezing an id would doom it to become warm as soon as somebody adds it to the
+ * instance, and the test would then pass without covering anything.
  */
 const url = process.env.E2E_FLOPPY_URL?.replace(/\/+$/, '') ?? '';
 const apiKey = process.env.E2E_FLOPPY_API_KEY ?? '';
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 
-// Unique names per run: two concurrent runs do not destroy each other.
+// Unique per run: two concurrent runs do not destroy each other's lists.
 const runId = `${process.pid}-${Date.now().toString(36)}`;
 const listName = `e2e-probe-${runId}`;
 const coldListName = `e2e-cold-${runId}`;
@@ -39,20 +34,17 @@ const INCEPTION = '27205';
 const FIGHT_CLUB = '550';
 const BREAKING_BAD = '1396';
 
-// Broad query: it yields several dozen candidates, hence real bootstrappable
-// TMDB ids, among which to look for a media still absent from the catalogue.
-// The candidates are walked in relevance order: the canonical entries, the best
-// documented on the TMDB side, come first and are therefore the safest ones to
-// bootstrap. Each run consumes one of them for good (the catalogue never
-// shrinks), hence the size of the pool.
+// Broad enough to yield several dozen real, bootstrappable TMDB ids to hunt an
+// uncatalogued media in, walked in relevance order so the best-documented
+// candidates come first. Each run consumes one for good, since the catalogue
+// never shrinks — hence the size of the pool.
 const COLD_CANDIDATES_QUERY = 'The Godfather';
 const COLD_CANDIDATES_LIMIT = 100;
 
 // Pagination case. Floppy serves 20 entries per page, so the first batch has to
-// cross that boundary for the items read of the second push to be forced to
-// paginate. The second batch only has to be disjoint from the first — five is
-// enough to prove the replacement, and each extra media costs a three-call
-// catalogue bootstrap.
+// cross that boundary for the second push's items read to be forced to paginate.
+// The second batch only has to be disjoint from the first, and stays small
+// because each extra media costs a three-call catalogue bootstrap.
 const PAGE_SIZE = 20;
 const FIRST_BATCH_SIZE = 25;
 const SECOND_BATCH_SIZE = 5;
@@ -98,13 +90,10 @@ const request = async (
 };
 
 /**
- * Same call as `request`, but reads the collection to exhaustion.
- *
- * Every Floppy collection is paginated at 20 entries per page, so a raw read
- * stopping at the first page cannot even OBSERVE a list bigger than that — the
- * pagination case below would be blind to the very bug it exists to catch. The
- * `next` cursor is absolute and this suite talks to the instance directly, so it
- * is followed as it comes. The page count is capped so a broken server fails the
+ * Same call as `request`, but reads the collection to exhaustion: every Floppy
+ * collection is paginated at 20 entries per page, so a read stopping at the first
+ * page cannot even OBSERVE a longer list. The `next` cursor is absolute, so it is
+ * followed as it comes; the page count is capped so a broken server fails the
  * test instead of hanging the suite.
  */
 const requestAllPages = async (path: string): Promise<unknown[]> => {
@@ -137,9 +126,8 @@ const findListId = async (name: string): Promise<number | null> => {
 };
 
 /**
- * Real TMDB ids the instance is able to resolve, taken from Floppy's own search
- * rather than hardcoded: a frozen list would slowly rot as ids get retired, and
- * the query has to be broad enough to yield the two disjoint batches.
+ * Real TMDB ids the instance can resolve, taken from Floppy's own search rather
+ * than hardcoded: a frozen list would slowly rot as ids get retired.
  */
 const searchMovieIds = async (query: string, limit: number): Promise<string[]> => {
   const search = `search=${encodeURIComponent(query)}&source=tmdb&limit=${limit}`;
@@ -159,7 +147,6 @@ const createList = async (name: string): Promise<number> => {
   return payload.id;
 };
 
-/** Real content of the list, reduced to the type + identifier pair. */
 const readListItemsById = async (listId: number): Promise<FloppyItem[]> => {
   const items: FloppyItem[] = [];
   for (const entry of await requestAllPages(`/api/v1/lists/${listId}/items/`)) {
@@ -178,8 +165,8 @@ const readListItems = async (name: string): Promise<FloppyItem[]> => {
 };
 
 /**
- * The media tracked by the user. An entry here after a plain list addition
- * would mean the adapter left a "Planning" status behind it.
+ * The media tracked by the user. An entry here after a plain list addition means
+ * the adapter left a "Planning" status behind it.
  */
 const readTrackedIds = async (type: 'movie' | 'tv'): Promise<string[]> => {
   const ids: string[] = [];
@@ -199,13 +186,10 @@ const deleteListByName = async (name: string): Promise<void> => {
 /**
  * Looks for a movie still absent from the instance catalogue.
  *
- * The candidates come from the Floppy search, so they are real TMDB ids that
- * the bootstrap will know how to resolve. And the search itself catalogues
- * nothing: a `PUT` on a candidate still answers 404 after having searched for
- * it, this is verified on the instance. The coldness test is the `PUT` itself —
- * a 404 means "absent from the catalogue" and changed nothing server-side; an
- * already-warm candidate lands in the throwaway list, which is destroyed
- * afterwards.
+ * Searching catalogues nothing, so the candidates it returns are still cold; the
+ * `PUT` is itself the coldness test, a 404 meaning "absent from the catalogue"
+ * and having changed nothing server-side. An already-warm candidate therefore
+ * lands in the throwaway list, which is destroyed afterwards.
  */
 const findUncataloguedMovie = async (scratchListId: number): Promise<string | null> => {
   const query = `search=${encodeURIComponent(COLD_CANDIDATES_QUERY)}&source=tmdb&limit=${COLD_CANDIDATES_LIMIT}`;
@@ -278,8 +262,8 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   it('costs a single write request on the warm path, for an already-catalogued media', async () => {
-    // WARM path: tmdb:550 has just been added by the previous test, so it is in
-    // the instance catalogue and the first PUT will answer 200.
+    // WARM path: the previous test has just added FIGHT_CLUB, so it is in the
+    // instance catalogue and the first PUT answers 200.
     const real = globalThis.fetch;
     const seen: { method: string; url: string }[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -299,7 +283,6 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     );
     const puts = seen.filter((c) => c.method === 'PUT');
 
-    // Neither a catalogue bootstrap POST nor a tracking DELETE: a single write for the addition.
     expect(bootstrap).toHaveLength(0);
     expect(untrack).toHaveLength(0);
     expect(puts).toHaveLength(1);
@@ -307,10 +290,9 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   it('bootstraps an uncatalogued media on the cold path and leaves no tracking entry', async (ctx) => {
-    // COLD path: this is the most sensitive code in the adapter. The PUT-first
-    // order guarantees that the cleanup DELETE can never erase a hand-entered
-    // status, since it only runs on a media the user was not tracking — this
-    // one was not even in the catalogue.
+    // COLD path. The PUT-first order is what guarantees the cleanup DELETE can
+    // never erase a hand-entered status: it only ever runs on a media the user
+    // was not tracking, this one not even being in the catalogue.
     const scratchListId = await createList(scratchListName);
     coldMediaId = await findUncataloguedMovie(scratchListId);
 
@@ -322,11 +304,9 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
       return;
     }
 
-    // Logged: it is the proof, in the test output, that the cold path really did
-    // act on a real media, and on which one.
+    // Logged so the test output names which real media the cold path acted on.
     console.info(`[E2E] cold path exercised with uncatalogued movie tmdb:${coldMediaId}`);
 
-    // Proven starting state: absent from the catalogue, and not tracked by the user.
     expect(await readTrackedIds('movie')).not.toContain(coldMediaId);
 
     const real = globalThis.fetch;
@@ -342,8 +322,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
       globalThis.fetch = real;
     }
 
-    // The bootstrap sequence did happen, and in this precise order:
-    // PUT (404) → POST catalogue → PUT → DELETE of the tracking created along the way.
+    // PUT (404) → POST catalogue → PUT → DELETE of the tracking the POST created.
     const mediaRoute = `/api/v1/media/movie/tmdb/${coldMediaId}/`;
     const sequence = seen
       .filter((c) => c.url.includes(mediaRoute) || c.url.endsWith('/api/v1/media/movie/'))
@@ -352,9 +331,6 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
     expect(seen.some((c) => c.method === 'POST' && c.url.endsWith('/api/v1/media/movie/'))).toBe(true);
     expect(seen.some((c) => c.method === 'DELETE' && c.url.endsWith(mediaRoute))).toBe(true);
 
-    // The guarantee that unit tests can only assume, verified server-side: the
-    // media IS in the list, and NO "Planning" tracking entry is left for the
-    // E2E user.
     const coldListId = await findListId(coldListName);
     expect(coldListId).not.toBeNull();
     expect(await readListItemsById(coldListId as number))
@@ -363,21 +339,15 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   });
 
   /**
-   * The regression this whole change exists for.
-   *
    * `pushToList` replaces a list's contents by reading the existing items and
-   * removing the ones of the kind being written. Floppy serves 20 items per
-   * page, so a read that stopped at the first page never removed items 21+: the
-   * next push added its content on top of them and the list grew without bound,
-   * mixing stale entries with current ones. Real configurations here use
-   * `limit: 50`, and a real run produced a 100-item list.
+   * removing the ones of the kind being written. Floppy serves 20 items per page,
+   * so a read stopping at the first page leaves items 21+ in place and the next
+   * push piles its content on top of them. The first batch therefore deliberately
+   * crosses the page boundary, the second is disjoint from it, and what is
+   * checked is the SERVER's state afterwards.
    *
-   * So the first batch deliberately crosses the page boundary, the second is
-   * disjoint from it, and what is checked is the SERVER's state afterwards.
-   *
-   * Slow by construction: every media absent from the instance catalogue costs a
-   * three-call bootstrap, hence the timeout, generous compared to its
-   * neighbours.
+   * Slow by construction — every uncatalogued media costs a three-call bootstrap
+   * — hence a timeout generous compared to its neighbours.
    */
   it('replaces a list bigger than one page instead of keeping the items past the boundary', async (ctx) => {
     const candidates = await searchMovieIds(BATCH_CANDIDATES_QUERY, BATCH_CANDIDATES_LIMIT);
@@ -404,14 +374,12 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
 
     await target.pushToList({ movie: second.map((id) => `tmdb:${id}`) }, paginationListName, 'public');
 
-    // The whole first batch is gone, including everything that sat past the
-    // first page of the items read. Before the fix this held the 5 stale items
-    // of page 2+ on top of the 5 fresh ones.
+    // The whole first batch is gone, including everything that sat past the first
+    // page of the items read.
     const afterSecond = await readListItemsById(listId as number);
     expect([...afterSecond.map((i) => i.mediaId)].sort()).toEqual([...second].sort());
 
-    // And the account is left as it was found: no tracking entry survived the
-    // bootstraps the two pushes had to perform.
+    // No tracking entry survived the bootstraps the two pushes had to perform.
     const tracked = await readTrackedIds('movie');
     expect(batchMediaIds.filter((id) => tracked.includes(id))).toEqual([]);
   }, 900000);

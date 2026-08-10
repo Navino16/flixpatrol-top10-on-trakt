@@ -118,23 +118,19 @@ export const MdblistOptionsSchema = z.object({
 export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
 
 /**
- * Credential values shipped in the configuration template. They exist in two
- * places — `config/default.json` and the `defaultConfig` literal of
- * `Utils.ensureConfigExist()` — and startup refuses to run on them, so all three
- * sites read them from here: reword the template and the guard follows, instead
- * of silently stopping to match.
+ * Credential values shipped in the configuration template. Both template sites and the
+ * startup guard that rejects them read from here, so rewording the template cannot
+ * silently leave the guard behind.
  */
 export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
 export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
 
 /**
- * Template credentials per backend, keyed by the field they occupy in the
- * `Target` block. Only `trakt` is listed: it is the backend `Target.type`
- * defaults to, and the only one the template carries credentials for. Floppy
- * and mdblist ship nothing, so nothing can be left unreplaced for them.
+ * Template credentials per backend, keyed by the field they occupy in the `Target` block.
+ * Only `trakt` is listed, being the only backend the template carries credentials for.
  *
- * `saveFile` is deliberately absent — `./config/.trakt` is a sensible default
- * users are expected to keep, not a placeholder.
+ * `saveFile` is deliberately absent: `./config/.trakt` is a sensible default users are
+ * expected to keep, not a placeholder to replace.
  */
 export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
   trakt: {
@@ -144,10 +140,9 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
 };
 
 /**
- * The backend selector and its credentials are one discriminated union rather
- * than a selector plus three sibling credential blocks. A `Target` entry
- * therefore carries exactly the fields its backend needs, and combinations such
- * as "type: floppy with only Trakt credentials" are no longer representable.
+ * The backend selector and its credentials form one discriminated union rather than a
+ * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
+ * backend needs and "type: floppy with only Trakt credentials" is not representable.
  */
 export const TraktTargetSchema = TraktOptionsSchema.extend({ type: z.literal('trakt') });
 export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
@@ -231,11 +226,7 @@ export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
 export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
 
-/**
- * Still a discriminated union on `type`, so `createTarget` keeps narrowing on
- * it — only the credentials are now inlined instead of nested under a
- * per-backend key.
- */
+/** A discriminated union on `type`, which is what `createTarget` narrows on. */
 export type TargetOptions = z.infer<typeof TargetSchema>;
 export type TraktPrivacy = z.infer<typeof TraktPrivacySchema>;
 

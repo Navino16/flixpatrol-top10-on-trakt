@@ -3,9 +3,8 @@ import type { CacheOptions } from '../types';
 import type { MediaItem, MediaKind, TargetBackend } from './ListTarget';
 
 /**
- * Level-2 cache: maps a media item (title + year) to a given backend's
- * identifier. It is deliberately separate from the FlixPatrol scraping
- * cache, so switching backends never triggers a re-scrape of a detail page.
+ * Maps a media item (title + year) to one backend's identifier. Kept separate from the
+ * FlixPatrol scraping cache so switching backends never re-scrapes a detail page.
  */
 export class ResolutionCache {
   private readonly cache: FileSystemCache | null = null;
@@ -21,8 +20,7 @@ export class ResolutionCache {
     }
   }
 
-  // `unknown` rather than an empty string: a missing year must not share its
-  // key with a media item whose year happens to be unknown in another form.
+  // A missing year is keyed as the literal `unknown`, which no real year can collide with.
   private static key(item: MediaItem, kind: MediaKind): string {
     return `${kind}|${item.title}|${item.year ?? 'unknown'}`;
   }
