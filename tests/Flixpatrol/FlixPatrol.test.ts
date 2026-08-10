@@ -130,7 +130,11 @@ const routeFetch = (listHtml: string | ((path: string) => string), detailHtml?: 
   mockFetch.mockImplementation(async (url: string) => {
     const path = url.replace('https://flixpatrol.com', '');
     if (path.startsWith('/title/')) {
-      return mockHtmlResponse({ status: 200, data: detailHtml ?? DETAIL_PAGES[path] ?? '' });
+      // Detail fixtures are keyed on the bare slug: the scraper canonicalises every
+      // href to `/title/<slug>/` before fetching, so the trailing slash is stripped
+      // here rather than duplicating every key.
+      const key = path.replace(/\/$/, '');
+      return mockHtmlResponse({ status: 200, data: detailHtml ?? DETAIL_PAGES[key] ?? '' });
     }
     return mockHtmlResponse({
       status: 200,
@@ -1965,6 +1969,63 @@ describe('FlixPatrol', () => {
       expect(afterFirst - before).toBe(3);
       // Same cost again: nothing was cached, so both detail pages are re-fetched.
       expect(afterSecond - afterFirst).toBe(3);
+    });
+
+    // A listing that links at a SUB-page of the title instead of the title itself.
+    // YouTube Popular does exactly this in production, and `/title/<slug>/trailers/`
+    // prints "Primetime Trailers" in its `h1` — the section name welded onto the
+    // media name. Fetching the href verbatim searches every backend under a name
+    // nobody uses, so the href is canonicalised before anything else happens to it.
+    const SUBPAGE_LIST_HTML = `
+      <html>
+        <body>
+          <table class="card-table">
+            <tr><td>
+              <a class="flex gap-2 group items-center" href="/title/inception/trailers/#toc-trl_Ywax13">Inception</a>
+            </td></tr>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const subPageConfig: FlixPatrolPopular = {
+      platform: 'youtube',
+      privacy: 'private',
+      limit: 10,
+      type: 'movies',
+    };
+
+    it('fetches the canonical title page when the listing links at a sub-page', async () => {
+      routeFetch(SUBPAGE_LIST_HTML);
+
+      const result = await flixpatrol.getPopular('Movies', subPageConfig);
+
+      const fetched: string[] = mockFetch.mock.calls.map((call: unknown[]) => call[0] as string);
+      expect(fetched).toContain('https://flixpatrol.com/title/inception/');
+      // The sub-page must never be requested: it is the source of the bad title.
+      expect(fetched.some((url) => url.includes('/trailers'))).toBe(false);
+      expect(result).toEqual([{ title: 'Inception', year: 2010 }]);
+    });
+
+    it('shares one detail-cache entry between the sub-page and canonical spellings', async () => {
+      // Normalising BEFORE the cache lookup is what makes this hold: the two
+      // listings link at the same media through different hrefs, so the second one
+      // must be a cache hit rather than a second entry and a second download.
+      const cached = new FlixPatrol({ enabled: true, savePath: './config/.cache', ttl: 604800 });
+      routeFetch((path: string) => (path.includes('youtube') ? SUBPAGE_LIST_HTML : POPULAR_LIST_HTML));
+
+      const before = mockFetch.mock.calls.length;
+      await cached.getPopular('Movies', subPageConfig);
+      const afterSubPage = mockFetch.mock.calls.length;
+      await cached.getPopular('Movies', {
+        platform: 'wikipedia', privacy: 'private', limit: 1, type: 'movies',
+      });
+      const afterCanonical = mockFetch.mock.calls.length;
+
+      // List page + the one detail page behind the sub-page href.
+      expect(afterSubPage - before).toBe(2);
+      // The canonical listing links at the same media: list page only, no detail.
+      expect(afterCanonical - afterSubPage).toBe(1);
     });
   });
 

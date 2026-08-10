@@ -11,6 +11,7 @@ import {
   mostHoursExpressions,
   mostWatchedExpression,
   parseDetailPage,
+  toCanonicalTitlePath,
   top10Expressions,
   top10KidsExpressions,
 } from '../../src/Flixpatrol/parse';
@@ -76,14 +77,14 @@ const REQUEST_DELAY_MS = 1500;
 /**
  * Hard ceiling on live page loads for the whole suite, asserted at the end.
  *
- * The suite currently plans 20 listing pages plus 7 detail pages derived from
+ * The suite currently plans 20 listing pages plus 8 detail pages derived from
  * them. The budget leaves a small margin and no more: it exists so that adding
  * "just one more page" is a deliberate act that shows up in a diff, rather than
  * something that quietly triples the load on a site that owes us nothing.
  */
 const REQUEST_BUDGET = 30;
 
-/** Whole-suite budget: ~27 page loads, the first of which solves a challenge. */
+/** Whole-suite budget: ~28 page loads, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
 
 const MEDIA_TYPES: readonly FlixPatrolType[] = ['Movies', 'TV Shows'];
@@ -148,11 +149,14 @@ const TOP10_KIDS_PATHS: readonly string[] = [
 interface PopularPage {
   path: string;
   /**
-   * Whether this source links straight at `/title/<slug>/`. Wikipedia does, and
-   * must keep doing so: a listing that starts pointing at a SUB-page of the
-   * title silently poisons every title the app reads from it. YouTube already
-   * links at `/title/<slug>/trailers/#toc-...`, so it is exempted here and
-   * called out in the suite report rather than asserted into permanence.
+   * Whether this source links straight at `/title/<slug>/`. Wikipedia does;
+   * YouTube links at `/title/<slug>/trailers/#toc-...` instead.
+   *
+   * This is documentation of the site's shape, NOT a correctness requirement:
+   * the scraper canonicalises every href before fetching it, so a sub-page link
+   * is harmless. What must hold for both sources alike is that the title parsed
+   * from the canonical page matches what the listing printed — asserted in the
+   * detail section below, where both Wikipedia and YouTube now have a spec.
    */
   directTitleLinks: boolean;
 }
@@ -254,6 +258,16 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
     listingPath: `/most-watched/${currentYear - 1}/movies`,
     expression: mostWatchedExpression(false),
   },
+  {
+    // The second listing family that links at a sub-page rather than at the title.
+    // It went uncovered while the sub-page bug was live — and asserting it then
+    // would have locked the defect in, so it is added now that the scraper
+    // canonicalises hrefs, precisely so a regression cannot pass unnoticed here
+    // just because it happens to be a different family than most-watched.
+    family: 'popular-movie-youtube',
+    listingPath: '/popular/movies/youtube',
+    expression: POPULAR_EXPRESSION,
+  },
 ];
 
 /** Every listing page the suite loads, deduplicated. */
@@ -276,6 +290,9 @@ const DIRECT_TITLE_HREF = /^\/title\/[^/]+\/$/;
 interface DerivedDetail {
   /** Which listing family the URL came from, so a failure names the family. */
   family: string;
+  /** The href exactly as the listing printed it, which may be a sub-page. */
+  listingHref: string;
+  /** The page actually fetched: the canonical `/title/<slug>/` form of the href. */
   path: string;
   html: string;
   /** The label the listing itself printed for that href. */
@@ -456,10 +473,17 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       // The listing assertions report this properly; nothing to derive from here.
       return;
     }
+    // Fetch what production fetches. Several listings link at a sub-page of the
+    // title (`/hours/`, `/trailers/#toc-...`) whose `h1` is the media name with
+    // the section name welded onto it; the scraper reduces every href to its
+    // canonical `/title/<slug>/` form first, so the suite must do the same or it
+    // would be exercising a code path the app no longer takes.
+    const canonicalPath = toCanonicalTitlePath(hrefs[0]);
     details.set(spec.family, {
       family: spec.family,
-      path: hrefs[0],
-      html: await fetchPage(hrefs[0]),
+      listingHref: hrefs[0],
+      path: canonicalPath,
+      html: await fetchPage(canonicalPath),
       listingLabel: labels[0] ?? '',
     });
   };
@@ -697,6 +721,20 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       expect([...details.keys()].sort()).toEqual(DETAIL_SPECS.map((spec) => spec.family).sort());
     });
 
+    it('reduces every listing href to a canonical title page before fetching it', () => {
+      const derived = [...details.values()];
+      // The hard invariant: nothing below `/title/<slug>/` is ever requested, so
+      // no `h1` carrying a section name can reach the backends.
+      for (const entry of derived) {
+        expect(DIRECT_TITLE_HREF.test(entry.path), `fetched ${entry.path} for ${entry.family}`).toBe(true);
+      }
+      // And the guard must still be exercised: if no listing published a sub-page
+      // href today, the assertions below would pass without ever touching the
+      // normalisation, and a regression in it would go unnoticed here.
+      const viaSubPage = derived.filter((entry) => !DIRECT_TITLE_HREF.test(entry.listingHref));
+      expect(viaSubPage.length, 'no listing published a sub-page href to normalise').toBeGreaterThan(0);
+    });
+
     it.for(DETAIL_SPECS)(
       '$family — the PRIMARY title expression matches, not the bare //h1 fallback',
       ({ family }) => {
@@ -739,10 +777,13 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       '$family — the parsed title is what the listing printed for the same href',
       ({ family }) => {
         // Cross-check between two independent parts of the site, and the only way
-        // to catch an href that points at a SUB-page of the title rather than the
-        // title itself (Most watched links to `/title/<slug>/hours/`, whose `h1`
-        // is not the media title). The item is then searched for in the backend
-        // under a name nobody uses, and no assertion on shape alone would notice.
+        // to catch a title read off the wrong page. Most watched links at
+        // `/title/<slug>/hours/` and YouTube Popular at `/title/<slug>/trailers/`,
+        // and both sub-pages print the section name inside their own `h1`
+        // ("KPop Demon Hunters Hours"). The item would then be searched for in
+        // every backend under a name nobody uses, and no assertion on shape alone
+        // would notice. Both families have a spec above, so the canonicalisation
+        // that prevents it is covered wherever the site publishes a sub-page link.
         //
         // The listing label is a prefix test, not an equality one: some listings
         // append metadata (type, country, premiere date) inside the same anchor,

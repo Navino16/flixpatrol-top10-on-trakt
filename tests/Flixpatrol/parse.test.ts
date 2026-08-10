@@ -9,6 +9,7 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  toCanonicalTitlePath,
 } from '../../src/Flixpatrol/parse';
 
 // These tests take HTML in and assert on plain data out: no HTTP mock, no cache,
@@ -264,6 +265,60 @@ describe('FlixPatrol parsing', () => {
 
     it('returns an empty array when the section is missing', () => {
       expect(parseMostHoursPage('Movies', 'all', '<html><body></body></html>')).toEqual([]);
+    });
+  });
+
+  describe('toCanonicalTitlePath', () => {
+    // The bug this exists for: several listings do NOT link at the title page.
+    // Most-watched links at `/title/<slug>/hours/` and YouTube Popular at
+    // `/title/<slug>/trailers/#toc-...`, and those sub-pages print the section name
+    // inside their own `h1` — "KPop Demon Hunters Hours", "Primetime Trailers".
+    // The href is the only safe place to repair that: see the note in parse.ts on
+    // why trimming the suffix off the title would mutilate "72 Hours".
+    const canonical = '/title/kpop-demon-hunters/';
+
+    it('drops a sub-page segment', () => {
+      expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours/')).toBe(canonical);
+      expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours')).toBe(canonical);
+      expect(toCanonicalTitlePath('/title/kpop-demon-hunters/trailers/')).toBe(canonical);
+      // Deeper nesting collapses just the same: only the slug survives.
+      expect(toCanonicalTitlePath('/title/kpop-demon-hunters/hours/by-country/')).toBe(canonical);
+    });
+
+    it('drops a fragment, with or without a sub-page in front of it', () => {
+      const youtubeHref = '/title/primetime/trailers/#toc-trl_Ywax13ahfd2y6npIiMrwcvRj';
+      expect(toCanonicalTitlePath(youtubeHref)).toBe('/title/primetime/');
+      expect(toCanonicalTitlePath('/title/primetime/#toc-anything')).toBe('/title/primetime/');
+      expect(toCanonicalTitlePath('/title/primetime#toc-anything')).toBe('/title/primetime/');
+    });
+
+    it('drops a query string', () => {
+      expect(toCanonicalTitlePath('/title/inception?utm_source=chart')).toBe('/title/inception/');
+      expect(toCanonicalTitlePath('/title/inception/hours/?tab=weekly')).toBe('/title/inception/');
+    });
+
+    it('leaves an already-canonical path untouched', () => {
+      expect(toCanonicalTitlePath('/title/inception/')).toBe('/title/inception/');
+      // The site links with a trailing slash; a bare slug resolves to the same page
+      // and is normalised onto one single spelling so it shares one cache entry.
+      expect(toCanonicalTitlePath('/title/inception')).toBe('/title/inception/');
+    });
+
+    it('leaves a path that is not a title page alone', () => {
+      // Conservative by design: nothing outside `/title/<slug>` may be rewritten,
+      // or a future listing family would start fetching a page that does not exist.
+      const untouched = [
+        '/top10/netflix/world',
+        '/most-watched/2025/movies',
+        '/streaming-services/most-hours-total/netflix/',
+        '/popular/movies/youtube',
+        '/title/',
+        '/titles/inception/',
+        '',
+      ];
+      for (const path of untouched) {
+        expect(toCanonicalTitlePath(path)).toBe(path);
+      }
     });
   });
 

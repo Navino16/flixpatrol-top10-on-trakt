@@ -30,6 +30,7 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  toCanonicalTitlePath,
 } from './parse';
 
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
@@ -204,17 +205,30 @@ export class FlixPatrol {
   }
 
   private async getMediaItem(result: FlixPatrolMatchResult): Promise<MediaItem> {
+    // Single choke point for every detail-page path: whatever a listing links at,
+    // only the canonical `/title/<slug>/` page is ever fetched. Doing it here rather
+    // than in each getter means a listing family added later cannot reintroduce the
+    // sub-page title bug by forgetting to opt in.
+    //
+    // Normalised BEFORE the cache lookup, deliberately. The detail cache is keyed on
+    // the path, so canonicalising first makes `/title/x/hours/`, `/title/x/trailers/`
+    // and `/title/x/` share one entry — correct, since all three describe the same
+    // media, and cheaper, since a title charting in two families is fetched once.
+    // Normalising after the lookup would key the cache on the listing's spelling and
+    // store the same media once per link shape, each fetched separately.
+    const path = toCanonicalTitlePath(result);
+
     if (this.detailCache !== null) {
-      const cached: unknown = await this.detailCache.get(result, null);
+      const cached: unknown = await this.detailCache.get(path, null);
       if (FlixPatrol.isMediaItem(cached)) {
-        logger.silly(`Found ${result} in cache: ${JSON.stringify(cached)}`);
+        logger.silly(`Found ${path} in cache: ${JSON.stringify(cached)}`);
         return cached;
       }
     }
 
-    const html = await this.getFlixPatrolHTMLPage(result);
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
-      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${result}`);
+      throw new FlixPatrolError(`Unable to get FlixPatrol detail page for ${path}`);
     }
 
     const { title, year } = parseDetailPage(html);
@@ -225,7 +239,7 @@ export class FlixPatrol {
     // degrade every match for the whole TTL (7 days by default) after a single
     // transient markup drift or half-rendered detail page. A miss costs one re-scrape.
     if (title.length > 0 && year !== null && this.detailCache !== null) {
-      await this.detailCache.set(result, item);
+      await this.detailCache.set(path, item);
     }
     return item;
   }

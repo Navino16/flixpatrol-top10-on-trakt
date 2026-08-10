@@ -19,6 +19,37 @@ import type {
 /** One raw match: the href FlixPatrol prints for a media, e.g. `/title/inception`. */
 export type FlixPatrolMatchResult = string;
 
+/**
+ * A detail-page path: its canonical head, plus whatever the listing appended to it
+ * (a sub-page segment, a query string, a fragment). Anything that does not look
+ * like `/title/<slug>` simply does not match.
+ */
+const TITLE_PATH_PATTERN = /^(\/title\/[^/?#]+)(?:[/?#].*)?$/;
+
+/**
+ * Reduces a listing href to the canonical detail page it belongs to, `/title/<slug>/`.
+ *
+ * Not every listing links at the title page itself. Most-watched links at
+ * `/title/<slug>/hours/`, and YouTube Popular at `/title/<slug>/trailers/#toc-...`.
+ * Those sub-pages carry a DIFFERENT `h1`: the section name is appended to the media
+ * name, so the very same expressions that read a title correctly on `/title/<slug>/`
+ * read "KPop Demon Hunters Hours" and "Primetime Trailers" one level below. Fetching
+ * the href verbatim therefore searches every backend under a name nobody uses.
+ *
+ * The repair belongs to the URL, and only to the URL. Trimming a " Hours" suffix off
+ * the parsed title looks equivalent and is not: "72 Hours" is a real film that charts
+ * on Netflix, and it would come back as "72". Once a section name has been
+ * concatenated onto a title there is no way to tell the two apart, so the
+ * concatenation must never be allowed to happen in the first place.
+ *
+ * Conservative by construction: a path that is not a title page is returned
+ * untouched, and an already-canonical one is returned unchanged.
+ */
+export function toCanonicalTitlePath(path: string): string {
+  const match = TITLE_PATH_PATTERN.exec(path);
+  return match === null ? path : `${match[1]}/`;
+}
+
 /** What a detail page says about one media. */
 export interface FlixPatrolDetail {
   title: string;
