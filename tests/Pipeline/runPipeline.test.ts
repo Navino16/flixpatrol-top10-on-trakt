@@ -61,6 +61,7 @@ import { runPipeline } from '../../src/Pipeline/runPipeline';
 import type { RunPipelineDeps } from '../../src/Pipeline/runPipeline';
 import { logger } from '../../src/Utils';
 
+const infoSpy = logger.info as unknown as ReturnType<typeof vi.fn>;
 const warnSpy = logger.warn as unknown as ReturnType<typeof vi.fn>;
 const sillySpy = logger.silly as unknown as ReturnType<typeof vi.fn>;
 const debugSpy = logger.debug as unknown as ReturnType<typeof vi.fn>;
@@ -83,6 +84,13 @@ function kindsOfWrite(index: number): string[] {
 /** Privacy passed to pushToList on the nth write (0-indexed). */
 function privacyOfWrite(index: number): string {
   return String(pushToList.mock.calls[index][2]);
+}
+
+/** Info lines with the list name and the counter blanked, so shapes can be compared. */
+function infoShapes(): string[] {
+  return infoSpy.mock.calls
+    .map((c) => String(c[0]))
+    .map((m) => m.replace(/"[^"]*"/g, '"<list>"').replace(/^\[\d+\/\d+\]/, '[n/total]'));
 }
 
 /** Payload of the most recent `event` notification. */
@@ -599,6 +607,50 @@ describe('runPipeline run accounting', () => {
     const itemLine = messages.find((m) => m.includes('Untitled'));
     expect(itemLine).toBeDefined();
     expect(itemLine).toContain('Untitled, Dark (2017)');
+  });
+});
+
+describe('runPipeline log narrative', () => {
+  beforeEach(() => {
+    getTop10Sections.mockResolvedValue({
+      movies: oneItem, shows: oneItem, rawCounts: { movies: 1, shows: 1 },
+    });
+  });
+
+  it('separates the resolution phase from the single write of a list', async () => {
+    await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+
+    expect(infoShapes()).toEqual([
+      '[n/total] Processing "<list>"',
+      'Scraping FlixPatrol movies and shows for "<list>"',
+      'Resolved 1/1 movie for "<list>" on trakt',
+      'Resolved 1/1 show for "<list>" on trakt',
+      'Updated "<list>" with 1 movie and 1 show',
+    ]);
+  });
+
+  it('logs the same shape whichever section a list comes from', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolTop10: top10Config,
+      flixPatrolPopulars: popularConfig(),
+      flixPatrolMostWatched: mostWatchedConfig(),
+      flixPatrolMostHours: mostHoursConfig(),
+    }));
+
+    const shapes = infoShapes();
+    expect(shapes).toHaveLength(20);
+    const firstList = shapes.slice(0, 5);
+    expect(shapes.slice(5, 10)).toEqual(firstList);
+    expect(shapes.slice(10, 15)).toEqual(firstList);
+    expect(shapes.slice(15, 20)).toEqual(firstList);
+  });
+
+  it('does not claim a list was updated on a dry run', async () => {
+    await runPipeline(baseDeps({ flixPatrolTop10: top10Config, dryRun: true }));
+
+    const messages = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.startsWith('Would update "'))).toBe(true);
+    expect(messages.some((m) => m.startsWith('Updated "'))).toBe(false);
   });
 });
 

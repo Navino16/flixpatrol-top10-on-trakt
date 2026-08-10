@@ -9,7 +9,7 @@ import type {
   NotificationEvent, NotificationPayload, RunSummary,
 } from '../Notifications';
 import type {
-  CacheOptions, FlareSolverrOptions, FlixPatrolMostWatched, FlixPatrolMostHours,
+  CacheOptions, FlareSolverrOptions, FlixPatrolConfigType, FlixPatrolMostWatched, FlixPatrolMostHours,
   FlixPatrolPopular, FlixPatrolTop10,
 } from '../types';
 
@@ -59,6 +59,22 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
 
 function describeItems(items: MediaItem[]): string {
   return items.map((item) => (item.year === null ? item.title : `${item.title} (${item.year})`)).join(', ');
+}
+
+/** "3 movies" / "1 movie", so a single-item list never reads as "1 movies". */
+function countLabel(count: number, kind: MediaKind): string {
+  return `${count} ${kind}${count === 1 ? '' : 's'}`;
+}
+
+/** Names the kinds a list covers, for the line announcing its FlixPatrol scrape. */
+function kindsLabel(type: FlixPatrolConfigType): string {
+  if (type === 'movies') {
+    return 'movies';
+  }
+  if (type === 'shows') {
+    return 'shows';
+  }
+  return 'movies and shows';
 }
 
 async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClient): Promise<RunSummary> {
@@ -135,7 +151,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${target.backend} `
         + `(${items.length} found, ${ids.length} matched)`);
     }
-    logger.info(`Saving ${kind}s for "${listName}"`);
+    logger.info(`Resolved ${ids.length}/${countLabel(items.length, kind)} for "${listName}" on ${target.backend}`);
     logger.debug(`${listName} ${kind}s: ${describeItems(items)}`);
     return ids;
   };
@@ -162,15 +178,18 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       return true;
     }
     await target.pushToList(content, listName, privacy);
+    const written: string[] = [];
     for (const kind of kinds) {
       const count = (content[kind] as string[]).length;
-      logger.info(`List ${listName} updated with ${count} new ${kind}s`);
+      written.push(countLabel(count, kind));
       if (kind === 'movie') {
         summary.moviesAdded += count;
       } else {
         summary.showsAdded += count;
       }
     }
+    const verb = deps.dryRun ? 'Would update' : 'Updated';
+    logger.info(`${verb} "${listName}" with ${written.join(' and ')}`);
     return false;
   };
 
@@ -188,14 +207,13 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     const baseListName = Utils.getListName(top10, defaultName, deps.listNamePrefix);
-    logger.info('==============================');
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
+    logger.info(`Scraping FlixPatrol ${kindsLabel(top10.type)} for "${baseListName}"`);
 
     const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
 
     const content: ListContent = {};
     if (movies.length > 0) {
-      logger.info('==============================');
       if (rawCounts.movies > movies.length) {
         logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
@@ -203,7 +221,6 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       if (ids !== null) content.movie = ids;
     }
     if (shows.length > 0) {
-      logger.info('==============================');
       if (rawCounts.shows > shows.length) {
         logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
       }
@@ -219,19 +236,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     currentList++;
     const listName = Utils.getListName(popular, `${popular.platform}-popular`, deps.listNamePrefix);
     logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+    logger.info(`Scraping FlixPatrol ${kindsLabel(popular.type)} for "${listName}"`);
 
     const content: ListContent = {};
     if (popular.type === 'movies' || popular.type === 'both') {
-      logger.info('==============================');
-      logger.info(`Getting movies for "${listName}"`);
       const popularMovies = await flixpatrol.getPopular('Movies', popular);
       const ids = await resolveSection(popularMovies, 'movie', listName);
       if (ids !== null) content.movie = ids;
     }
 
     if (popular.type === 'shows' || popular.type === 'both') {
-      logger.info('==============================');
-      logger.info(`Getting shows for "${listName}"`);
       const popularShows = await flixpatrol.getPopular('TV Shows', popular);
       const ids = await resolveSection(popularShows, 'show', listName);
       if (ids !== null) content.show = ids;
@@ -249,19 +263,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
       const listName = Utils.getListName(mostWatched, defaultName, deps.listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+      logger.info(`Scraping FlixPatrol ${kindsLabel(mostWatched.type)} for "${listName}"`);
 
       const content: ListContent = {};
       if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
-        logger.info('==============================');
-        logger.info(`Getting movies for "${listName}"`);
         const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched);
         const ids = await resolveSection(mostWatchedMovies, 'movie', listName);
         if (ids !== null) content.movie = ids;
       }
 
       if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
-        logger.info('==============================');
-        logger.info(`Getting shows for "${listName}"`);
         const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched);
         const ids = await resolveSection(mostWatchedShows, 'show', listName);
         if (ids !== null) content.show = ids;
@@ -280,19 +291,16 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       }
       const listName = Utils.getListName(mostHours, defaultName, deps.listNamePrefix);
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+      logger.info(`Scraping FlixPatrol ${kindsLabel(mostHours.type)} for "${listName}"`);
 
       const content: ListContent = {};
       if (mostHours.type === 'movies' || mostHours.type === 'both') {
-        logger.info('==============================');
-        logger.info(`Getting movies for "${listName}"`);
         const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours);
         const ids = await resolveSection(mostHoursMovies, 'movie', listName);
         if (ids !== null) content.movie = ids;
       }
 
       if (mostHours.type === 'shows' || mostHours.type === 'both') {
-        logger.info('==============================');
-        logger.info(`Getting shows for "${listName}"`);
         const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours);
         const ids = await resolveSection(mostHoursShows, 'show', listName);
         if (ids !== null) content.show = ids;
