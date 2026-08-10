@@ -31,6 +31,11 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      # The Build job only type-checks src/; this covers tests/, which the base
+      # tsconfig excludes.
+      - name: Type-check
+        run: npm run typecheck
+
   build:
     name: Build
     runs-on: ubuntu-latest

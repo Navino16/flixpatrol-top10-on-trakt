@@ -41,6 +41,9 @@ npm run lint
 # Lint and auto-fix
 npm run lint-and-fix
 
+# Type-check src/ and tests/ (see Type checking below)
+npm run typecheck
+
 # Run the unit and integration suites once
 npm test
 
@@ -59,10 +62,31 @@ npm run package
 
 ## Code style
 
-ESLint is the single source of truth (`eslint.config.mjs`): the TypeScript recommended rule sets
-plus `max-len` at **120** characters, with strings and template literals exempt. `npm run lint`
-must pass before a pull request is merged, and `npm run lint-and-fix` handles most of the
-mechanical work.
+ESLint is the single source of truth for style (`eslint.config.mjs`): the TypeScript recommended
+rule sets plus `max-len` at **120** characters, with strings and template literals exempt.
+`npm run lint` must pass before a pull request is merged, and `npm run lint-and-fix` handles most
+of the mechanical work.
+
+## Type checking
+
+There are two TypeScript projects, and both are gates:
+
+- `tsconfig.json` describes the **shipped build** — `rootDir: "src"`, emit to `build/`. It is what
+  `npm run build` and the `Build` CI job compile, and it excludes `tests`.
+- `tsconfig.test.json` extends it and covers what the build has no business compiling: `tests/`,
+  `types/` and the vitest configs, with `noEmit`. `npm run typecheck` runs it, and so does the
+  `Lint` CI job.
+
+Run `npm run typecheck` before opening a pull request. Test files are where mocks cast freely and
+reach into private shapes, so a test that has drifted from the signature it is meant to protect
+only shows up here.
+
+The overrides in `tsconfig.test.json` are load-bearing. `rootDir: "."` is what keeps `TS6059`
+("not under rootDir") off every test file, and `target`/`module`/`moduleResolution` are set to
+match how vitest actually loads tests — ESM with Vite resolution — because under the base
+`commonjs`/`es2016` every top-level `await` in a test raises a `TS1378` that is a pure false
+positive. Do **not** collapse the two projects by dropping `tests` from the base `exclude`: that
+is the obvious-looking fix and it reintroduces 34 `TS6059` errors.
 
 ## Tests
 
@@ -72,6 +96,11 @@ branches and statements. `src/app.ts` is deliberately excluded from coverage: it
 process-level wiring (signal handlers, `process.exit` paths), so testing it would assert on the
 process lifecycle rather than on behaviour — the logic it orchestrates is covered through
 `Pipeline/` and `Scheduler/`.
+
+Shared test helpers live in `tests/helpers/`, which the vitest `include` pattern does not match, so
+nothing there is collected as a suite. Reach for it when a mock needs a cast to type-check —
+`mockProcessExit()` exists because `process.exit` returns `never`, which no mock implementation can
+satisfy, and that cast is worth writing once rather than per file.
 
 ## End-to-end tests
 
@@ -198,7 +227,7 @@ Branch off `develop` and open the pull request against `develop`.
 
 Fill in [the pull request template](.github/PULL_REQUEST_TEMPLATE.md) — description, type of
 change, the checklist (local testing, tests added or updated, coverage maintained,
-`npm run lint` passing, `npm test` passing) and any related issues.
+`npm run lint`, `npm run typecheck` and `npm test` passing) and any related issues.
 
 Add the labels that apply:
 

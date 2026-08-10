@@ -9,6 +9,7 @@
     "start:dev": "nodemon",
     "lint": "eslint .",
     "lint-and-fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

@@ -4,7 +4,9 @@ import {
 
 const cacheGet = vi.fn();
 const cacheSet = vi.fn();
-const cacheFactory = vi.fn(() => ({ get: cacheGet, set: cacheSet }));
+const cacheFactory = vi.fn<(...args: unknown[]) => { get: typeof cacheGet; set: typeof cacheSet }>(
+  () => ({ get: cacheGet, set: cacheSet }),
+);
 
 vi.mock('file-system-cache', () => ({
   default: (...args: unknown[]) => cacheFactory(...args),
