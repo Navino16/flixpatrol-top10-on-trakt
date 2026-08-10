@@ -621,6 +621,7 @@ describe('runPipeline log narrative', () => {
     await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
 
     expect(infoShapes()).toEqual([
+      '==============================',
       '[n/total] Processing "<list>"',
       'Scraping FlixPatrol movies and shows for "<list>"',
       'Resolved 1/1 movie for "<list>" on trakt',
@@ -638,11 +639,12 @@ describe('runPipeline log narrative', () => {
     }));
 
     const shapes = infoShapes();
-    expect(shapes).toHaveLength(20);
-    const firstList = shapes.slice(0, 5);
-    expect(shapes.slice(5, 10)).toEqual(firstList);
-    expect(shapes.slice(10, 15)).toEqual(firstList);
-    expect(shapes.slice(15, 20)).toEqual(firstList);
+    const LINES_PER_LIST = 6;
+    expect(shapes).toHaveLength(4 * LINES_PER_LIST);
+    const firstList = shapes.slice(0, LINES_PER_LIST);
+    for (let list = 1; list < 4; list += 1) {
+      expect(shapes.slice(list * LINES_PER_LIST, (list + 1) * LINES_PER_LIST)).toEqual(firstList);
+    }
   });
 
   it('does not claim a list was updated on a dry run', async () => {
