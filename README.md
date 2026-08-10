@@ -8,8 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?label=Build%20(main)&style=flat-square" alt="Build (main)"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/develop.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/develop.yml?label=Build%20(develop)&style=flat-square" alt="Build (develop)"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/ci.yml?label=CI&style=flat-square" alt="CI"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?branch=develop&label=Docker%20Image&style=flat-square" alt="Docker Image"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/flixpatrol-drift.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/flixpatrol-drift.yml?label=FlixPatrol%20markup&style=flat-square" alt="FlixPatrol markup"></a>
 </p>
 
 <p align="center">
