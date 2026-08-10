@@ -325,7 +325,7 @@ describe('runPipeline FlareSolverr lifecycle', () => {
 
   it('does not create a session when disabled', async () => {
     await runPipeline(baseDeps({
-      flareSolverrOptions: { enabled: false, maxTimeout: 60000 },
+      flareSolverrOptions: { enabled: false, maxTimeout: 60000, disableMedia: false },
     }));
 
     expect(createSession).not.toHaveBeenCalled();
@@ -333,7 +333,7 @@ describe('runPipeline FlareSolverr lifecycle', () => {
 
   it('creates and destroys the session when enabled', async () => {
     await runPipeline(baseDeps({
-      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000 },
+      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000, disableMedia: false },
     }));
 
     expect(createSession).toHaveBeenCalledOnce();
@@ -344,7 +344,7 @@ describe('runPipeline FlareSolverr lifecycle', () => {
     getTop10Sections.mockRejectedValueOnce(new Error('scrape exploded'));
 
     await expect(runPipeline(baseDeps({
-      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000 },
+      flareSolverrOptions: { enabled: true, url: 'http://localhost:8191/v1', maxTimeout: 60000, disableMedia: false },
       flixPatrolTop10: top10Config,
     }))).rejects.toThrow('scrape exploded');
 

@@ -203,6 +203,7 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 **`src/Flixpatrol/FlixPatrol.ts`** - Web scraping:
 - Platform/location constants defined as const arrays (type guards derive from these)
 - Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured. The impit path retries up to 3 times with 1s/2s/4s backoff on 408/429/500/502/503/504, and reports Cloudflare's `cf-mitigated` header when present — that header is what separates "FlixPatrol is down" from "we got bot-blocked". The FlareSolverr path has **no** retry loop: FlareSolverr retries internally, and wrapping a 12s challenge solve in a 3x backoff produces pathological runtimes
+- `FlareSolverr.disableMedia` is forwarded on `request.get` **only when true**, never as an explicit `false`. FlareSolverr lets the request parameter override its own `DISABLE_MEDIA` env var, so sending `false` would silently defeat an operator who enabled it on the container; our default means "no opinion", not "off". It is never sent on `sessions.create`, which does not read it — the measurement in #525 confirmed session creation is unaffected. Effect: ~17% off warm requests, challenge solve unchanged, no solve failures over 80 requests. The saving lands mostly on cold-cache runs, since detail pages are cached for `Cache.ttl`
 - HTML parsing via JSDOM with XPath expressions
 - Returns `MediaItem[]` (title + year) and knows nothing about any backend. The Top10 `fallback` triggers when the *page* yields no result at all, no longer when no backend id could be resolved (behaviour change vs 2.17): a title FlixPatrol lists but the backend does not know is now reported as unmatched instead of silently swapping the whole list for another location's
 - File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. The 2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
@@ -353,7 +354,8 @@ File: `config/default.json`
   FlareSolverr: {  // optional block: absent means disabled
     enabled: boolean,  // default: false
     url?: string,  // mandatory when enabled, e.g. http://localhost:8191/v1
-    maxTimeout: number  // default: 60000
+    maxTimeout: number,  // default: 60000
+    disableMedia: boolean  // default: false; blocks images/CSS/fonts in the solver browser
   }
 }
 ```

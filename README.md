@@ -460,13 +460,25 @@ tool behaves exactly as before and never contacts FlareSolverr.
 
 | Name       | Description                                    | Mandatory        | Values                    | Default |
 |------------|------------------------------------------------|------------------|---------------------------|---------|
-| enabled    | Route FlixPatrol requests through FlareSolverr  | No               | true, false               | false   |
-| url        | FlareSolverr v1 API endpoint                    | If enabled       | Any valid URL             |         |
-| maxTimeout | Challenge solving timeout in milliseconds       | No               | Number                    | 60000   |
+| enabled      | Route FlixPatrol requests through FlareSolverr | No               | true, false               | false   |
+| url          | FlareSolverr v1 API endpoint                   | If enabled       | Any valid URL             |         |
+| maxTimeout   | Challenge solving timeout in milliseconds      | No               | Number                    | 60000   |
+| disableMedia | Skip images, CSS and fonts while scraping      | No               | true, false               | false   |
 
 When enabled, a browser session is created once at the start of each run and
 destroyed at the end. The first request solves the challenge (around 12s); later
 requests reuse the session and take 1-3s each.
+
+`disableMedia` makes the solver's browser skip images, stylesheets and fonts, which
+the scraper never looks at — it only reads HTML. Measured over 80 requests, it takes
+about **15% off those later requests** and leaves the initial challenge solve
+unchanged, since the challenge is what dominates and it still runs its JavaScript
+normally. Two things temper it: most of the saving lands on **cold-cache runs**,
+because detail pages are cached for `Cache.ttl` and never reach FlareSolverr twice;
+and a browser that fetches no stylesheet at all is a slightly unusual traffic shape,
+which Cloudflare could in principle score. Zero solve failures were observed either
+way, but the default stays `false` so nothing changes for existing setups. It also
+lowers the container's memory and CPU use, which the FlareSolverr docs warn about.
 
 Run FlareSolverr alongside the tool:
 
@@ -599,7 +611,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
   "FlareSolverr": {
     "enabled": false,
     "url": "http://localhost:8191/v1",
-    "maxTimeout": 60000
+    "maxTimeout": 60000,
+    "disableMedia": false
   }
 }
 ```

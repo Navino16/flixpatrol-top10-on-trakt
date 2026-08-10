@@ -177,6 +177,7 @@ export class Utils {
           enabled: false,
           url: 'http://localhost:8191/v1',
           maxTimeout: 60000,
+          disableMedia: false,
         },
       };
 

@@ -32,6 +32,8 @@ export class FlareSolverrClient {
 
   private readonly maxTimeout: number;
 
+  private readonly disableMedia: boolean;
+
   private sessionId: string | null = null;
 
   constructor(options: FlareSolverrOptions) {
@@ -40,6 +42,7 @@ export class FlareSolverrClient {
     }
     this.endpoint = options.url;
     this.maxTimeout = options.maxTimeout;
+    this.disableMedia = options.disableMedia;
   }
 
   private async command(payload: Record<string, unknown>): Promise<FlareSolverrEnvelope> {
@@ -100,6 +103,10 @@ export class FlareSolverrClient {
           url,
           session: this.sessionId ?? SESSION_NAME,
           maxTimeout: this.maxTimeout,
+          // Sent only when true: FlareSolverr lets the request parameter override its
+          // own DISABLE_MEDIA env var, so sending `false` would silently defeat an
+          // operator who enabled it on the container.
+          ...(this.disableMedia ? { disableMedia: true } : {}),
         });
 
         if (envelope.status !== 'ok') {

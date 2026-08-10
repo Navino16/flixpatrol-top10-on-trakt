@@ -209,6 +209,9 @@ export const FlareSolverrOptionsSchema = z.object({
   enabled: z.boolean().default(false),
   url: z.url().optional(),
   maxTimeout: z.number().default(60000),
+  // Blocks images, CSS and fonts in the solver's browser. Measured at ~17% off warm
+  // requests with no effect on the challenge solve — see issue #525.
+  disableMedia: z.boolean().default(false),
 }).refine(
   (f) => !f.enabled || (f.url !== undefined && f.url.length > 0),
   { message: 'url must be set when enabled' },

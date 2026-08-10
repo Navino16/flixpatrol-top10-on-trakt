@@ -504,7 +504,9 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
   };
 
   beforeAll(async () => {
-    client = new FlareSolverrClient({ enabled: true, url: flareSolverrUrl, maxTimeout: 60000 });
+    client = new FlareSolverrClient({
+      enabled: true, url: flareSolverrUrl, maxTimeout: 60000, disableMedia: false,
+    });
     await client.createSession();
 
     for (const path of LISTING_PATHS) {
