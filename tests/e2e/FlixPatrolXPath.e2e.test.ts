@@ -49,8 +49,19 @@ import type {
  *
  * WHAT IT NEVER ASSERTS: today's content. FlixPatrol's charts change daily, so
  * only shapes, counts and rung identity are checked — never a specific title.
- * Nothing is pinned to a calendar either: the most-watched years are derived
- * from `new Date()`, so no page path rots on a fixed year.
+ * Nothing is pinned to a calendar either: the most-watched years and the Top 10
+ * date are derived from `new Date()`, so no page path rots on a fixed date.
+ *
+ * WHY THE TOP 10 URLS CARRY A DATE. FlixPatrol publishes a day progressively:
+ * `/top10/netflix/united-states` is the CURRENT day, and early in the morning it
+ * holds the two main charts but not yet the Kids ones. Measured at 08:30 UTC, the
+ * undated page was 81 KB with no "Kids" anywhere, while the previous day's URL was
+ * 99 KB and carried both Kids sections. Against the undated URL this suite would
+ * therefore have reported twelve Kids failures every week — the canary runs on a
+ * weekly cron at 06:30 UTC, squarely inside the incomplete window — and a canary
+ * that is always red is a canary nobody reads. An unpublished chart is not drift,
+ * so the Top 10 family asks for the last COMPLETED day instead. See `TOP10_DATE`
+ * for why it is exactly one day and never two.
  *
  * WHY SEVERAL PAGES PER FAMILY. One page per family only proves the expression
  * survives on that one layout. FlixPatrol renders a big catalogue, a small one,
@@ -92,16 +103,60 @@ const MEDIA_TYPES: readonly FlixPatrolType[] = ['Movies', 'TV Shows'];
 const currentYear = new Date().getFullYear();
 
 /**
+ * The day every Top 10 URL asks for: the day before the run, in UTC.
+ *
+ * ONE day, and never more. FlixPatrol gives away a short rolling window of daily
+ * history and paywalls everything older: measured today, the six previous days
+ * came back complete (99 KB, both Kids charts) while the seventh returned a 32 KB
+ * stub reading "only available to paid subscribers". So the last completed day is
+ * the freshest date that is guaranteed both published AND free, and reaching
+ * further back trades a false positive for a slow march towards the paywall. There
+ * is deliberately no retry chain: a date that does not answer is a signal, and
+ * silently walking backwards until something does would suppress exactly the
+ * signal this suite exists to raise.
+ *
+ * DERIVED IN UTC, which is the one assumption here that could quietly reintroduce
+ * the failure it fixes. If FlixPatrol's own calendar ran behind UTC, "yesterday in
+ * UTC" could still be TODAY for the site, i.e. incomplete again. Measured against
+ * the live site: at 08:30 UTC the undated page served the UTC date, the UTC date's
+ * own dated URL served the same partial page, and the NEXT date returned "Page Not
+ * Found" — so the site's notion of today is the UTC date, not one behind it. The
+ * dated-page guard below turns any future divergence into a named failure instead
+ * of twelve mysterious empty-chart ones.
+ */
+const TOP10_DATE = ((): string => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+})();
+
+/**
+ * The dated form FlixPatrol serves a completed day under, trailing slash included:
+ * `/top10/<platform>/<country>/YYYY-MM-DD/`. Verified against the live site — the
+ * form without the trailing slash answers too, but only via a redirect, so the
+ * slash is spelled out rather than paid for on every request.
+ */
+const onPreviousDay = (path: string): string => `${path}/${TOP10_DATE}/`;
+
+/**
+ * The phrase FlixPatrol replaces a chart with once the day has aged past its free
+ * window. Present exactly once on a paywalled day and on no page that is served in
+ * full — the site's own upsell links say "FlixPatrol Premium" everywhere, so the
+ * shorter string would match every page and detect nothing.
+ */
+const PAYWALL_NOTICE = 'only available to paid subscribers';
+
+/**
  * Top 10 (world) — one page per platform, chosen for catalogue size rather than
  * popularity: Netflix and Disney+ render long, dense charts, Apple TV+ a sparse
  * one, and HBO Max sits in between. A world chart has a single expression with
  * no fallback, so all four have to hold it up on their own.
  */
 const TOP10_WORLD_PATHS: readonly string[] = [
-  '/top10/netflix/world',
-  '/top10/disney/world',
-  '/top10/hbo-max/world',
-  '/top10/apple-tv/world',
+  onPreviousDay('/top10/netflix/world'),
+  onPreviousDay('/top10/disney/world'),
+  onPreviousDay('/top10/hbo-max/world'),
+  onPreviousDay('/top10/apple-tv/world'),
 ];
 
 interface RegionalPage {
@@ -126,24 +181,37 @@ interface RegionalPage {
  * rung correctly returns nothing and the chain falls through to its loosest
  * rung, which scoops up whatever tables the page does have. A page with no data
  * must therefore be recognised as such and reported distinctly, never as drift.
+ *
+ * Asking for a COMPLETED day is what keeps that distinction sharp. On the current
+ * day a missing chart is ambiguous — the market may not chart it, or the site may
+ * simply not have got round to publishing it yet. On a finished day only the first
+ * reading survives, so the skip below means what it says. Verified on the live
+ * site: `go3/latvia` publishes a full Movies chart and no TV Shows heading at all
+ * on a completed day.
  */
 const TOP10_REGION_PAGES: readonly RegionalPage[] = [
-  { path: '/top10/netflix/france', location: 'france', mayBeShortOrAbsent: false },
-  { path: '/top10/disney/united-states', location: 'united-states', mayBeShortOrAbsent: false },
-  { path: '/top10/amazon-prime/japan', location: 'japan', mayBeShortOrAbsent: false },
-  { path: '/top10/go3/latvia', location: 'latvia', mayBeShortOrAbsent: true },
+  { path: onPreviousDay('/top10/netflix/france'), location: 'france', mayBeShortOrAbsent: false },
+  { path: onPreviousDay('/top10/disney/united-states'), location: 'united-states', mayBeShortOrAbsent: false },
+  { path: onPreviousDay('/top10/amazon-prime/japan'), location: 'japan', mayBeShortOrAbsent: false },
+  { path: onPreviousDay('/top10/go3/latvia'), location: 'latvia', mayBeShortOrAbsent: true },
 ];
 
 /**
  * Top 10 Kids — Netflix only (the app refuses any other platform) and regional
  * only, so the variation available is the country. France is reused from the
- * regional table above rather than fetched twice.
+ * regional table above rather than fetched twice, which only works because both
+ * tables date their paths identically.
+ *
+ * This is the family the dated URL exists for: Kids is the LAST section of a day
+ * to be published, so it is the one the undated URL is systematically missing at
+ * cron time. All four countries were verified to carry both Kids charts on a
+ * completed day.
  */
 const TOP10_KIDS_PATHS: readonly string[] = [
-  '/top10/netflix/france',
-  '/top10/netflix/united-states',
-  '/top10/netflix/japan',
-  '/top10/netflix/brazil',
+  onPreviousDay('/top10/netflix/france'),
+  onPreviousDay('/top10/netflix/united-states'),
+  onPreviousDay('/top10/netflix/japan'),
+  onPreviousDay('/top10/netflix/brazil'),
 ];
 
 interface PopularPage {
@@ -161,7 +229,16 @@ interface PopularPage {
   directTitleLinks: boolean;
 }
 
-/** Popular — both sources the app accepts, plus both media types for Wikipedia. */
+/**
+ * Popular — both sources the app accepts, plus both media types for Wikipedia.
+ *
+ * NOT dated, and not merely because it does not need to be: these are cumulative
+ * all-time rankings, not a chart for a given day. Appending a date was tried
+ * against the live site and is actively misleading — the extra segment is
+ * swallowed and the CURRENT ranking comes back under a URL that claims to be a
+ * historical one, so the suite would be asserting against a page it had
+ * misunderstood.
+ */
 const POPULAR_PAGES: readonly PopularPage[] = [
   { path: '/popular/movies/wikipedia', directTitleLinks: true },
   { path: '/popular/tv-shows/wikipedia', directTitleLinks: true },
@@ -176,6 +253,10 @@ const POPULAR_PAGES: readonly PopularPage[] = [
  * never written down: the last completed year is always published, so these
  * paths stay valid forever instead of rotting. The `original: true` variant is
  * a second expression over the SAME page, so it costs no extra request.
+ *
+ * Already dated, by YEAR, and that is the only granularity the route has: a day
+ * appended to it returns "Page Not Found" on the live site. Same for Most hours
+ * below, which is a per-title lifetime total with no daily dimension at all.
  */
 const MOST_WATCHED_PAGES: readonly { path: string }[] = [
   { path: `/most-watched/${currentYear - 1}/movies` },
@@ -225,22 +306,22 @@ interface DetailSpec {
 const DETAIL_SPECS: readonly DetailSpec[] = [
   {
     family: 'top10-world-movie',
-    listingPath: '/top10/netflix/world',
+    listingPath: onPreviousDay('/top10/netflix/world'),
     expression: top10Expressions('Movies', 'world')[0],
   },
   {
     family: 'top10-world-show',
-    listingPath: '/top10/hbo-max/world',
+    listingPath: onPreviousDay('/top10/hbo-max/world'),
     expression: top10Expressions('TV Shows', 'world')[0],
   },
   {
     family: 'top10-region-movie',
-    listingPath: '/top10/disney/united-states',
+    listingPath: onPreviousDay('/top10/disney/united-states'),
     expression: top10Expressions('Movies', 'united-states')[0],
   },
   {
     family: 'top10-kids-movie',
-    listingPath: '/top10/netflix/japan',
+    listingPath: onPreviousDay('/top10/netflix/japan'),
     expression: top10KidsExpressions('Movies')[0],
   },
   {
@@ -270,11 +351,20 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
   },
 ];
 
-/** Every listing page the suite loads, deduplicated. */
-const LISTING_PATHS: readonly string[] = Array.from(new Set<string>([
+/**
+ * Every Top 10 page the suite loads, deduplicated — all of them dated, which is
+ * what lets the guard below assert the day was served in full exactly once per URL
+ * rather than once per media type.
+ */
+const DATED_TOP10_PATHS: readonly string[] = Array.from(new Set<string>([
   ...TOP10_WORLD_PATHS,
   ...TOP10_REGION_PAGES.map((entry) => entry.path),
   ...TOP10_KIDS_PATHS,
+]));
+
+/** Every listing page the suite loads, deduplicated. */
+const LISTING_PATHS: readonly string[] = Array.from(new Set<string>([
+  ...DATED_TOP10_PATHS,
   ...POPULAR_PAGES.map((entry) => entry.path),
   ...MOST_WATCHED_PAGES.map((entry) => entry.path),
   ...MOST_HOURS_PAGES.map((entry) => entry.path),
@@ -400,6 +490,8 @@ interface MostHoursCase {
   hasLanguageTabs: boolean;
 }
 
+const datedTop10Cases: { path: string }[] = DATED_TOP10_PATHS.map((path) => ({ path }));
+
 const top10WorldCases: Top10Case[] = TOP10_WORLD_PATHS
   .flatMap((path) => MEDIA_TYPES.map((type) => ({ path, type })));
 
@@ -507,6 +599,47 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     }
   });
 
+  /**
+   * Declared FIRST on purpose. Every Top 10 assertion below reads a page for one
+   * specific day, and all of them are meaningless if the site did not serve that
+   * day. Without this block a paywalled or unpublished date would surface as a
+   * dozen "the strict rung matched nothing" failures pointing at the expressions —
+   * which is drift's signature, and would send whoever reads the CI line hunting
+   * markup that never changed.
+   */
+  describe('Dated Top 10 pages', () => {
+    it('asks for exactly one day back, never further into the paywalled archive', () => {
+      // Guards the derivation itself rather than the site. Two days back is not a
+      // safer fallback, it is a step towards the paywall — so a refactor that
+      // widens the offset has to fail here instead of quietly working until the
+      // free window shifts under it.
+      const target = Date.parse(`${TOP10_DATE}T00:00:00Z`);
+      const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+      expect((today - target) / 86_400_000).toBe(1);
+    });
+
+    it.for(datedTop10Cases)(
+      '$path — FlixPatrol served that day in full, neither paywalled nor unpublished',
+      ({ path }) => {
+        const html = page(path);
+        // Three outcomes, told apart by two checks. A day served in full echoes
+        // its own date in the canonical link and the og:url. A day past the free
+        // window keeps the date in its <title> but drops it from the canonical
+        // link and swaps the charts for an upsell. A day that does not exist yet
+        // returns "Page Not Found" and mentions no date anywhere. The paywall is
+        // checked first, so the more specific diagnosis wins.
+        expect(
+          html.includes(PAYWALL_NOTICE),
+          `${path} is behind the FlixPatrol Premium paywall: the free history window has narrowed`,
+        ).toBe(false);
+        expect(
+          html.includes(TOP10_DATE),
+          `${path} was not served as ${TOP10_DATE}: the site's calendar no longer agrees with UTC`,
+        ).toBe(true);
+      },
+    );
+  });
+
   describe('Top 10 (world)', () => {
     it.for(top10WorldCases)(
       '$path — the single $type expression still selects exactly the chart',
@@ -538,12 +671,18 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
           if (!mayBeShortOrAbsent) {
             throw new Error(
               `${path} no longer publishes a "TOP 10 ${type}" heading — either the market stopped `
-              + 'charting this media type, or the section markup drifted',
+              + 'charting this media type, or the section markup drifted. The day itself was served '
+              + 'in full, so an unpublished chart is not one of the possibilities',
             );
           }
           // A market with no chart is not drift. Prove the two agree — the page
           // says there is nothing, and the strict rung finds nothing — then bow
           // out with a message that cannot be mistaken for a passing assertion.
+          //
+          // This branch means "this market does not chart this media type" and
+          // nothing else. The third reading it could once have had, "the day is
+          // not fully published yet", is ruled out upstream: the page is a
+          // completed day and the guard above already asserted the site served it.
           expect(matches(expressions[0], html)).toHaveLength(0);
           ctx.skip(`${path} publishes no "TOP 10 ${type}" chart today: no drift signal available for this case`);
           return;
