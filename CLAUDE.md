@@ -15,10 +15,24 @@ npm run test:coverage # Run tests with coverage (reports in .reports/coverage)
 npm run test:e2e     # Opt-in end-to-end suites against real services (see Testing below)
 npm run lint         # Run ESLint
 npm run lint-and-fix # Run ESLint with auto-fix
+npm run typecheck    # Type-check src/ AND tests/ (see Testing below)
 npm run package      # Create cross-platform binaries in bin/
 ```
 
 ### Testing
+
+**Type-checking the tests**: `tsconfig.json` excludes `tests`, because its `rootDir: "src"` and
+emit settings describe the shipped build only. `npm run typecheck` runs the separate
+`tsconfig.test.json`, which covers `src/`, `tests/`, `types/` and the vitest configs with
+`noEmit`. It overrides `target`/`module`/`moduleResolution` to match how vitest actually loads
+test files (ESM, Vite resolution) — under the base `commonjs`/`es2016`, every top-level `await` in
+a test raises a TS1378 that is a pure false positive. The **`Lint` CI job** runs it; the `Build`
+job type-checks `src/` only, through the real `tsc` emit. Do not "simplify" this by dropping
+`tests` from the base `exclude`: that reintroduces TS6059 on every test file.
+
+Test helpers live in `tests/helpers/` and are not test files — `mockProcessExit()` is there
+because `process.exit` returns `never`, which no mock implementation satisfies without a cast, and
+that cast belongs in one place.
 
 Two vitest configurations, deliberately separate:
 

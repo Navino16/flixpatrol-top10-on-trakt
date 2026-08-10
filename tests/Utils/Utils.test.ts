@@ -4,6 +4,7 @@ import { logger } from '../../src/Utils/Logger';
 import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
 import fs from 'fs';
 import path from 'path';
+import { mockProcessExit } from '../helpers/mockProcessExit';
 
 vi.mock('fs', () => ({
   default: {
@@ -15,9 +16,7 @@ vi.mock('fs', () => ({
   },
 }));
 
-const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-  throw new Error('process.exit called');
-}) as unknown as (code?: number) => never);
+const mockExit = mockProcessExit();
 
 describe('Utils', () => {
   beforeEach(() => {
@@ -39,7 +38,6 @@ describe('Utils', () => {
     });
 
     it('should resolve after the specified time', async () => {
-      const startTime = Date.now();
       const sleepPromise = Utils.sleep(1000);
 
       vi.advanceTimersByTime(1000);
@@ -243,7 +241,7 @@ describe('Utils', () => {
       Utils.warnAboutOrphanedCaches('./config/.cache');
 
       expect(warn).toHaveBeenCalledTimes(1);
-      const message = warn.mock.calls[0][0] as string;
+      const message = warn.mock.calls[0][0] as unknown as string;
       expect(message).toContain(path.join('./config/.cache', 'movies'));
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).toMatch(/no longer read/);
@@ -258,7 +256,7 @@ describe('Utils', () => {
       Utils.warnAboutOrphanedCaches('./config/.cache');
 
       expect(warn).toHaveBeenCalledTimes(1);
-      const message = warn.mock.calls[0][0] as string;
+      const message = warn.mock.calls[0][0] as unknown as string;
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).not.toContain(path.join('./config/.cache', 'movies'));
       warn.mockRestore();

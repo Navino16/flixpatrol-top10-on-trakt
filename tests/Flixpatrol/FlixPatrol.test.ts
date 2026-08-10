@@ -1370,7 +1370,7 @@ describe('FlixPatrol', () => {
         country: 'france',
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config);
+      await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-from-france'));
     });
@@ -1420,7 +1420,7 @@ describe('FlixPatrol', () => {
         premiere: 2023,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config);
+      await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-2023'));
     });
@@ -1470,7 +1470,7 @@ describe('FlixPatrol', () => {
         orderByViews: true,
       };
 
-      const result = await flixpatrol.getMostWatched('Movies', config);
+      await flixpatrol.getMostWatched('Movies', config);
 
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/by-views'));
     });

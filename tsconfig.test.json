@@ -1,0 +1,23 @@
+{
+  // Type-checks what the base config leaves out: the test suites and the vitest
+  // configs. A separate project because those files are not part of the shipped
+  // build, which `rootDir: "src"` and the emit settings describe.
+  // `module`/`moduleResolution` follow how vitest actually loads the tests (ESM,
+  // Vite resolution), so top-level await is legal instead of a TS1378 false positive.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "src/**/*.ts",
+    "types/**/*.d.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts"
+  ],
+  "exclude": ["node_modules", "build"]
+}

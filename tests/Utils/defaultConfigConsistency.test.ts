@@ -4,6 +4,7 @@ import {
 import fs, { readFileSync } from 'fs';
 import { Utils } from '../../src/Utils/Utils';
 import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
+import { mockProcessExit } from '../helpers/mockProcessExit';
 
 // Partial mock: only the three calls ensureConfigExist() makes are stubbed, so it
 // generates in memory. readFileSync stays real, to read the tracked config below.
@@ -18,9 +19,7 @@ vi.mock('fs', async (importOriginal) => {
   return { ...stubbed, default: stubbed };
 });
 
-vi.spyOn(process, 'exit').mockImplementation((() => {
-  throw new Error('process.exit called');
-}) as unknown as typeof process.exit);
+mockProcessExit();
 
 /** Recursively sort object keys so the comparison ignores key ordering. */
 function sortKeysDeep(value: unknown): unknown {
