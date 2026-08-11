@@ -179,9 +179,23 @@ jobs:
           E2E_FLOPPY_URL: http://127.0.0.1:${{ env.FLOPPY_PORT }}
         run: npm run test:e2e
 
+      # With DEBUG=False, Floppy answers `Internal server error.` and hides the cause
+      # (api/middleware.py), but logs the traceback first — so it only ever exists here.
+      # It is surfaced on its own because it does not fit in a tail: measured on two real
+      # failures, it landed 304 and 322 lines from the end of a ~1300-line log, which a
+      # bare `--tail 200` truncated. stderr is merged in because that is where Django
+      # writes it, and it would otherwise bypass the filter.
       - name: Dump Floppy logs on failure
         if: failure()
-        run: docker logs --tail 200 "$FLOPPY_CONTAINER"
+        run: |
+          echo "::group::Unhandled API exceptions (the cause the HTTP response hides)"
+          docker logs "$FLOPPY_CONTAINER" 2>&1 \
+            | grep -A 40 "Unhandled exception during API request" \
+            || echo "No unhandled API exception logged."
+          echo "::endgroup::"
+          echo "::group::Last 400 log lines"
+          docker logs --tail 400 "$FLOPPY_CONTAINER" 2>&1
+          echo "::endgroup::"
 
       - name: Tear down
         if: always()

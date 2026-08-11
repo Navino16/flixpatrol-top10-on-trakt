@@ -252,8 +252,12 @@ describe('FloppyTarget', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('raises a FloppyError when the server fails', async () => {
-    fetchMock.mockResolvedValueOnce(json({ detail: 'boom' }, 500));
+  // A server failing every attempt, not just the first: a 5xx is retried, so the
+  // failure surfaces once the attempts are exhausted.
+  it('raises a FloppyError when the server keeps failing', async () => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    fetchMock.mockResolvedValue(json({ detail: 'boom' }, 500));
     await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
   });
 });
@@ -368,6 +372,83 @@ describe('FloppyTarget pagination', () => {
       }));
 
     await expect(target.pushToList({ movie: ['tmdb:3'] }, 'my-list', 'public')).rejects.toThrow(FloppyError);
+  });
+
+  /**
+   * Floppy on SQLite (the self-hosted default) answers 500 when a write loses the
+   * race for the single writer lock: `items.add` raises `database is locked` and the
+   * view does not catch it. Observed against a real instance while pushing a 25-item
+   * list, one failure out of 11 lock contentions in a single run. Retrying is what
+   * separates a transient contention from a broken backend.
+   */
+  describe('retry on transient server errors', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+      vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('retries a 500 and succeeds when the retry does', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json({ detail: 'Internal server error.' }, 500))
+        .mockResolvedValueOnce(json({ results: [] }));
+
+      const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+      await vi.runAllTimersAsync();
+
+      expect(await pending).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up with a FloppyError once the attempts are exhausted', async () => {
+      fetchMock.mockResolvedValue(json({ detail: 'Internal server error.' }, 500));
+
+      // The assertion is attached BEFORE the timers advance, otherwise the rejection
+      // lands with no handler and vitest reports an unhandled error.
+      const assertion = expect(
+        target.resolveMany([{ title: 'X', year: 2000 }], 'movie'),
+      ).rejects.toThrow(FloppyError);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    /**
+     * 404 and 409 carry meaning for the caller: a 404 is what proves a media is absent
+     * from the catalogue and drives the bootstrap in `addItem`. Retrying them would
+     * waste requests and delay the sequence that depends on them.
+     */
+    it('never retries a 4xx, which is business meaning rather than a fault', async () => {
+      fetchMock.mockResolvedValue(json({ detail: 'Not found.' }, 404));
+
+      const assertion = expect(
+        target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public'),
+      ).rejects.toThrow(FloppyError);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries 502, 503 and 504 as well', async () => {
+      for (const status of [502, 503, 504]) {
+        fetchMock.mockReset();
+        fetchMock
+          .mockResolvedValueOnce(json({ detail: 'nope' }, status))
+          .mockResolvedValueOnce(json({ results: [] }));
+
+        const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+        await vi.runAllTimersAsync();
+        await pending;
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      }
+    });
   });
 
   it('gives up instead of looping forever when the cursor never ends', async () => {
