@@ -187,7 +187,7 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - `ResolutionCache` is a second cache layer, namespaced per backend (`resolution-<backend>/`), so switching backends never re-scrapes a FlixPatrol detail page
 - Adapter-specific behaviour worth remembering: Floppy ignores `privacy` (its API cannot set list visibility) and writes no description (it exposes `latest_update` natively); mdblist writes no description either (`last_updated_at` is native) and forces `sort_by_score=true` on search because the default ranking is poor
 - Neither `FloppyTarget.pickBest` nor `MdblistTarget.pickBest` has a last-resort fallback on the first usable result. Falling through the whole cascade (title+year → title → year) means nothing matched, so any remaining result is a mismatch by definition: they return `null`, the caller warns and drops the item. `TraktTarget` is the exception, because `TraktAPI.getFirstItemByQuery` does fall back to `items[0]`
-- In `FloppyTarget.addItem`, the `PUT` is attempted **first, before any catalogue creation**. This is a data-safety guarantee, not an optimisation: the cleanup `DELETE` can then only ever remove a tracking row this run created, never a status or rating the user entered by hand
+- In `FloppyTarget.addItem`, the `PUT` is attempted **first, before any catalogue creation**. This is a data-safety guarantee, not an optimisation: the cleanup `DELETE` can then only ever remove a tracking row this run created, never a status or rating the user entered by hand. The 5xx retry in `request` does not weaken it: a retried `PUT` that ends up on a 404 still proves the media is absent from the catalogue, so there is no user state to lose
 - `MdblistTarget` memoizes the user list index (`GET /lists/user` returns the WHOLE collection, so one call answers every list lookup) as a `name -> id` map. The memo is **scoped to one run**: `connect()` drops it, because the adapter is built once per process by `app.ts` and shared by every daemon tick — a memo living for the instance lifetime would go stale between two ticks hours apart, and a list deleted from the mdblist web UI in the meantime would still look present, so the adapter would write to a dead id. A miss on an *already populated* memo re-fetches once before concluding the list is absent, since creating a duplicate is a visibly wrong outcome on a backend capped at four static lists
 
 **`src/Scheduler/Scheduler.ts`** - Daemon mode:
@@ -455,9 +455,21 @@ unchanged. What disappeared with the fused write is the *duplicated* per-list wo
 twice, which removes two wasted seconds per list. `users.list.items.get` is genuinely filtered by
 type on the Trakt side, so it legitimately stays one call per kind.
 
-The other two backends do not sleep. Floppy is self-hosted, so a per-item delay would make a
-ten-item list absurdly slow. mdblist writes in bulk instead, and reports its remaining daily
+The other two backends do not sleep between calls. Floppy is self-hosted, so a per-item delay
+would make a ten-item list absurdly slow; it sleeps only to back off a retry (250ms/500ms/1s, see
+below), never on the happy path. mdblist writes in bulk instead, and reports its remaining daily
 budget through `x-ratelimit-remaining`, which `MdblistTarget` logs after each list write.
+
+`FloppyTarget.request` retries **5xx only** (500/502/503/504), 3 attempts max. Floppy on SQLite —
+the self-hosted default — answers 500 when a write loses the race for the single writer lock:
+`api/views.py` does `user_list.items.add(item)` without catching `OperationalError`, and its
+middleware turns the `database is locked` into an opaque `Internal server error.` Measured against
+a real instance while pushing a 25-item list: 11 lock contentions in one run, one of which
+surfaced as a 500 and failed the run. Every verb used here is idempotent (`PUT` accepts 200/409,
+`DELETE` 204/404), so replaying is safe. A **4xx is never retried**: it carries meaning, and the
+404 of the first `PUT` is what drives the `addItem` bootstrap. The backoff is deliberately shorter
+than FlixPatrol's 1s/2s/4s — what is waited out is a lock held for milliseconds, not a remote site
+under load.
 
 ### Logging
 

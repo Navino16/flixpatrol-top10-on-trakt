@@ -1,4 +1,4 @@
-import { FloppyError, logger } from '../../Utils';
+import { FloppyError, logger, Utils } from '../../Utils';
 import type { CacheOptions, FloppyOptions } from '../../types';
 import type {
   ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
@@ -30,6 +30,13 @@ interface FloppyListItem {
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+const RETRY_STATUS_CODES = new Set([500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+// Shorter than the FlixPatrol backoff (1s/2s/4s) on purpose: what is being waited out
+// here is a SQLite writer lock, held for tens to hundreds of milliseconds, not a remote
+// site under load.
+const RETRY_BACKOFF_MS = [250, 500, 1000];
 
 /** Extracts the `results` array of a paginated response, assuming nothing about the rest of the envelope. */
 const readResults = (payload: unknown): unknown[] => {
@@ -166,10 +173,15 @@ export class FloppyTarget implements ListTarget {
 
   /**
    * Single point of passage to the API. Any status outside `expected` throws a
-   * FloppyError.
+   * FloppyError, except a retryable 5xx, which is attempted again.
    *
    * Unlike the Trakt path there is no delay between calls: the server is self-hosted,
    * so the per-item sleep rate limits exist to respect would only slow it down.
+   *
+   * A 5xx is retried because Floppy on SQLite — the self-hosted default — answers 500
+   * when a write loses the race for the single writer lock, and every verb used here is
+   * idempotent (`PUT` accepts 200/409, `DELETE` 204/404). A 4xx is never retried: it
+   * carries meaning, and the 404 of the first `PUT` is what drives `addItem`.
    */
   private async request(
     method: HttpMethod,
@@ -180,23 +192,38 @@ export class FloppyTarget implements ListTarget {
     const headers: Record<string, string> = { 'X-API-Key': this.apiKey };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-    let response: Response;
-    try {
-      response = await fetch(`${this.url}${path}`, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : `${error}`;
-      throw new FloppyError(`${method} ${path} failed: ${reason}`);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetch(`${this.url}${path}`, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : `${error}`;
+        throw new FloppyError(`${method} ${path} failed: ${reason}`);
+      }
+
+      const payload = await readPayload(response);
+      if (expected.includes(response.status)) {
+        return { status: response.status, payload };
+      }
+
+      const reason = `${response.status}${detailOf(payload, 'detail')}`;
+      if (!RETRY_STATUS_CODES.has(response.status)) {
+        throw new FloppyError(`${method} ${path} returned ${reason}`);
+      }
+      if (attempt === MAX_RETRIES) {
+        logger.error(`Giving up on ${method} ${path} after ${MAX_RETRIES} attempts: ${reason}`);
+        throw new FloppyError(`${method} ${path} returned ${reason}`);
+      }
+      logger.warn(`Retry attempt ${attempt} for ${method} ${path}: ${reason}`);
+      await Utils.sleep(RETRY_BACKOFF_MS[attempt - 1]);
     }
 
-    const payload = await readPayload(response);
-    if (!expected.includes(response.status)) {
-      throw new FloppyError(`${method} ${path} returned ${response.status}${detailOf(payload, 'detail')}`);
-    }
-    return { status: response.status, payload };
+    // Unreachable: the loop either returns or throws on its last attempt.
+    throw new FloppyError(`${method} ${path} exhausted its attempts`);
   }
 
   /**
