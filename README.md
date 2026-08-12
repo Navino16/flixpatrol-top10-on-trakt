@@ -700,6 +700,15 @@ Floppy's native `latest_update` field instead of a "Last Updated" description.
 > A free mdblist account is capped at **4 static lists**. Configure more entries than that
 > and list creation will start failing — trim your configuration or take a paid plan.
 
+> **Note**
+> The mdblist search endpoint rejects titles containing characters beyond Latin-1 with
+> `400 Invalid search query`. Accented latin letters are fine (`Amélie` resolves), but
+> curly quotes, dashes and ellipses are not — the tool folds those back to ASCII, so
+> `Let’s Marry Harry` is found anyway. Titles in non-latin scripts (Japanese, Korean,
+> Chinese…) cannot be folded and stay unresolvable on this backend: each one logs a
+> warning and is skipped, the rest of the list is written normally. Worth knowing if you
+> track a platform like Crunchyroll, where many titles are in their original script.
+
 The API budget is **1 000 requests per day**, billed **one unit per HTTP call**. Two things
 keep a run cheap:
 

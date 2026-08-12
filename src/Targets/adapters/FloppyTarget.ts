@@ -5,7 +5,9 @@ import type {
 } from '../ListTarget';
 import { MEDIA_KINDS } from '../ListTarget';
 import { ResolutionCache } from '../ResolutionCache';
-import { detailOf, isRecord, readPayload } from '../http';
+import {
+  detailOf, isRecord, isUnsearchable, readPayload,
+} from '../http';
 import { pickBestMatch } from '../matching';
 import { resolveSequentially, resolveThroughCache } from '../resolution';
 
@@ -212,11 +214,11 @@ export class FloppyTarget implements ListTarget {
 
       const reason = `${response.status}${detailOf(payload, 'detail')}`;
       if (!RETRY_STATUS_CODES.has(response.status)) {
-        throw new FloppyError(`${method} ${path} returned ${reason}`);
+        throw new FloppyError(`${method} ${path} returned ${reason}`, response.status);
       }
       if (attempt === MAX_RETRIES) {
         logger.error(`Giving up on ${method} ${path} after ${MAX_RETRIES} attempts: ${reason}`);
-        throw new FloppyError(`${method} ${path} returned ${reason}`);
+        throw new FloppyError(`${method} ${path} returned ${reason}`, response.status);
       }
       logger.warn(`Retry attempt ${attempt} for ${method} ${path}: ${reason}`);
       await Utils.sleep(RETRY_BACKOFF_MS[attempt - 1]);
@@ -304,7 +306,18 @@ export class FloppyTarget implements ListTarget {
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = FloppyTarget.mediaType(kind);
     const query = `search=${encodeURIComponent(item.title)}&source=tmdb&limit=20`;
-    const found = await this.request('GET', `/api/v1/search/${type}?${query}`, undefined, [200]);
+
+    let found: { payload: unknown };
+    try {
+      found = await this.request('GET', `/api/v1/search/${type}?${query}`, undefined, [200]);
+    } catch (error) {
+      // A rejected query condemns this title, not the run. Anything systemic (auth,
+      // quota, a 5xx that survived the retries) still fails it.
+      if (!isUnsearchable(error)) throw error;
+      const year = item.year ?? 'unknown year';
+      logger.warn(`Floppy cannot search "${item.title}" (${year}): ${(error as Error).message}. Skipping item.`);
+      return null;
+    }
 
     const best = pickBestMatch(FloppyTarget.readSearchResults(found.payload), item, (r) => r);
     return best === null ? null : FloppyTarget.encodeId(best.source, best.media_id);

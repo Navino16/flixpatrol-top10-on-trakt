@@ -455,3 +455,105 @@ describe('MdblistTarget list index memo', () => {
     expect(state.lists).toEqual([{ id: 100, name: 'new-list' }]);
   });
 });
+
+/**
+ * mdblist rejects anything past Latin-1 in `query` with 400 `Invalid search query` —
+ * measured against the live API: curly quotes, dashes, ellipsis and CJK all fail, while
+ * `é` passes. A single unsearchable title used to abort the whole run (reported by a
+ * user on a 31-list configuration).
+ */
+describe('MdblistTarget search resilience', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: MdblistTarget;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new MdblistTarget(options, cacheOptions, false);
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('folds typographic punctuation to ASCII in the query', async () => {
+    fetchMock.mockResolvedValue(json({ search: [] }));
+
+    await target.resolveMany([{ title: 'Let\u2019s Marry Harry', year: 2026 }], 'show');
+
+    const url = urlOf(fetchMock, 0);
+    expect(url).toContain(`query=${encodeURIComponent("Let's Marry Harry")}`);
+    expect(url).not.toContain('%E2%80%99');
+  });
+
+  it('folds curly double quotes, dashes and ellipsis too', async () => {
+    fetchMock.mockResolvedValue(json({ search: [] }));
+
+    await target.resolveMany([{ title: '\u201cA\u201d \u2013 B \u2014 C\u2026', year: null }], 'movie');
+
+    const url = urlOf(fetchMock, 0);
+    expect(url).toContain(encodeURIComponent('"A" - B - C...'));
+  });
+
+  // The scraped title is what the match cascade compares, so folding must not reach it:
+  // mdblist stores the curly form and returns it verbatim.
+  it('still matches when mdblist answers with the curly form', async () => {
+    fetchMock.mockResolvedValue(json({
+      search: [{ title: 'Let\u2019s Marry Harry', year: 2026, ids: { tmdbid: 327817 } }],
+    }));
+
+    expect(await target.resolveMany([{ title: 'Let\u2019s Marry Harry', year: 2026 }], 'show'))
+      .toEqual(['327817']);
+  });
+
+  it('drops the item and keeps going when a search returns 400', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ message: 'Invalid search query' }, 400))
+      .mockResolvedValueOnce(json({ search: [{ title: 'Other', year: 2020, ids: { tmdbid: 42 } }] }));
+
+    const ids = await target.resolveMany(
+      [{ title: '\u547c\u8853\u5efb\u6226', year: 2026 }, { title: 'Other', year: 2020 }],
+      'show',
+    );
+
+    expect(ids).toEqual(['42']);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Skipping item'));
+  });
+
+  it('drops the item on 404 and 422 as well', async () => {
+    for (const status of [404, 422]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(json({ message: 'nope' }, status));
+
+      expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+    }
+  });
+
+  // 401/403/429 hit every item alike: skipping them would report a successful run that
+  // wrote nothing, which is worse than failing.
+  it('still fails the run on 401, 403 and 429', async () => {
+    for (const status of [401, 403, 429]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(json({ error: 'nope' }, status));
+
+      await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+        .rejects.toThrow(MdblistError);
+    }
+  });
+
+  it('still fails the run on a 5xx', async () => {
+    fetchMock.mockResolvedValue(json({ error: 'boom' }, 503));
+
+    await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+      .rejects.toThrow(MdblistError);
+  });
+
+  it('still fails the run on a transport error, which carries no status', async () => {
+    fetchMock.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+      .rejects.toThrow(MdblistError);
+  });
+});

@@ -462,3 +462,75 @@ describe('FloppyTarget pagination', () => {
     expect(fetchMock.mock.calls.length).toBeLessThan(1000);
   });
 });
+
+/**
+ * Same defect as the one reported on mdblist: a search that the backend rejects used to
+ * abort the whole run, while `resolveMany` is documented to omit what it cannot resolve.
+ */
+describe('FloppyTarget search resilience', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: FloppyTarget;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new FloppyTarget(options, cacheOptions, false);
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('drops the item and keeps going when a search returns 400', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ detail: 'Bad request.' }, 400))
+      .mockResolvedValueOnce(json({
+        results: [{ media_id: 42, source: 'tmdb', title: 'Other', year: 2020 }],
+      }));
+
+    const ids = await target.resolveMany(
+      [{ title: 'Bad', year: 2026 }, { title: 'Other', year: 2020 }],
+      'movie',
+    );
+
+    expect(ids).toEqual(['tmdb:42']);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Skipping item'));
+  });
+
+  it('drops the item on 404 and 422 as well', async () => {
+    for (const status of [404, 422]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(json({ detail: 'nope' }, status));
+
+      expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+    }
+  });
+
+  it('still fails the run on 401, 403 and 429', async () => {
+    for (const status of [401, 403, 429]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValue(json({ detail: 'nope' }, status));
+
+      await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+        .rejects.toThrow(FloppyError);
+    }
+  });
+
+  // A 5xx is retried three times first; exhausting the attempts means the backend is
+  // down, which would hit every item, so it must still fail the run.
+  it('still fails the run once the 5xx retries are exhausted', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(json({ detail: 'boom' }, 500));
+
+    const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+      .rejects.toThrow(FloppyError);
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+});
