@@ -36,10 +36,14 @@ export class FlixPatrolError extends AppError {
 export class TargetError extends AppError {
   public readonly backend: string;
 
-  constructor(backend: string, message: string) {
+  /** HTTP status that caused the error, when it came from a response rather than a transport failure. */
+  public readonly status?: number;
+
+  constructor(backend: string, message: string, status?: number) {
     super(message);
     this.name = 'TargetError';
     this.backend = backend;
+    this.status = status;
   }
 }
 
@@ -54,15 +58,15 @@ export class TraktError extends TargetError {
 }
 
 export class FloppyError extends TargetError {
-  constructor(message: string) {
-    super('floppy', message);
+  constructor(message: string, status?: number) {
+    super('floppy', message, status);
     this.name = 'FloppyError';
   }
 }
 
 export class MdblistError extends TargetError {
-  constructor(message: string) {
-    super('mdblist', message);
+  constructor(message: string, status?: number) {
+    super('mdblist', message, status);
     this.name = 'MdblistError';
   }
 }

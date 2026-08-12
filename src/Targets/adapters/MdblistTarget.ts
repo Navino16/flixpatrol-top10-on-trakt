@@ -6,7 +6,9 @@ import type {
 import { MEDIA_KINDS } from '../ListTarget';
 import { isPrivate } from '../privacy';
 import { ResolutionCache } from '../ResolutionCache';
-import { detailOf, isRecord, readPayload } from '../http';
+import {
+  detailOf, isRecord, isUnsearchable, readPayload,
+} from '../http';
 import { pickBestMatch } from '../matching';
 import { resolveSequentially, resolveThroughCache } from '../resolution';
 
@@ -214,7 +216,10 @@ export class MdblistTarget implements ListTarget {
 
     const payload = await readPayload(response);
     if (!expected.includes(response.status)) {
-      throw new MdblistError(`${method} ${path} returned ${response.status}${detailOf(payload, 'error')}`);
+      throw new MdblistError(
+        `${method} ${path} returned ${response.status}${detailOf(payload, 'error')}`,
+        response.status,
+      );
     }
     return { status: response.status, payload, headers: response.headers };
   }
@@ -282,11 +287,40 @@ export class MdblistTarget implements ListTarget {
    */
   private async searchId(item: MediaItem, kind: MediaKind): Promise<string | null> {
     const type = MdblistTarget.mediaType(kind);
-    const query = `query=${encodeURIComponent(item.title)}&year=${item.year ?? ''}&limit=20&sort_by_score=true`;
-    const found = await this.request('GET', `/search/${type}?${query}`, undefined, [200]);
+    const title = encodeURIComponent(MdblistTarget.foldForSearch(item.title));
+    const query = `query=${title}&year=${item.year ?? ''}&limit=20&sort_by_score=true`;
+
+    let found: { payload: unknown };
+    try {
+      found = await this.request('GET', `/search/${type}?${query}`, undefined, [200]);
+    } catch (error) {
+      // A rejected query condemns this title, not the run: drop it like a search that
+      // returned nothing. Anything systemic (auth, quota, 5xx) still fails the run.
+      if (!isUnsearchable(error)) throw error;
+      const year = item.year ?? 'unknown year';
+      logger.warn(`mdblist cannot search "${item.title}" (${year}): ${(error as Error).message}. Skipping item.`);
+      return null;
+    }
 
     const tmdbid = MdblistTarget.pickBest(readSearchResults(found.payload), item);
     return tmdbid === null ? null : `${tmdbid}`;
+  }
+
+  /**
+   * mdblist answers 400 `Invalid search query` for anything past Latin-1 — curly quotes,
+   * dashes, ellipsis, CJK — while storing those very titles verbatim, so folding the
+   * punctuation back to ASCII is what makes them findable. Measured against the live API:
+   * `é` is accepted, `’` is not. CJK has no ASCII equivalent and stays unsearchable.
+   *
+   * Applied to the query ONLY. The scraped title still drives the match cascade, which
+   * compares against what mdblist returns — the curly form.
+   */
+  private static foldForSearch(title: string): string {
+    return title
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/\u2026/g, '...');
   }
 
   /**

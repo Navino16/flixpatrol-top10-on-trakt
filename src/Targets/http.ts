@@ -28,3 +28,21 @@ export const detailOf = (payload: unknown, key: string): string => {
   const reason = isRecord(payload) ? payload[key] : undefined;
   return typeof reason === 'string' ? `: ${reason}` : '';
 };
+
+/**
+ * Statuses that condemn one request rather than the backend. A search answering any of
+ * them says "this query is not answerable", so the item is dropped and the run goes on.
+ *
+ * Deliberately narrow: 401/403/429 and 5xx stay fatal. They would hit every item alike,
+ * and a run that skipped them all would report success having written nothing.
+ */
+const UNSEARCHABLE_STATUS_CODES = new Set([400, 404, 422]);
+
+/**
+ * True when an error carries a status meaning the query itself was rejected. A transport
+ * failure has no status and is therefore never unsearchable.
+ */
+export const isUnsearchable = (error: unknown): boolean => {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && UNSEARCHABLE_STATUS_CODES.has(status);
+};
