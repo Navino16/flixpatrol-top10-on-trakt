@@ -468,11 +468,21 @@ the self-hosted default — answers 500 when a write loses the race for the sing
 `api/views.py` does `user_list.items.add(item)` without catching `OperationalError`, and its
 middleware turns the `database is locked` into an opaque `Internal server error.` Measured against
 a real instance while pushing a 25-item list: 11 lock contentions in one run, one of which
-surfaced as a 500 and failed the run. Every verb used here is idempotent (`PUT` accepts 200/409,
-`DELETE` 204/404), so replaying is safe. A **4xx is never retried**: it carries meaning, and the
-404 of the first `PUT` is what drives the `addItem` bootstrap. The backoff is deliberately shorter
-than FlixPatrol's 1s/2s/4s — what is waited out is a lock held for milliseconds, not a remote site
-under load.
+surfaced as a 500 and failed the run. Every verb routed through `request` is idempotent (`PUT`
+accepts 200/409, `DELETE` 204/404), so replaying is safe. A **4xx is never retried**: it carries
+meaning, and the 404 of the first `PUT` is what drives the `addItem` bootstrap. The backoff is
+deliberately shorter than FlixPatrol's 1s/2s/4s — what is waited out is a lock held for
+milliseconds, not a remote site under load.
+
+**The one call that must never be replayed is list creation**, and it is the reason `request` is a
+thin retry wrapper over `requestOnce` rather than one method: `POST /api/v1/lists/` is *not*
+idempotent — three identical posts create three lists with three distinct ids, measured against a
+real instance. Under writer-lock contention a 500 can land *after* the row was committed, so the
+retry introduced with the paragraph above turned one contention into a duplicate list. So
+`getOrCreateList` calls `requestOnce`, and on failure **re-reads by name before giving up**: the
+list the failed `POST` committed anyway is adopted, and only a name that is still absent rethrows
+the original error. That recovery is also what makes a *transport* failure survivable — a response
+lost on the wire looks identical to a creation that never happened.
 
 ### Logging
 

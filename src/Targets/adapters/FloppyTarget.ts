@@ -174,18 +174,13 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * Single point of passage to the API. Any status outside `expected` throws a
-   * FloppyError, except a retryable 5xx, which is attempted again.
+   * Single point of passage to the API, one attempt only. Any status outside `expected`
+   * throws a FloppyError carrying that status.
    *
    * Unlike the Trakt path there is no delay between calls: the server is self-hosted,
    * so the per-item sleep rate limits exist to respect would only slow it down.
-   *
-   * A 5xx is retried because Floppy on SQLite — the self-hosted default — answers 500
-   * when a write loses the race for the single writer lock, and every verb used here is
-   * idempotent (`PUT` accepts 200/409, `DELETE` 204/404). A 4xx is never retried: it
-   * carries meaning, and the 404 of the first `PUT` is what drives `addItem`.
    */
-  private async request(
+  private async requestOnce(
     method: HttpMethod,
     path: string,
     body?: unknown,
@@ -194,34 +189,57 @@ export class FloppyTarget implements ListTarget {
     const headers: Record<string, string> = { 'X-API-Key': this.apiKey };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
+    let response: Response;
+    try {
+      response = await fetch(`${this.url}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : `${error}`;
+      throw new FloppyError(`${method} ${path} failed: ${reason}`);
+    }
+
+    const payload = await readPayload(response);
+    if (expected.includes(response.status)) {
+      return { status: response.status, payload };
+    }
+
+    const reason = `${response.status}${detailOf(payload, 'detail')}`;
+    throw new FloppyError(`${method} ${path} returned ${reason}`, response.status);
+  }
+
+  /**
+   * `requestOnce` with a retry on transient 5xx.
+   *
+   * A 5xx is retried because Floppy on SQLite — the self-hosted default — answers 500
+   * when a write loses the race for the single writer lock, and every verb routed here is
+   * idempotent (`PUT` accepts 200/409, `DELETE` 204/404). List creation is not, and goes
+   * through `requestOnce` instead. A 4xx is never retried: it carries meaning, and the
+   * 404 of the first `PUT` is what drives `addItem`.
+   */
+  private async request(
+    method: HttpMethod,
+    path: string,
+    body?: unknown,
+    expected: number[] = [200],
+  ): Promise<{ status: number; payload: unknown }> {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
-      let response: Response;
       try {
-        response = await fetch(`${this.url}${path}`, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-        });
+        return await this.requestOnce(method, path, body, expected);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : `${error}`;
-        throw new FloppyError(`${method} ${path} failed: ${reason}`);
-      }
+        const status = error instanceof FloppyError ? error.status : undefined;
+        if (status === undefined || !RETRY_STATUS_CODES.has(status)) throw error;
 
-      const payload = await readPayload(response);
-      if (expected.includes(response.status)) {
-        return { status: response.status, payload };
+        const reason = (error as Error).message;
+        if (attempt === MAX_RETRIES) {
+          logger.error(`Giving up on ${method} ${path} after ${MAX_RETRIES} attempts: ${reason}`);
+          throw error;
+        }
+        logger.warn(`Retry attempt ${attempt} for ${method} ${path}: ${reason}`);
+        await Utils.sleep(RETRY_BACKOFF_MS[attempt - 1]);
       }
-
-      const reason = `${response.status}${detailOf(payload, 'detail')}`;
-      if (!RETRY_STATUS_CODES.has(response.status)) {
-        throw new FloppyError(`${method} ${path} returned ${reason}`, response.status);
-      }
-      if (attempt === MAX_RETRIES) {
-        logger.error(`Giving up on ${method} ${path} after ${MAX_RETRIES} attempts: ${reason}`);
-        throw new FloppyError(`${method} ${path} returned ${reason}`, response.status);
-      }
-      logger.warn(`Retry attempt ${attempt} for ${method} ${path}: ${reason}`);
-      await Utils.sleep(RETRY_BACKOFF_MS[attempt - 1]);
     }
 
     // Unreachable: the loop either returns or throws on its last attempt.
@@ -323,21 +341,40 @@ export class FloppyTarget implements ListTarget {
     return best === null ? null : FloppyTarget.encodeId(best.source, best.media_id);
   }
 
-  private async getOrCreateList(listName: string): Promise<number> {
+  /** The id of the list named exactly `listName`, or null when no such list exists. */
+  private async findListByName(listName: string): Promise<number | null> {
     // Floppy's `search` is a partial match, which forces both of the next two lines:
     // read every page, since a name sharing a substring with many others can push the
     // exact match past page one and make it look absent, then require strict equality
     // so "netflix-france-top10-kids" is not reused for "netflix-france-top10".
     const found = await this.requestAllPages(`/api/v1/lists/?search=${encodeURIComponent(listName)}`);
     const exact = FloppyTarget.readLists(found).find((l) => l.name === listName);
-    if (exact) return exact.id;
+    return exact ? exact.id : null;
+  }
+
+  private async getOrCreateList(listName: string): Promise<number> {
+    const existing = await this.findListByName(listName);
+    if (existing !== null) return existing;
 
     if (this.dryRun) {
       logger.info(`[DRY-RUN] Would create Floppy list "${listName}"`);
       return 0;
     }
     logger.warn(`List "${listName}" was not found on Floppy, creating it`);
-    const created = await this.request('POST', '/api/v1/lists/', { name: listName }, [200, 201]);
+
+    let created: { payload: unknown };
+    try {
+      // `requestOnce`, never `request`: creation is the only non-idempotent call of this
+      // adapter, and under writer-lock contention a 500 can land after the row was
+      // committed, so replaying it creates a duplicate list.
+      created = await this.requestOnce('POST', '/api/v1/lists/', { name: listName }, [200, 201]);
+    } catch (error) {
+      const committed = await this.findListByName(listName);
+      if (committed === null) throw error;
+      logger.warn(`Creating "${listName}" reported ${(error as Error).message}, but the list exists: reusing it`);
+      return committed;
+    }
+
     const list = FloppyTarget.toList(created.payload);
     if (list === null) throw new FloppyError(`Failed to create list "${listName}"`);
     return list.id;
