@@ -451,6 +451,59 @@ describe('FloppyTarget pagination', () => {
     });
   });
 
+  /**
+   * `POST /api/v1/lists/` is the one call here that is not idempotent: three identical
+   * posts create three lists. Under writer-lock contention a 500 can land after the row
+   * was committed, so the retry of #533 turned one contention into a duplicate list.
+   */
+  describe('list creation, which cannot be replayed', () => {
+    beforeEach(() => {
+      vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+      vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    });
+
+    const creations = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls
+      .filter((c) => c[1]?.method === 'POST' && c[0] === 'http://floppy:8000/api/v1/lists/');
+
+    it('posts the creation once and only once when it answers 500', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json({ results: [] })) // lookup: absent
+        .mockResolvedValueOnce(json({ detail: 'Internal server error.' }, 500))
+        .mockResolvedValueOnce(json({ results: [] })); // re-read: nothing was committed
+
+      await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public'))
+        .rejects.toThrow(FloppyError);
+
+      expect(creations(fetchMock)).toHaveLength(1);
+    });
+
+    it('adopts the list a failed creation had committed anyway', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json({ results: [] })) // lookup: absent
+        .mockResolvedValueOnce(json({ detail: 'Internal server error.' }, 500))
+        .mockResolvedValueOnce(json({ results: [{ id: 27, name: 'my-list' }] })) // it exists
+        .mockResolvedValueOnce(json({ results: [] })) // items read
+        .mockResolvedValueOnce(json([{ list_id: 27 }]));
+
+      await target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public');
+
+      expect(creations(fetchMock)).toHaveLength(1);
+      expect(urlOf(fetchMock, 4)).toBe('http://floppy:8000/api/v1/media/movie/tmdb/1/lists/27/');
+    });
+
+    // The re-read only rescues a name that now exists: a creation refused outright must
+    // still fail the run rather than be swallowed.
+    it('reports the original failure when the re-read finds nothing', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json({ results: [] }))
+        .mockResolvedValueOnce(json({ detail: 'Internal server error.' }, 500))
+        .mockResolvedValueOnce(json({ results: [] }));
+
+      await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public'))
+        .rejects.toThrow(/500: Internal server error\./);
+    });
+  });
+
   it('gives up instead of looping forever when the cursor never ends', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes('/api/v1/lists/?search=')) return page(null, [{ id: 7, name: 'my-list' }]);
