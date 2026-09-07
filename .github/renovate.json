@@ -7,6 +7,7 @@
   "baseBranchPatterns": [
     "develop"
   ],
+  "labels": ["dependencies"],
   "schedule": ["before 6am on monday"],
   "platformAutomerge": false,
   "automergeSchedule": ["at any time"],
