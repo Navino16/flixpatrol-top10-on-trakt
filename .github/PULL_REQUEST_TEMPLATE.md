@@ -14,6 +14,7 @@
 - [ ] I have added/updated tests if needed
 - [ ] Code coverage is maintained or improved
 - [ ] Lint passes (`npm run lint`)
+- [ ] Type-check passes (`npm run typecheck`)
 - [ ] Tests pass (`npm test`)
 
 ## Related Issues

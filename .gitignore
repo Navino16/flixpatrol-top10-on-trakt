@@ -7,4 +7,6 @@ config/local.json
 .trakt
 .cache/
 .reports/
+.vitest/
 docker-compose.yml
+.env.e2e

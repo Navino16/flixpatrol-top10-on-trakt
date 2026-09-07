@@ -16,13 +16,9 @@ function safeHost(url: string): string {
 }
 
 /**
- * POST a JSON body to a URL with a bounded timeout and a no-throw contract.
- *
- * Failure logs include the adapter label + the destination's host (public,
- * non-secret) so users with multiple destinations of the same type can tell
- * which one is failing, but never the full URL — that would leak webhook
- * secrets (Discord bearer tokens in the path, Apprise routing keys, etc.)
- * into log files, container stdout, and CI bundles.
+ * POST a JSON body with a bounded timeout and a no-throw contract: a failing
+ * notification destination must never break a run. Failure logs carry the
+ * destination's host, never the full URL, which can embed webhook secrets.
  */
 export async function postJsonWithTimeout(
   url: string,

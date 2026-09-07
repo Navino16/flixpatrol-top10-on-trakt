@@ -18,6 +18,17 @@ interface TraktAPIRuntimeOptions extends TraktAPIOptions {
   dryRun?: boolean;
 }
 
+/** The two Trakt item types this project writes; the others are never pushed. */
+export type TraktMediaType = Extract<TraktType, 'movie' | 'show'>;
+
+/**
+ * Ids to write per media type. An absent key leaves that type untouched; a present key,
+ * even empty, replaces its content.
+ */
+export type TraktListContent = Partial<Record<TraktMediaType, TraktTVIds>>;
+
+const TRAKT_MEDIA_TYPES: readonly TraktMediaType[] = ['movie', 'show'];
+
 export class TraktAPI {
   private trakt: Trakt;
 
@@ -101,9 +112,8 @@ export class TraktAPI {
       }
     }
 
-    // Trakt's API has been observed returning HTTP 200 with an empty body
-    // (`list === ""`) instead of a proper 404 for some missing-list lookups,
-    // so the success path needs its own shape check before we trust the response.
+    // Trakt answers some missing-list lookups with HTTP 200 and an empty body
+    // (`list === ""`) rather than a 404, so the success path needs its own shape check.
     if (!notFound && !TraktAPI.isValidList(list)) {
       logger.debug(`Trakt returned malformed response for "${listName}" (got ${JSON.stringify(list)}), treating as not-found`);
       notFound = true;
@@ -135,7 +145,18 @@ export class TraktAPI {
     return list as TraktList;
   }
 
-  private async getListItems(list: TraktList, type: TraktType): Promise<TraktItem[]> {
+  /**
+   * Reads the whole list, deliberately unfiltered.
+   *
+   * The `trakt.tv` client sends `type` as a query parameter, while the Trakt API expects
+   * it as a path segment (`/items/:type`). Trakt silently ignores the query parameter and
+   * returns every item whatever `type` is passed, so filtering has to happen in memory —
+   * callers narrow on `item.type` via `filterByType`.
+   *
+   * Do not "optimise" this back into a server-side filter without first checking that the
+   * client puts `type` in the path.
+   */
+  private async getListItems(list: TraktList): Promise<TraktItem[]> {
     // In dry-run mode with mock list (id=0), return empty array
     if (this.dryRun && list.ids.trakt === 0) {
       logger.info(`[DRY-RUN] List "${list.name}" is new, no existing items to fetch`);
@@ -144,12 +165,17 @@ export class TraktAPI {
     logger.info(`Getting items from trakt list "${list.name}"`);
     let items: TraktItem[];
     try {
-      items = await this.trakt.users.list.items.get({ username: 'me', id: `${list.ids.trakt}`, type });
+      items = await this.trakt.users.list.items.get({ username: 'me', id: `${list.ids.trakt}` });
     } catch (err) {
       throw new TraktError(`Failed to get list items for "${list.name}": ${(err as Error).message}`);
     }
     logger.silly(`Trakt list items: ${JSON.stringify(items)}`)
     return items;
+  }
+
+  /** Narrows an unfiltered list read down to a single media type. */
+  private static filterByType(items: TraktItem[], type: TraktMediaType): TraktItem[] {
+    return items.filter((item) => item.type === type);
   }
 
   private static getItemTraktId(item: TraktItem): number | undefined {
@@ -238,7 +264,34 @@ export class TraktAPI {
     }
   }
 
-  public async pushToList(traktTVIDs: TraktTVIds, listName: string, type: TraktType, privacy: TraktPrivacy) {
+  private async touchDescription(list: TraktList): Promise<void> {
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
+    };
+    const currentDate = new Date().toLocaleString(undefined, dateOptions);
+    const updatedString = `Last Updated: ${currentDate}`;
+    if (this.dryRun) {
+      logger.info(`[DRY-RUN] Would update list description to: "${updatedString}"`);
+      return;
+    }
+    // Avoid Trakt rate limit
+    await Utils.sleep(1000);
+    logger.info(`Updating list description: "${updatedString}"`);
+    await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+  }
+
+  /**
+   * Writes both media types in a single pass over the list, so the per-list work — lookup
+   * or creation, privacy alignment, the "Last Updated" description, and the items read —
+   * happens exactly once whatever the number of types written. That read cannot be
+   * type-filtered server side (see `getListItems`), so one read serves every kind.
+   */
+  public async pushToList(content: TraktListContent, listName: string, privacy: TraktPrivacy) {
+    const types = TRAKT_MEDIA_TYPES.filter((type) => content[type] !== undefined);
+    if (types.length === 0) {
+      return;
+    }
+
     let list = await this.getList(listName, privacy);
     if (list.privacy !== privacy) {
       if (this.dryRun) {
@@ -250,24 +303,25 @@ export class TraktAPI {
         list = await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, privacy });
       }
     }
-    const items = await this.getListItems(list, type);
-    if (items.length > 0) {
-      await this.removeListItems(list, items, type);
-    }
-    if (traktTVIDs.length > 0) {
-      await this.addItemsToList(list, traktTVIDs, type);
-      const dateOptions: Intl.DateTimeFormatOptions = {
-        weekday: 'short', year: 'numeric', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short',
-      };
-      const currentDate = new Date().toLocaleString(undefined, dateOptions);
-      const updatedString = `Last Updated: ${currentDate}`;
-      if (this.dryRun) {
-        logger.info(`[DRY-RUN] Would update list description to: "${updatedString}"`);
-      } else {
-        await Utils.sleep(1000);
-        logger.info(`Updating list description: "${updatedString}"`);
-        await this.trakt.users.list.update({ username: 'me', id: `${list.ids.slug}`, description: updatedString });
+
+    // One read for the whole list, narrowed per kind in memory.
+    const listItems = await this.getListItems(list);
+
+    let added = false;
+    for (const type of types) {
+      const traktTVIDs = content[type] as TraktTVIds;
+      const items = TraktAPI.filterByType(listItems, type);
+      if (items.length > 0) {
+        await this.removeListItems(list, items, type);
       }
+      if (traktTVIDs.length > 0) {
+        await this.addItemsToList(list, traktTVIDs, type);
+        added = true;
+      }
+    }
+
+    if (added) {
+      await this.touchDescription(list);
     }
   }
 

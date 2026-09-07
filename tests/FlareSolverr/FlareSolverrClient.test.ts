@@ -35,7 +35,7 @@ describe('FlareSolverrClient', () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    client = new FlareSolverrClient({ enabled: true, url: ENDPOINT, maxTimeout: 60000 });
+    client = new FlareSolverrClient({ enabled: true, url: ENDPOINT, maxTimeout: 60000, disableMedia: false });
   });
 
   afterEach(() => {
@@ -117,7 +117,9 @@ describe('FlareSolverrClient', () => {
     });
 
     it('forwards a custom maxTimeout from config', async () => {
-      const custom = new FlareSolverrClient({ enabled: true, url: ENDPOINT, maxTimeout: 90000 });
+      const custom = new FlareSolverrClient({
+        enabled: true, url: ENDPOINT, maxTimeout: 90000, disableMedia: false,
+      });
       fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
       fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html></html>')));
       await custom.createSession();
@@ -125,6 +127,40 @@ describe('FlareSolverrClient', () => {
       await custom.get('https://flixpatrol.com/a');
 
       expect(payloadOf(fetchMock, 1).maxTimeout).toBe(90000);
+    });
+
+    it('omits disableMedia from the payload when the option is false', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html></html>')));
+      await client.createSession();
+
+      await client.get('https://flixpatrol.com/a');
+
+      expect(payloadOf(fetchMock, 1)).not.toHaveProperty('disableMedia');
+    });
+
+    it('sends disableMedia: true when the option is enabled', async () => {
+      const noMedia = new FlareSolverrClient({
+        enabled: true, url: ENDPOINT, maxTimeout: 60000, disableMedia: true,
+      });
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSolution('<html></html>')));
+      await noMedia.createSession();
+
+      await noMedia.get('https://flixpatrol.com/a');
+
+      expect(payloadOf(fetchMock, 1).disableMedia).toBe(true);
+    });
+
+    it('never sends disableMedia on sessions.create, which does not accept it', async () => {
+      const noMedia = new FlareSolverrClient({
+        enabled: true, url: ENDPOINT, maxTimeout: 60000, disableMedia: true,
+      });
+      fetchMock.mockResolvedValueOnce(jsonResponse(okSession));
+
+      await noMedia.createSession();
+
+      expect(payloadOf(fetchMock, 0)).not.toHaveProperty('disableMedia');
     });
 
     it('retries an error envelope and returns null after exhausting all attempts', async () => {
@@ -262,7 +298,7 @@ describe('FlareSolverrClient', () => {
   });
 
   it('rejects construction without a url', () => {
-    expect(() => new FlareSolverrClient({ enabled: true, maxTimeout: 60000 }))
+    expect(() => new FlareSolverrClient({ enabled: true, maxTimeout: 60000, disableMedia: false }))
       .toThrow(FlareSolverrError);
   });
 });

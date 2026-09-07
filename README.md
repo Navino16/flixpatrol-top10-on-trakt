@@ -3,13 +3,14 @@
 </p>
 
 <p align="center">
-  Scrape today's top 10 from FlixPatrol and sync them to Trakt.tv lists.<br/>
-  Supports 72+ streaming platforms, 200+ countries, and is compatible with <a href="https://kometa.wiki/">Kometa</a>.
+  Scrape today's top 10 from FlixPatrol and sync them to Trakt.tv, Floppy or mdblist lists.<br/>
+  Supports 74 streaming platforms, 199 countries/regions, and is compatible with <a href="https://kometa.wiki/">Kometa</a>.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?label=Build%20(main)&style=flat-square" alt="Build (main)"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/develop.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/develop.yml?label=Build%20(develop)&style=flat-square" alt="Build (develop)"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/ci.yml?label=CI&style=flat-square" alt="CI"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?branch=develop&label=Docker%20Image&style=flat-square" alt="Docker Image"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/flixpatrol-drift.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/flixpatrol-drift.yml?label=FlixPatrol%20markup&style=flat-square" alt="FlixPatrol markup"></a>
 </p>
 
 <p align="center">
@@ -32,6 +33,8 @@
 
 <p align="center">
   <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#choosing-your-platform">Choosing Your Platform</a> &bull;
+  <a href="#migrating-from-2x">Migrating from 2.x</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#supported-platforms">Supported Platforms</a> &bull;
   <a href="#scheduling">Scheduling</a> &bull;
@@ -45,30 +48,35 @@
 > **Warning**
 > Running at your own risk of being IP banned from FlixPatrol.
 >
-> Due to FlixPatrol limitations, titles are matched on Trakt by name and release year. This may occasionally cause bad matching.
+> Due to FlixPatrol limitations, titles are matched on the target backend by name and release year. This may occasionally cause bad matching.
+>
+> When a FlixPatrol detail page exposes no usable premiere date, the year is reported as unknown
+> and the match falls back to the title alone. That is deliberate: a missing year degrades the
+> match, whereas a guessed one would silently select the wrong title.
 
 ## Features
 
-- Sync **Top 10 lists** from 72 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
+- Sync **Top 10 lists** from 74 streaming platforms (Netflix, Disney+, HBO Max, Amazon Prime, etc.)
 - Sync **Top 10 Kids lists** from Netflix (country-specific)
 - Sync **Popular lists** from 2 sources (Wikipedia and Youtube)
 - Sync **Netflix Most Watched** annual rankings
 - Sync **Netflix Most Hours** rankings (total, first week, first month)
-- Support for **200+ countries/regions**
-- Intelligent **caching** to reduce API calls (7-day TTL by default)
-- Automatic Trakt list management (create, update, sync)
+- Support for **199 countries/regions**
+- Two-level **caching** to reduce scraping and API calls (7-day TTL by default)
+- Automatic list management (create, update, sync) on **Trakt**, **Floppy** or **mdblist**
 - **Dry-run mode** for safe testing
 - Compatible with [Kometa](https://kometa.wiki/) (formerly Plex Meta Manager)
 
 ## Getting Started
+
+The first run writes a template `./config/default.json` and exits. Get that far with your platform
+below, then follow the [next steps](#next-steps-all-platforms) — they are the same for all three.
 
 ### Docker
 
 ```bash
 docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
 ```
-
-Edit `./config/default.json`, then schedule periodic runs with cron.
 
 ### Linux / macOS
 
@@ -78,13 +86,136 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
     chmod +x flixpatrol-top10-linux-x64
     ./flixpatrol-top10-linux-x64
     ```
-3. Edit `./config/default.json` and run again
 
 ### Windows
 
 1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for Windows
 2. Run the binary from the command line (double-clicking will close the window automatically)
-3. Edit `./config/default.json` and run again
+
+### Next steps (all platforms)
+
+1. **Choose the backend your lists are written to and fill in its `Target` block** in
+   `./config/default.json`. `Target` is **mandatory** and carries the backend's credentials — the
+   app refuses to start while it still holds the template placeholders. See
+   [Choosing Your Platform](#choosing-your-platform) to pick between Trakt, Floppy and mdblist,
+   then [Trakt Setup](#trakt-setup), [Floppy Setup](#floppy-setup) or
+   [mdblist Setup](#mdblist-setup) to obtain the credentials.
+2. Edit the list blocks (`FlixPatrolTop10`, `FlixPatrolPopular`, …) to the lists you actually
+   want — see [Configuration](#configuration).
+3. Run again. Then schedule periodic runs, either with an
+   [external scheduler](#scheduling) or with the built-in
+   [daemon mode](#daemon-mode-built-in-scheduling).
+
+## Choosing Your Platform
+
+The lists this tool builds can be written to three different backends. Pick one with
+the `Target` block, which carries both the backend name and its credentials; everything
+else in the configuration stays the same.
+
+> **Warning**
+> The `Target` block is **new in 3.0.0**. It replaces the root-level `Trakt` block, which is
+> the only backend configuration earlier versions had. See
+> [Migrating from 2.x](#migrating-from-2x) — the app detects the old format at startup and
+> prints the exact block to write.
+
+|                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
+|--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
+| Lists              | 5                              | 100               | 4 static           | 20 to 80            | unlimited                                   |
+| Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
+| Hosting            | none                           | none              | none               | none                | you provide it                              |
+| Authentication     | OAuth device flow              | OAuth device flow | API key            | API key             | API key                                     |
+| `privacy` honoured | 4 levels                       | 4 levels          | public/private only | public/private only | ignored, set it by hand in the web UI       |
+| Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
+
+### Trakt (default)
+
+```json
+{
+  "Target": {
+    "type": "trakt",
+    "saveFile": "./config/.trakt",
+    "clientId": "your-trakt-client-id",
+    "clientSecret": "your-trakt-client-secret"
+  }
+}
+```
+
+### Floppy
+
+```json
+{
+  "Target": {
+    "type": "floppy",
+    "url": "http://localhost:8000",
+    "apiKey": "your-floppy-token"
+  }
+}
+```
+
+### mdblist
+
+```json
+{
+  "Target": {
+    "type": "mdblist",
+    "apiKey": "your-mdblist-api-key"
+  }
+}
+```
+
+### Privacy levels per backend
+
+`privacy` on a list entry takes `private`, `link`, `friends` or `public`. The last two are
+Trakt concepts with no equivalent elsewhere, so **the app refuses to start** when `link` or
+`friends` is used with `Target.type` set to `floppy` or `mdblist` — the error names each
+offending block and index. On Floppy, visibility cannot be set through the API at all: every
+list is created private and a warning says so once at startup.
+
+## Migrating from 2.x
+
+Up to and including **2.17.0** the only backend was Trakt, configured by a root-level `Trakt`
+block. 3.0.0 adds Floppy and mdblist, so the backend is now chosen explicitly: the new
+`Target` block carries `type` **and** the credentials of that backend, and the root-level
+`Trakt` block is no longer read.
+
+There is exactly one change to make — rename the block and add `"type": "trakt"`:
+
+```jsonc
+// before (2.17.0)
+"Trakt": {
+  "saveFile": "./config/.trakt",
+  "clientId": "your-trakt-client-id",
+  "clientSecret": "your-trakt-client-secret"
+}
+
+// after (3.0.0)
+"Target": {
+  "type": "trakt",
+  "saveFile": "./config/.trakt",
+  "clientId": "your-trakt-client-id",
+  "clientSecret": "your-trakt-client-secret"
+}
+```
+
+Nothing else in your configuration changes. Floppy and mdblist are new in 3.0.0 and have
+nothing to migrate — see [Choosing Your Platform](#choosing-your-platform) for their `Target`
+blocks.
+
+The app detects the old format at startup, prints the exact block to write with your own
+values already filled in, and exits without touching your file — the config directory is
+frequently a read-only mount, and the file is usually version-controlled, so nothing is
+rewritten on your behalf.
+
+Three more points:
+
+- The `Target` block is mandatory. A configuration with neither `Target` nor a root-level
+  `Trakt` block gets the same migration message, defaulting to the Trakt shape.
+- Leaving the old `Trakt` block behind is harmless. Once `Target` is valid the app starts
+  normally and only logs a warning naming the obsolete block, so you can delete it whenever
+  you like.
+- If `<Cache.savePath>/movies` or `<Cache.savePath>/tv-shows` still exist, they are leftovers
+  from the 2.x cache layout and nothing reads them any more. A warning names them at
+  startup; delete them yourself whenever you like — the app never removes your files.
 
 ## Configuration
 
@@ -93,12 +224,12 @@ Edit `./config/default.json`, then schedule periodic runs with cron.
 | Name             | Description                                                  | Values                          | Default |
 |------------------|--------------------------------------------------------------|---------------------------------|---------|
 | LOG_LEVEL        | How verbose the log will be                                  | error, warn, info, debug, silly | info    |
-| DRY_RUN          | Run without making changes to Trakt                          | true, false                     | false   |
+| DRY_RUN          | Run without making changes to the target backend             | true, false                     | false   |
 | LIST_NAME_PREFIX | String prepended to every list name (useful for dev/testing) | Any string, e.g. `[TEST]`       | (none)  |
 
 #### Dry-Run Mode
 
-Run the tool without modifying Trakt lists. Useful for testing your configuration:
+Run the tool without modifying any list on the configured backend. Useful for testing your configuration:
 
 ```bash
 # Linux/macOS
@@ -110,13 +241,14 @@ docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino1
 
 In dry-run mode:
 - FlixPatrol scraping runs normally
-- Trakt search for ID conversion runs normally
-- OAuth authentication runs normally
+- The backend search that converts titles to identifiers runs normally
+- Authentication runs normally (the OAuth device flow on Trakt, the API key on Floppy and mdblist)
 - List creation, item addition/removal, and updates are **logged but not executed**
+- Notifications are **not** suppressed, so you can test that setup too — see [Notifications](#notifications)
 
 #### List Name Prefix
 
-Prepend a fixed string to every list name. Useful when running the tool against your real Trakt account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
+Prepend a fixed string to every list name. Useful when running the tool against your real backend account during development or testing — the prefixed lists stay separate from your real lists and can be deleted in bulk afterwards.
 
 ```bash
 # Linux/macOS — produces lists like "[TEST]netflix-world-top10-without-fallback"
@@ -204,10 +336,10 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                          | Default                                    |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
-| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L48))          |                                            |
-| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22))          |                                            |
-| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | false                                      |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                  | private                                    |
+| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
+| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
+| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | false                                      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                  | private                                    |
 | limit           | How many movie/show to get                                                                 | Yes       | Number >= 1                                                                                                                                     | 10                                         |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                             | both                                       |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                                | A generated name based on the top10 config |
@@ -221,8 +353,8 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                         | Default                                      |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L53)) |                                              |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                                 | private                                      |
+| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) |                                              |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                 | private                                      |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100                                                                                                                       | 100                                          |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                            | both                                         |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                               | A generated name based on the popular config |
@@ -236,14 +368,14 @@ If there is any configuration error, the tool will exit with information about t
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                 | Default      |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------|--------------|
 | enabled         | Enable this most watched list?                                                             | Yes       | true, false                                                                                                                            | true         |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public                                                                                                         | private      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                         | private      |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                    | both         |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 50                                                                                                                | 50           |
 | year            | Year of the most watched list                                                              | Yes       | Number between 2023 and current year                                                                                                   | current year |
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                       | most-watched |
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                            | true         |
 | premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
-| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/Flixpatrol/FlixPatrol.ts#L22)) | All          |
+| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | All          |
 | original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
 | orderByViews    | Order by views instead of hours?                                                           | No        | true, false                                                                                                                            | false        |
 
@@ -255,7 +387,7 @@ If there is any configuration error, the tool will exit with information about t
 | Name            | Description                                                                                | Mandatory | Values                          | Default                     |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|---------------------------------|-----------------------------|
 | enabled         | Enable this most hours list?                                                               | Yes       | true, false                     | true                        |
-| privacy         | The privacy of the generated Trakt list                                                    | Yes       | private, link, friends, public  | private                     |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public  | private                     |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both             | both                        |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100        | 50                          |
 | period          | Which ranking period                                                                       | Yes       | total, first-week, first-month  | total                       |
@@ -266,16 +398,40 @@ If there is any configuration error, the tool will exit with information about t
 </details>
 
 <details>
-<summary><strong>Trakt & Cache</strong> — Authentication and caching</summary>
+<summary><strong>Target</strong> — Which backend the lists are written to, and its credentials</summary>
 
-| Name              | Description                                                                                          | Mandatory | Values         | Default          |
-|-------------------|------------------------------------------------------------------------------------------------------|-----------|----------------|------------------|
-| Trakt.saveFile    | Where to save the Trakt session file                                                                 | Yes       | Any valid path | ./config/.trakt  |
-| Trakt.clientId    | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))                   | Yes       | A valid string |                  |
-| Trakt.clientSecret| Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new))               | Yes       | A valid string |                  |
-| Cache.enabled     | Enable caching? (recommended)                                                                        | Yes       | true, false    | true             |
-| Cache.savePath    | Where to save the cache files                                                                        | Yes       | Any valid path | ./config/.cache  |
-| Cache.ttl         | Cache validity duration in seconds                                                                   | Yes       | Number > 0     | 604800 (7 days)  |
+`Target` is a discriminated union on `type`: it carries the backend name **and** exactly the
+credentials that backend needs. The block is mandatory.
+
+| Name                | Description                                                                            | Mandatory             | Values                 | Default         |
+|---------------------|----------------------------------------------------------------------------------------|-----------------------|------------------------|-----------------|
+| type                | Which backend receives the generated lists                                             | Yes                   | trakt, floppy, mdblist |                 |
+| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | ./config/.trakt |
+| clientId            | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))     | If `type: "trakt"`    | A valid string         |                 |
+| clientSecret        | Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new)) | If `type: "trakt"`    | A valid string         |                 |
+| url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
+| apiKey              | Floppy API token (Settings → Advanced), or mdblist API key (preferences page)          | If `type` is floppy or mdblist | A valid string |                 |
+
+It replaces the root-level `Trakt` block of 2.17.0 and earlier — see
+[Migrating from 2.x](#migrating-from-2x). See
+[Choosing Your Platform](#choosing-your-platform) for the trade-offs between the three
+backends.
+
+</details>
+
+<details>
+<summary><strong>Cache</strong> — Caching</summary>
+
+| Name              | Description                                | Mandatory | Values         | Default          |
+|-------------------|--------------------------------------------|-----------|----------------|------------------|
+| Cache.enabled     | Enable caching? (recommended)              | Yes       | true, false    | true             |
+| Cache.savePath    | Where to save the cache files              | Yes       | Any valid path | ./config/.cache  |
+| Cache.ttl         | Cache validity duration in seconds         | Yes       | Number > 0     | 604800 (7 days)  |
+
+The cache has two levels under `savePath`: `details/` for the scraped FlixPatrol detail
+pages, and `resolution-<backend>/` for the title-to-identifier mapping of each backend. Older
+`movies/` and `tv-shows/` directories are leftovers and can be deleted; a startup warning
+names them if they are still there.
 
 </details>
 
@@ -304,13 +460,25 @@ tool behaves exactly as before and never contacts FlareSolverr.
 
 | Name       | Description                                    | Mandatory        | Values                    | Default |
 |------------|------------------------------------------------|------------------|---------------------------|---------|
-| enabled    | Route FlixPatrol requests through FlareSolverr  | No               | true, false               | false   |
-| url        | FlareSolverr v1 API endpoint                    | If enabled       | Any valid URL             |         |
-| maxTimeout | Challenge solving timeout in milliseconds       | No               | Number                    | 60000   |
+| enabled      | Route FlixPatrol requests through FlareSolverr | No               | true, false               | false   |
+| url          | FlareSolverr v1 API endpoint                   | If enabled       | Any valid URL             |         |
+| maxTimeout   | Challenge solving timeout in milliseconds      | No               | Number                    | 60000   |
+| disableMedia | Skip images, CSS and fonts while scraping      | No               | true, false               | false   |
 
 When enabled, a browser session is created once at the start of each run and
 destroyed at the end. The first request solves the challenge (around 12s); later
 requests reuse the session and take 1-3s each.
+
+`disableMedia` makes the solver's browser skip images, stylesheets and fonts, which
+the scraper never looks at — it only reads HTML. Measured over 80 requests, it takes
+about **15% off those later requests** and leaves the initial challenge solve
+unchanged, since the challenge is what dominates and it still runs its JavaScript
+normally. Two things temper it: most of the saving lands on **cold-cache runs**,
+because detail pages are cached for `Cache.ttl` and never reach FlareSolverr twice;
+and a browser that fetches no stylesheet at all is a slightly unusual traffic shape,
+which Cloudflare could in principle score. Zero solve failures were observed either
+way, but the default stays `false` so nothing changes for existing setups. It also
+lowers the container's memory and CPU use, which the FlareSolverr docs warn about.
 
 Run FlareSolverr alongside the tool:
 
@@ -419,7 +587,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
       "language": "english"
     }
   ],
-  "Trakt": {
+  "Target": {
+    "type": "trakt",
     "saveFile": "./config/.trakt",
     "clientId": "You need to replace this client ID",
     "clientSecret": "You need to replace this client secret"
@@ -442,7 +611,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
   "FlareSolverr": {
     "enabled": false,
     "url": "http://localhost:8191/v1",
-    "maxTimeout": 60000
+    "maxTimeout": 60000,
+    "disableMedia": false
   }
 }
 ```
@@ -468,6 +638,91 @@ To run this application you need a Trakt account and a Client ID / Client Secret
    - Other fields are optional
 3. Set the Client ID / Client Secret in `./config/default.json`
 4. Run the app and follow the on-screen instructions
+
+### Floppy Setup
+
+[Floppy](https://github.com/dannyvfilms/Floppy) is a self-hosted media tracker. Point the
+tool at your instance and it will create and refresh lists there instead of on Trakt.
+
+1. Create a **dedicated account** on your instance for this tool. Do not reuse your
+   personal one: adding a title Floppy has never seen goes through a catalogue bootstrap
+   that briefly creates a `Planning` tracking row, which the tool deletes right after. If
+   the process is killed in that narrow window, the stray row stays behind — on a
+   dedicated account it is harmless noise, on your own account it pollutes your watchlist.
+2. Log in as that account and copy its token from **Settings → Advanced**.
+3. Put it in `Target.apiKey`, and your instance URL in `Target.url`.
+
+```json
+{
+  "Target": {
+    "type": "floppy",
+    "url": "http://localhost:8000",
+    "apiKey": "your-floppy-token"
+  }
+}
+```
+
+> **Note**
+> The Floppy API exposes no way to set a list's visibility, so the `privacy` field of your
+> list entries is ignored and every list the tool creates stays private — a warning says so
+> once at startup. If you want to share one, flip it by hand in the web UI. This blocks
+> nothing in practice: **Kometa reads private lists with the same token**, so a private list
+> is fully usable. Note that `link` and `friends` are rejected outright on this backend, as
+> they are Trakt-only concepts.
+
+When wiring the result into [Kometa](https://kometa.wiki/), prefer the `floppy_list`
+builder over `floppy_list_details`: the latter overwrites your Plex collection summary
+with the list description, and the tool never writes one on this backend — it relies on
+Floppy's native `latest_update` field instead of a "Last Updated" description.
+
+### mdblist Setup
+
+[mdblist](https://mdblist.com/) is a hosted list service authenticated by a single API key.
+
+1. Create an account and copy your API key from your
+   [preferences page](https://mdblist.com/preferences/).
+2. Put it in `Target.apiKey`.
+
+```json
+{
+  "Target": {
+    "type": "mdblist",
+    "apiKey": "your-mdblist-api-key"
+  }
+}
+```
+
+> **Note**
+> mdblist only knows public and private lists, so `link` and `friends` are rejected at
+> startup on this backend. Use `private` or `public`.
+
+> **Warning**
+> A free mdblist account is capped at **4 static lists**. Configure more entries than that
+> and list creation will start failing — trim your configuration or take a paid plan.
+
+> **Note**
+> The mdblist search endpoint rejects titles containing characters beyond Latin-1 with
+> `400 Invalid search query`. Accented latin letters are fine (`Amélie` resolves), but
+> curly quotes, dashes and ellipses are not — the tool folds those back to ASCII, so
+> `Let’s Marry Harry` is found anyway. A title in a non-latin script cannot be folded and
+> would stay unresolvable here; in practice that does not happen, because FlixPatrol
+> publishes titles in English or romaji even for a platform like Crunchyroll. Should one
+> ever appear, it logs a warning and is skipped, and the rest of the list is written
+> normally.
+
+The API budget is **1 000 requests per day**, billed **one unit per HTTP call**. Two things
+keep a run cheap:
+
+- **Writes scale per list, not per item.** mdblist accepts bulk add and remove, and both
+  media types are written in a single call, so a list of 100 items costs the same as a list
+  of 3 — about four calls, plus one shared index lookup per run.
+- **Resolution is cached** (see `Cache.ttl`). Only titles the tool has never resolved before
+  consume a search call, so the first run carries the cost and later runs do not.
+
+In practice a 10-entry configuration costs a few hundred units on its first run and a few
+dozen afterwards — comfortably inside the free tier, whose real ceiling is the 4-list cap
+above rather than the request budget. The remaining budget is logged after every list write,
+and any API response reports it in `x-ratelimit-remaining`.
 
 ## Supported Platforms
 
@@ -550,7 +805,9 @@ The scheduler follows the system clock. There is no timezone field in the config
 - A failed run is logged and sent through the [Notifications](#notifications) system (the `error` event), but it does
   **not** stop the daemon — the scheduler keeps waiting for the next trigger.
 - On `SIGTERM` (e.g. `docker stop`) or `SIGINT` (Ctrl-C), the app performs a graceful shutdown: it stops accepting new
-  triggers and waits for the current run to finish its Trakt write before exiting, so lists are never left half-updated.
+  triggers and waits for the current run to finish its backend write before exiting, so lists are never left half-updated.
+  Because each list is written in a single call, the stop point always falls between two lists — never between the
+  movies and the shows of the same list.
 
 ### Docker Compose example
 
@@ -575,41 +832,91 @@ lives inside the app itself.
 
 ## Troubleshooting
 
-| Problem                 | Solution                                                                                 |
-|-------------------------|------------------------------------------------------------------------------------------|
-| "Rate limit exceeded"   | Increase time between runs. The cache helps reduce API calls.                            |
-| "List limit reached"    | Trakt free accounts are limited to 5 lists. Upgrade to VIP or reduce configured lists.   |
-| "No items found"        | Verify the platform/location combination exists on [FlixPatrol](https://flixpatrol.com). |
-| "Bad matching"          | This is a FlixPatrol/Trakt limitation. Titles are matched by name and year.              |
-| "Authentication failed" | Delete `./config/.trakt` and re-authenticate.                                            |
-| "Permission denied" on config folder (Docker) | The Docker image runs as a non-root user (`flixpatrol`, UID 1000). Fix permissions with: `sudo chown -R 1000:1000 /path/to/config` |
-| "Unable to get FlixPatrol ... page" with `HTTP 403 (cf-mitigated: challenge)` | Cloudflare is challenging the request. Enable the optional `FlareSolverr` block (see Configuration File). |
+Roughly ordered by how often each one comes up.
+
+**Startup fails with `Configuration format changed in 3.0.0.` and prints a `Target` block.**
+Your configuration still uses the 2.17-and-earlier shape: a root-level `Trakt` block and no
+`Target`. The message contains the exact block to paste, with your own values already filled in —
+copy it into `config/default.json` in place of the old block. Your file is never rewritten for you:
+the config directory is frequently a read-only mount and usually version-controlled. See
+[Migrating from 2.x](#migrating-from-2x).
+
+**Startup fails saying `Target.clientId` / `Target.clientSecret` still hold the placeholder values.**
+The `config/default.json` the app generated on first run was never edited. Replace the placeholders
+with real credentials — [create a Trakt API application](https://trakt.tv/oauth/applications/new)
+and copy its client id and secret into the `Target` block. The check runs field by field, so
+replacing only one of the two is still caught and the message names the one left over.
+
+**Warning about an obsolete root-level `Trakt` block.**
+Nothing is broken: the run proceeds normally. Credentials now live inside `Target`, so the
+root-level block is no longer read. Delete it whenever you like to silence the warning.
+
+**`Unable to get FlixPatrol ... page` with `HTTP 403 (cf-mitigated: challenge)`.**
+Cloudflare is challenging the request. Enable the optional
+[`FlareSolverr`](#configuration-file) block and point it at a FlareSolverr instance.
+
+**Warning naming leftover cache directories `movies/` and `tv-shows/` under your cache path.**
+They are the 2.x cache layout. The cache is now split into `details/` and `resolution-<backend>/`,
+so nothing reads them any more. Delete them yourself — the app never removes your files.
+
+**One list stopped updating, on a market that charts only one media type.**
+This is the correct behaviour, not a regression. When FlixPatrol publishes no chart for a media
+type, that half of the list is left exactly as it was rather than being filled with the other
+type's rows — which is what earlier versions could do. The other half still updates normally.
+
+**A `kids: true` entry produced nothing.**
+Kids is the last section of the day FlixPatrol publishes, so an early run finds the tables absent
+and leaves the list unchanged rather than writing the wrong content. Run later in the day. Also
+check the entry is on `netflix` with a specific `location`: kids charts do not exist for other
+platforms or for `world`, and the app skips the entry with a warning.
+
+**Titles in the list are wrong or missing.**
+FlixPatrol exposes only a name and a release year, so titles are matched on the backend by those
+two fields and can occasionally mismatch. When a detail page exposes no usable premiere date the
+year is reported as unknown and the match falls back to the title alone. If nothing at all
+resolves, a warning says so and the list is left unchanged instead of being emptied.
+
+**No items found for a platform/location combination.**
+Verify the combination actually exists on [FlixPatrol](https://flixpatrol.com) — not every platform
+charts in every country. Set `fallback` to another location if you want an empty result to fall back
+rather than produce nothing.
+
+**Creating a list fails once you have a few of them.**
+A free Trakt account is capped at **5 personal lists** and a free mdblist account at **4 static
+lists**. Beyond that, list creation starts failing. Trim your configuration, or upgrade (Trakt VIP,
+or a paid mdblist plan). Floppy has no such cap.
+
+**On Floppy, every list is created private and `privacy` is ignored.**
+The Floppy API exposes no way to set visibility, so the setting cannot be honoured; a warning says
+so once at startup. Flip the ones you want to share by hand in the Floppy web UI. This blocks
+nothing for [Kometa](https://kometa.wiki/), which reads private lists with the same token. Note that
+`link` and `friends` are rejected outright on Floppy and mdblist — see
+[Privacy levels per backend](#privacy-levels-per-backend).
+
+**`Permission denied` on the config folder (Docker).**
+The image runs as a non-root user (`flixpatrol`, UID 1000). Fix ownership of the mounted directory:
+`sudo chown -R 1000:1000 /path/to/config`.
+
+**Authentication failed on Trakt.**
+Delete the token file `Target.saveFile` points at (`./config/.trakt` by default) and run again to
+go through the OAuth device flow afresh. On Floppy and mdblist there is no token file — re-check
+`Target.apiKey`.
+
+**Rate limit exceeded.**
+Increase the time between runs. Keeping `Cache.enabled: true` reduces both scraping and backend API
+calls substantially, since resolved titles are not looked up again until the TTL expires.
 
 ## Development
 
-```bash
-# Install dependencies
-npm install
+Local setup, the full command reference (build, lint, unit tests, coverage), the code style and
+the pull request conventions live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-# Run in development mode (hot reload)
-npm run start:dev
-
-# Build
-npm run build
-
-# Run after build
-npm run start
-
-# Lint
-npm run lint
-
-# Lint and auto-fix
-npm run lint-and-fix
-
-# Create cross-platform binaries
-npm run package
-```
+`npm run test:e2e` runs the opt-in end-to-end suites against real services — a real Floppy
+instance, a real Trakt account, a real mdblist account, the live FlixPatrol site. Each suite is
+enabled by its own environment variables and **skips cleanly** when they are missing, so running
+it with no environment at all skips everything and exits green. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the variables, the local infrastructure and what runs in CI.
 
 ## License
 
-[MIT License](LICENSE)
+[GNU General Public License v3.0](LICENSE)
