@@ -195,13 +195,25 @@ const POPULAR_PAGES: readonly PopularPage[] = [
  * extra request. Year, genre, country and premiere year are the granularity this
  * route has; a week appended to it belongs to a different config block entirely.
  */
-const MOST_WATCHED_PAGES: readonly { path: string }[] = [
-  { path: `/hours/netflix/${currentYear - 1}/world/movies/` },
-  { path: `/hours/netflix/${currentYear - 2}/world/movies/` },
-  { path: `/hours/netflix/${currentYear - 1}/world/tv-shows-grouped/` },
+interface MostWatchedPage {
+  path: string;
+  /**
+   * Whether the `original: true` variant is guaranteed to be a strict, non-empty subset
+   * on this page. The genre page was added to lock the URL segment order, not the
+   * `[.//svg]` predicate, and a narrow genre gives no guarantee both sides are non-empty.
+   */
+  checkOriginalsSubset: boolean;
+}
+
+const MOST_WATCHED_PAGES: readonly MostWatchedPage[] = [
+  { path: `/hours/netflix/${currentYear - 1}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 2}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 1}/world/tv-shows-grouped/`, checkOriginalsSubset: true },
   // The genre PREFIXES the type: `movies-comedy/` answers "Page Not Found" with a 200.
-  { path: `/hours/netflix/${currentYear - 1}/world/comedy-movies/` },
+  { path: `/hours/netflix/${currentYear - 1}/world/comedy-movies/`, checkOriginalsSubset: false },
 ];
+
+const MOST_WATCHED_ORIGINALS_PAGES = MOST_WATCHED_PAGES.filter((entry) => entry.checkOriginalsSubset);
 
 interface MostHoursPage {
   path: string;
@@ -696,7 +708,7 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       },
     );
 
-    it.for(MOST_WATCHED_PAGES)(
+    it.for(MOST_WATCHED_ORIGINALS_PAGES)(
       '$path — the originals variant is still a strict, non-empty subset',
       ({ path }) => {
         const html = page(path);
