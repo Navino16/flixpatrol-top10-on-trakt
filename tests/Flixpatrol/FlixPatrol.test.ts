@@ -1321,8 +1321,7 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getMostWatched('TV Shows', config);
 
       expect(Array.isArray(result)).toBe(true);
-      // TV shows URL should include -grouped
-      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-grouped'));
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/hours/netflix/2024/world/tv-shows-grouped/'));
     });
 
     it('should include country in URL when specified', async () => {
@@ -1372,7 +1371,7 @@ describe('FlixPatrol', () => {
 
       await flixpatrol.getMostWatched('Movies', config);
 
-      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-from-france'));
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/hours/netflix/2024/world/movies-from-france/'));
     });
 
     it('should include premiere in URL when specified', async () => {
@@ -1422,7 +1421,7 @@ describe('FlixPatrol', () => {
 
       await flixpatrol.getMostWatched('Movies', config);
 
-      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-2023'));
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/hours/netflix/2024/world/movies-2023/'));
     });
 
     it('should filter Netflix originals when original is true', async () => {
@@ -1481,6 +1480,24 @@ describe('FlixPatrol', () => {
       const result = await flixpatrol.getMostWatched('Movies', config);
 
       expect(Array.isArray(result)).toBe(true);
+    });
+
+    describe('getMostWatched — URL', () => {
+      it('requests the /hours/ path and not the dead /most-watched/ one', async () => {
+        const flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
+        const spy = vi.spyOn(flixpatrol, 'getFlixPatrolHTMLPage').mockResolvedValue('<html></html>');
+
+        await flixpatrol.getMostWatched('TV Shows', {
+          enabled: true,
+          privacy: 'private',
+          limit: 50,
+          type: 'shows',
+          year: 2025,
+          country: 'south-korea',
+        });
+
+        expect(spy).toHaveBeenCalledWith('/hours/netflix/2025/world/tv-shows-from-south-korea-grouped/');
+      });
     });
   });
 

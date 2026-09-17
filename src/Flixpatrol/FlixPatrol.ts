@@ -32,6 +32,7 @@ import {
   parseTop10Page,
   toCanonicalTitlePath,
 } from './parse';
+import { buildMostWatchedPath } from './url';
 
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
@@ -268,19 +269,7 @@ export class FlixPatrol {
     type: FlixPatrolType,
     config: FlixPatrolMostWatched,
   ): Promise<MediaItem[]> {
-    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    let url = `/most-watched/${config.year}/${urlType}`;
-    if (config.country !== undefined) {
-      url += `-from-${config.country}`;
-    }
-    if (config.premiere !== undefined && config.premiere) {
-      url += `-${config.premiere}`;
-    }
-    if (type !== 'Movies') {
-      url += '-grouped';
-    }
-
-    const html = await this.getFlixPatrolHTMLPage(url);
+    const html = await this.getFlixPatrolHTMLPage(buildMostWatchedPath(config, type));
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
