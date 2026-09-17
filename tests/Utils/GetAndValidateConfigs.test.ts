@@ -3,6 +3,9 @@ import {
   flixpatrolTop10Location,
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
   GetAndValidateConfigs,
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
@@ -249,7 +252,6 @@ describe('GetAndValidateConfigs', () => {
             premiere: 2020,
             country: 'france',
             original: true,
-            orderByViews: true,
           },
         ];
         vi.mocked(config.get).mockReturnValue(validConfig);
@@ -796,6 +798,60 @@ describe('GetAndValidateConfigs', () => {
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
       });
+    });
+  });
+
+  describe('MostWatched unions', () => {
+    it('restricts countries to the 93 FlixPatrol accepts, not the 199 Top10 locations', () => {
+      expect(flixpatrolMostWatchedCountry).toHaveLength(93);
+      expect(flixpatrolMostWatchedCountry).toContain('argentina');
+      expect(flixpatrolMostWatchedCountry).toContain('south-korea');
+      expect(flixpatrolMostWatchedCountry).toContain('united-states');
+      // Présents dans flixpatrolTop10Location, absents du select `from` de FlixPatrol.
+      expect(flixpatrolMostWatchedCountry).not.toContain('monaco');
+      expect(flixpatrolMostWatchedCountry).not.toContain('china');
+      expect(flixpatrolMostWatchedCountry).not.toContain('russia');
+    });
+
+    it('keeps the movie/show genre split, singular and plural included', () => {
+      expect(flixpatrolMostWatchedMovieGenre).toHaveLength(23);
+      expect(flixpatrolMostWatchedShowGenre).toHaveLength(25);
+      // FlixPatrol écrit `sports` pour les films et `sport` pour les séries.
+      expect(flixpatrolMostWatchedMovieGenre).toContain('sports');
+      expect(flixpatrolMostWatchedMovieGenre).not.toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).not.toContain('sports');
+    });
+
+    it('exposes the union of both genre lists without duplicates', () => {
+      const union = [...new Set([...flixpatrolMostWatchedMovieGenre, ...flixpatrolMostWatchedShowGenre])];
+      expect(union).toHaveLength(30);
+      expect(union).toContain('game-show');
+      expect(union).toContain('musical');
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — schema', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('accepts a genre valid for the requested type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'comedy' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('comedy');
+    });
+
+    it('rejects a country FlixPatrol does not serve, naming it without dumping the 93', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, country: 'monaco' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/"monaco"/);
+      // Le message renvoie au README plutôt que d'imprimer la liste entière.
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow(/argentina/);
+    });
+
+    it('rejects an unknown genre', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'documentaries' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
     });
   });
 });

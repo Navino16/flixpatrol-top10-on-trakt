@@ -36,6 +36,9 @@ export {
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
   flixpatrolConfigType,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
 } from '../types';
 
 // Helper function to format Zod errors
