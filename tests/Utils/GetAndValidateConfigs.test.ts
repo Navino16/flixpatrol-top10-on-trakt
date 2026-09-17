@@ -884,6 +884,18 @@ describe('GetAndValidateConfigs', () => {
       vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sport' }]);
       expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sport');
     });
+
+    // Pins the data, not the code path: `sports` (movies) and `sport` (shows) must stay
+    // rejected on the other type, or a well-meaning rename would break the show pages silently.
+    it('rejects the movies spelling on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sports' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sports/);
+    });
+
+    it('rejects the shows spelling on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sport' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sport/);
+    });
   });
 
   describe('getFlixPatrolMostWatched — migration', () => {
