@@ -854,4 +854,35 @@ describe('GetAndValidateConfigs', () => {
       expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
     });
   });
+
+  describe('getFlixPatrolMostWatched — genre/type coherence', () => {
+    const base = { enabled: true, privacy: 'private', limit: 50, year: 2024 };
+
+    it('rejects a shows-only genre on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'game-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/game-show/);
+    });
+
+    it('rejects a movies-only genre on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'musical' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/musical/);
+    });
+
+    it('rejects a single-type genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'talk-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/talk-show/);
+    });
+
+    it('accepts a shared genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'thriller' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('thriller');
+    });
+
+    it('accepts the singular/plural variant matching the type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sports' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sports');
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sport' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sport');
+    });
+  });
 });

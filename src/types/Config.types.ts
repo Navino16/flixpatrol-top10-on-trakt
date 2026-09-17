@@ -124,6 +124,30 @@ export const FlixPatrolMostWatchedSchema = z.object({
   country: FlixPatrolMostWatchedCountrySchema.optional(),
   genre: FlixPatrolMostWatchedGenreSchema.optional(),
   original: z.boolean().optional(),
+}).superRefine((block, ctx) => {
+  if (block.genre === undefined) return;
+
+  const needsMovie = block.type === 'movies' || block.type === 'both';
+  const needsShow = block.type === 'shows' || block.type === 'both';
+  const missing: string[] = [];
+
+  if (needsMovie && !(flixpatrolMostWatchedMovieGenre as readonly string[]).includes(block.genre)) {
+    missing.push('movies');
+  }
+  if (needsShow && !(flixpatrolMostWatchedShowGenre as readonly string[]).includes(block.genre)) {
+    missing.push('shows');
+  }
+  if (missing.length === 0) return;
+
+  // Une page de genre absente répond 200 "Page Not Found", donc un scrape vide, donc
+  // un kind vidé sans erreur : refuser ici est la seule barrière. Voir spec §1.
+  ctx.addIssue({
+    code: 'custom',
+    path: ['genre'],
+    message: `genre "${block.genre}" does not exist for ${missing.join(' and ')} on FlixPatrol, `
+      + `and type is "${block.type}". FlixPatrol would answer an empty page, which would ERASE `
+      + 'that part of the list. Pick a genre valid for every type this block requests.',
+  });
 });
 
 export const flixpatrolMostHoursPeriod = ['total', 'first-week', 'first-month'] as const;
