@@ -260,6 +260,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     if (mostWatched.enabled) {
       currentList++;
       let defaultName = `most-watched-${mostWatched.year}-netflix`;
+      defaultName = mostWatched.genre !== undefined ? `${defaultName}-${mostWatched.genre}` : defaultName;
       defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
       defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
       defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;

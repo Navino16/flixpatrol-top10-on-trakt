@@ -36,6 +36,9 @@ export {
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
   flixpatrolConfigType,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
 } from '../types';
 
 // Helper function to format Zod errors
@@ -205,6 +208,30 @@ function checkForTemplateCredentials(target: TargetOptions): void {
   ].join('\n'));
 }
 
+/**
+ * FlixPatrol still serves `/by-views/` but returns an identical order, so the option was
+ * inert. Zod ignores unknown keys, so without this check it would survive silently.
+ */
+function checkMostWatchedMigration(data: unknown): void {
+  if (!Array.isArray(data)) return;
+
+  const offenders = data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => typeof entry === 'object' && entry !== null && 'orderByViews' in entry);
+  if (offenders.length === 0) return;
+
+  throw new ConfigurationError([
+    `\`orderByViews\` is no longer supported and must be removed from `
+    + `${offenders.map(({ index }) => `FlixPatrolMostWatched[${index}]`).join(', ')}.`,
+    '',
+    'FlixPatrol still answers the `/by-views/` page, but it returns exactly the same order as',
+    'the default one, so the option had no effect. It is removed rather than ignored, because a',
+    'silently inoperative option is worse than an explicit failure.',
+    '',
+    'Delete the `orderByViews` line from each entry listed above. Nothing else changes.',
+  ].join('\n'));
+}
+
 export class GetAndValidateConfigs {
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
     try {
@@ -229,6 +256,7 @@ export class GetAndValidateConfigs {
   public static getFlixPatrolMostWatched(): FlixPatrolMostWatched[] {
     try {
       const data = config.get('FlixPatrolMostWatched');
+      checkMostWatchedMigration(data);
       return validateConfig(z.array(FlixPatrolMostWatchedSchema), data, 'FlixPatrolMostWatched');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;

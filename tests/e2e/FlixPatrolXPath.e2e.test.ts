@@ -65,7 +65,7 @@ const REQUEST_DELAY_MS = 1500;
  * assertion tell "someone added a page" from "something is re-fetching". Raising
  * it must stay a deliberate act visible in a diff.
  */
-const REQUEST_BUDGET = 32;
+const REQUEST_BUDGET = 33;
 
 /** Whole-suite budget: every page load, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
@@ -192,14 +192,28 @@ const POPULAR_PAGES: readonly PopularPage[] = [
 /**
  * Most watched — two derived years, so no path rots, and both media shapes. The
  * `original: true` variant is a second expression over the SAME page, so it costs no
- * extra request. YEAR is the only granularity this route has: a day appended to it
- * returns "Page Not Found". Same for Most hours below, a lifetime total.
+ * extra request. Year, genre, country and premiere year are the granularity this
+ * route has; a week appended to it belongs to a different config block entirely.
  */
-const MOST_WATCHED_PAGES: readonly { path: string }[] = [
-  { path: `/most-watched/${currentYear - 1}/movies` },
-  { path: `/most-watched/${currentYear - 2}/movies` },
-  { path: `/most-watched/${currentYear - 1}/tv-shows-grouped` },
+interface MostWatchedPage {
+  path: string;
+  /**
+   * Whether the `original: true` variant is guaranteed to be a strict, non-empty subset
+   * on this page. The genre page was added to lock the URL segment order, not the
+   * `[.//svg]` predicate, and a narrow genre gives no guarantee both sides are non-empty.
+   */
+  checkOriginalsSubset: boolean;
+}
+
+const MOST_WATCHED_PAGES: readonly MostWatchedPage[] = [
+  { path: `/hours/netflix/${currentYear - 1}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 2}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 1}/world/tv-shows-grouped/`, checkOriginalsSubset: true },
+  // The genre PREFIXES the type: `movies-comedy/` answers "Page Not Found" with a 200.
+  { path: `/hours/netflix/${currentYear - 1}/world/comedy-movies/`, checkOriginalsSubset: false },
 ];
+
+const MOST_WATCHED_ORIGINALS_PAGES = MOST_WATCHED_PAGES.filter((entry) => entry.checkOriginalsSubset);
 
 interface MostHoursPage {
   path: string;
@@ -270,7 +284,7 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
   },
   {
     family: 'most-watched-movie',
-    listingPath: `/most-watched/${currentYear - 1}/movies`,
+    listingPath: `/hours/netflix/${currentYear - 1}/world/movies/`,
     expression: mostWatchedExpression(false),
   },
   {
@@ -694,7 +708,7 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       },
     );
 
-    it.for(MOST_WATCHED_PAGES)(
+    it.for(MOST_WATCHED_ORIGINALS_PAGES)(
       '$path — the originals variant is still a strict, non-empty subset',
       ({ path }) => {
         const html = page(path);

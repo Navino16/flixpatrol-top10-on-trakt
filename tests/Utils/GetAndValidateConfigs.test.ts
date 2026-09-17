@@ -3,6 +3,9 @@ import {
   flixpatrolTop10Location,
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
   GetAndValidateConfigs,
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
@@ -249,7 +252,6 @@ describe('GetAndValidateConfigs', () => {
             premiere: 2020,
             country: 'france',
             original: true,
-            orderByViews: true,
           },
         ];
         vi.mocked(config.get).mockReturnValue(validConfig);
@@ -796,6 +798,132 @@ describe('GetAndValidateConfigs', () => {
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
       });
+    });
+  });
+
+  describe('MostWatched unions', () => {
+    it('restricts countries to the 93 FlixPatrol accepts, not the 199 Top10 locations', () => {
+      expect(flixpatrolMostWatchedCountry).toHaveLength(93);
+      expect(flixpatrolMostWatchedCountry).toContain('argentina');
+      expect(flixpatrolMostWatchedCountry).toContain('south-korea');
+      expect(flixpatrolMostWatchedCountry).toContain('united-states');
+      // Present in flixpatrolTop10Location, absent from FlixPatrol's `from` select.
+      expect(flixpatrolMostWatchedCountry).not.toContain('monaco');
+      expect(flixpatrolMostWatchedCountry).not.toContain('china');
+      expect(flixpatrolMostWatchedCountry).not.toContain('russia');
+    });
+
+    it('keeps the movie/show genre split, singular and plural included', () => {
+      expect(flixpatrolMostWatchedMovieGenre).toHaveLength(23);
+      expect(flixpatrolMostWatchedShowGenre).toHaveLength(25);
+      // FlixPatrol writes `sports` for movies and `sport` for shows.
+      expect(flixpatrolMostWatchedMovieGenre).toContain('sports');
+      expect(flixpatrolMostWatchedMovieGenre).not.toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).not.toContain('sports');
+    });
+
+    it('exposes the union of both genre lists without duplicates', () => {
+      const union = [...new Set([...flixpatrolMostWatchedMovieGenre, ...flixpatrolMostWatchedShowGenre])];
+      expect(union).toHaveLength(30);
+      expect(union).toContain('game-show');
+      expect(union).toContain('musical');
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — schema', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('accepts a genre valid for the requested type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'comedy' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('comedy');
+    });
+
+    it('rejects a country FlixPatrol does not serve, naming it without dumping the 93', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, country: 'monaco' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/"monaco"/);
+      // The message points to the README instead of dumping the whole list.
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow(/argentina/);
+    });
+
+    it('rejects an unknown genre', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'documentaries' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — genre/type coherence', () => {
+    const base = { enabled: true, privacy: 'private', limit: 50, year: 2024 };
+
+    it('rejects a shows-only genre on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'game-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/game-show/);
+    });
+
+    it('rejects a movies-only genre on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'musical' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/musical/);
+    });
+
+    it('rejects a single-type genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'talk-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/talk-show/);
+    });
+
+    it('accepts a shared genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'thriller' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('thriller');
+    });
+
+    it('accepts the singular/plural variant matching the type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sports' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sports');
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sport' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sport');
+    });
+
+    // Pins the data, not the code path: `sports` (movies) and `sport` (shows) must stay
+    // rejected on the other type, or a well-meaning rename would break the show pages silently.
+    it('rejects the movies spelling on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sports' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sports/);
+    });
+
+    it('rejects the shows spelling on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sport' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sport/);
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — migration', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('refuses to start when orderByViews is still present', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/orderByViews/);
+    });
+
+    it('refuses it even when set to false, since the key is what is obsolete', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: false }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(ConfigurationError);
+    });
+
+    it('names the offending entry by index', () => {
+      vi.mocked(config.get).mockReturnValue([base, { ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/FlixPatrolMostWatched\[1\]/);
+    });
+
+    it('stays silent on a clean config', () => {
+      vi.mocked(config.get).mockReturnValue([base]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow();
     });
   });
 });

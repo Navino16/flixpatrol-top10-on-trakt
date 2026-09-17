@@ -500,6 +500,16 @@ describe('runPipeline MostWatched section', () => {
     expect(listNameOfWrite(0)).toBe('most-watched-2024-netflix-original-2020-premiere-from-france');
   });
 
+  it('appends genre ahead of original, premiere and country, distinct from the same entry without genre', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolMostWatched: mostWatchedConfig({
+        type: 'movies', genre: 'comedy', original: true, premiere: 2020, country: 'france',
+      }),
+    }));
+
+    expect(listNameOfWrite(0)).toBe('most-watched-2024-netflix-comedy-original-2020-premiere-from-france');
+  });
+
   // `original: false` is still a *set* filter: the scraper receives it, so the
   // list name must stay distinct from the unfiltered one.
   it('marks the name as original even when the flag is explicitly false', async () => {
