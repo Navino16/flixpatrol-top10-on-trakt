@@ -65,7 +65,7 @@ const REQUEST_DELAY_MS = 1500;
  * assertion tell "someone added a page" from "something is re-fetching". Raising
  * it must stay a deliberate act visible in a diff.
  */
-const REQUEST_BUDGET = 32;
+const REQUEST_BUDGET = 33;
 
 /** Whole-suite budget: every page load, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
@@ -192,13 +192,15 @@ const POPULAR_PAGES: readonly PopularPage[] = [
 /**
  * Most watched — two derived years, so no path rots, and both media shapes. The
  * `original: true` variant is a second expression over the SAME page, so it costs no
- * extra request. YEAR is the only granularity this route has: a day appended to it
- * returns "Page Not Found". Same for Most hours below, a lifetime total.
+ * extra request. Year, genre, country and premiere year are the granularity this
+ * route has; a week appended to it belongs to a different config block entirely.
  */
 const MOST_WATCHED_PAGES: readonly { path: string }[] = [
-  { path: `/most-watched/${currentYear - 1}/movies` },
-  { path: `/most-watched/${currentYear - 2}/movies` },
-  { path: `/most-watched/${currentYear - 1}/tv-shows-grouped` },
+  { path: `/hours/netflix/${currentYear - 1}/world/movies/` },
+  { path: `/hours/netflix/${currentYear - 2}/world/movies/` },
+  { path: `/hours/netflix/${currentYear - 1}/world/tv-shows-grouped/` },
+  // The genre PREFIXES the type: `movies-comedy/` answers "Page Not Found" with a 200.
+  { path: `/hours/netflix/${currentYear - 1}/world/comedy-movies/` },
 ];
 
 interface MostHoursPage {
@@ -270,7 +272,7 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
   },
   {
     family: 'most-watched-movie',
-    listingPath: `/most-watched/${currentYear - 1}/movies`,
+    listingPath: `/hours/netflix/${currentYear - 1}/world/movies/`,
     expression: mostWatchedExpression(false),
   },
   {

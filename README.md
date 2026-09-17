@@ -377,7 +377,22 @@ If there is any configuration error, the tool will exit with information about t
 | premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
 | country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | All          |
 | original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
-| orderByViews    | Order by views instead of hours?                                                           | No        | true, false                                                                                                                            | false        |
+| genre           | Filter by genre. 30 values, see below. Must exist for every requested type.                | No        | See below                                                                                                                              | All          |
+
+**`genre`** — common to both types: `action`, `adventure`, `animation`, `biography`,
+`comedy`, `crime`, `documentary`, `drama`, `family`, `fantasy`, `history`, `horror`,
+`romance`, `science-fiction`, `superhero`, `thriller`, `war`, `western`.
+Movies only: `concerts`, `fairy-tale`, `musical`, `record`, `sports`.
+Shows only: `broadcast`, `game-show`, `music`, `news`, `reality-show`, `sport`,
+`talk-show`.
+With `type: "both"`, only the 18 common genres are accepted. Note `sports` for movies
+and `sport` for shows: this is FlixPatrol's own spelling.
+
+**`country`** — 93 values, copied from `flixpatrolMostWatchedCountry`. This is **not**
+the same list as `FlixPatrolTop10` locations: `china`, `russia` and `monaco` for
+example are not in it.
+
+Shows are always grouped by title, never listed season by season.
 
 </details>
 

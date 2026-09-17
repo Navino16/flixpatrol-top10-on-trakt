@@ -399,6 +399,10 @@ Netflix originals:
 ```xpath
 //table[@class="card-table"]//a[@class="flex gap-2 group items-center"][.//svg]/@href
 ```
+MostWatched is built from `buildMostWatchedPath` (`src/Flixpatrol/url.ts`) against the
+`/hours/netflix/{year}/world/...` family, not the dead `/most-watched/` URLs. FlixPatrol
+serves an invalid combination (a genre/country/type it does not track) as "Page Not Found"
+with HTTP 200, so a bad config produces a silent empty scrape rather than an error.
 
 **MostHours** — `{sectionId}` is `toc-movies` or `toc-tv-shows`, `{langTab}` is
 `all-languages` / `english` / `non-english`. The `total` period has no language tabs, so the
