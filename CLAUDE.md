@@ -309,7 +309,7 @@ File: `config/default.json`
     premiere?: number,  // filter by premiere year (1980+)
     country?: FlixPatrolMostWatchedCountry,  // 93 values, distinct from FlixPatrolTop10Location's 199
     original?: boolean,  // Netflix originals only
-    genre?: FlixPatrolMostWatchedMovieGenre | FlixPatrolMostWatchedShowGenre  // must exist for every requested type
+    genre?: FlixPatrolMostWatchedGenre  // must exist for every requested type
   }],
   FlixPatrolMostHours: [{  // optional block: absent means []
     enabled: boolean,
