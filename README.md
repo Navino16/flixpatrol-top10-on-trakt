@@ -375,7 +375,7 @@ If there is any configuration error, the tool will exit with information about t
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                       | most-watched |
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                            | true         |
 | premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
-| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | All          |
+| country         | Filter by release country                                                                  | No        | 93 values, see below                                                                                                                   | All          |
 | original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
 | genre           | Filter by genre. 30 values, see below. Must exist for every requested type.                | No        | See below                                                                                                                              | All          |
 
@@ -391,6 +391,20 @@ and `sport` for shows: this is FlixPatrol's own spelling.
 **`country`** — 93 values, copied from `flixpatrolMostWatchedCountry`. This is **not**
 the same list as `FlixPatrolTop10` locations: `china`, `russia` and `monaco` for
 example are not in it.
+
+`argentina`, `australia`, `austria`, `bahamas`, `bahrain`, `bangladesh`, `belgium`, `bolivia`,
+`brazil`, `bulgaria`, `canada`, `chile`, `colombia`, `costa-rica`, `croatia`, `cyprus`,
+`czech-republic`, `denmark`, `dominican-republic`, `ecuador`, `egypt`, `estonia`, `finland`,
+`france`, `germany`, `greece`, `guadeloupe`, `guatemala`, `honduras`, `hong-kong`, `hungary`,
+`iceland`, `india`, `indonesia`, `ireland`, `israel`, `italy`, `jamaica`, `japan`, `jordan`,
+`kenya`, `kuwait`, `latvia`, `lebanon`, `lithuania`, `luxembourg`, `malaysia`, `maldives`,
+`malta`, `martinique`, `mauritius`, `mexico`, `morocco`, `netherlands`, `new-caledonia`,
+`new-zealand`, `nicaragua`, `nigeria`, `norway`, `oman`, `pakistan`, `panama`, `paraguay`,
+`peru`, `philippines`, `poland`, `portugal`, `qatar`, `reunion`, `romania`, `salvador`,
+`saudi-arabia`, `serbia`, `singapore`, `slovakia`, `slovenia`, `south-africa`, `south-korea`,
+`spain`, `sri-lanka`, `sweden`, `switzerland`, `taiwan`, `thailand`, `trinidad-and-tobago`,
+`turkey`, `ukraine`, `united-arab-emirates`, `united-kingdom`, `united-states`, `uruguay`,
+`venezuela`, `vietnam`.
 
 Shows are always grouped by title, never listed season by season.
 
