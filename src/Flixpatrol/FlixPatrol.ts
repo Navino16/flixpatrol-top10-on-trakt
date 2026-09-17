@@ -279,9 +279,6 @@ export class FlixPatrol {
     if (type !== 'Movies') {
       url += '-grouped';
     }
-    if (config.orderByViews !== undefined && config.orderByViews) {
-      url += '/by-views';
-    }
 
     const html = await this.getFlixPatrolHTMLPage(url);
     if (html === null) {

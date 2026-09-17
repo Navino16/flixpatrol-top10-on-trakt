@@ -1425,56 +1425,6 @@ describe('FlixPatrol', () => {
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('-2023'));
     });
 
-    it('should include orderByViews in URL when specified', async () => {
-      const mostWatchedHtml = `
-        <html>
-          <body>
-            <table class="card-table">
-              <tr>
-                <td>
-                  <a class="flex gap-2 group items-center" href="/title/movie-1">Movie 1</a>
-                </td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-      const detailHtml = `
-        <html>
-          <body>
-            <div class="info-grid">
-              <div class="info-grid-header">
-                <div class="md:flex items-baseline justify-between">
-                  <h1 class="mb-4 text-h1">Movie</h1>
-                </div>
-                <div class="flex flex-wrap">
-                  <div class="flex gap-x-1" title="3894"><div>Movie</div><div>|</div></div>
-                  <div class="flex gap-x-1" title="Premiere"><div><span>06/18/2024</span></div>|</div>
-                </div>
-              </div>
-            </div>
-          </body>
-        </html>
-      `;
-
-      mockFetch
-        .mockResolvedValueOnce(mockHtmlResponse({ status: 200, data: mostWatchedHtml }))
-        .mockResolvedValue(mockHtmlResponse({ status: 200, data: detailHtml }));
-
-      const config: FlixPatrolMostWatched = {
-        enabled: true,
-        privacy: 'private',
-        limit: 10,
-        type: 'movies',
-        year: 2024,
-        orderByViews: true,
-      };
-
-      await flixpatrol.getMostWatched('Movies', config);
-
-      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/by-views'));
-    });
-
     it('should filter Netflix originals when original is true', async () => {
       const mostWatchedHtml = `
         <html>
