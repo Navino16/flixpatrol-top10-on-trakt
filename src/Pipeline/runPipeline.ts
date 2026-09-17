@@ -137,6 +137,15 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     kind: MediaKind,
     listName: string,
   ): Promise<string[] | null> => {
+    // An empty scrape is never an instruction to empty the list. A dead FlixPatrol URL
+    // answers 200 with a "Page Not Found" body, so nothing downstream can tell a chart
+    // that is empty today from one whose page no longer exists. Omitting the key leaves
+    // the kind untouched; only `getFlixPatrolHTMLPage`'s callers report a dead path.
+    if (items.length === 0) {
+      logger.warn(`FlixPatrol returned no ${kind} for "${listName}" — list left unchanged`);
+      return null;
+    }
+
     const ids = await target.resolveMany(items, kind);
     // Items scraped but nothing resolved means the backend is failing, not that the list
     // should be emptied — so return null and let the key be omitted, which spares this

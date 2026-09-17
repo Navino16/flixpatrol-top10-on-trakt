@@ -9,6 +9,7 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  isNotFoundPage,
   toCanonicalTitlePath,
 } from '../../src/Flixpatrol/parse';
 
@@ -426,5 +427,32 @@ describe('FlixPatrol parsing', () => {
 
       expect(parseDetailYear(dom)).toBe(1977);
     });
+  });
+});
+
+// FlixPatrol answers a missing page with HTTP 200 and this body, never a 404, so the
+// status code cannot be used to tell a dead URL from an empty chart.
+describe('isNotFoundPage', () => {
+  const page = (title: string, body = '') => `<html><head><title>${title}</title></head><body>${body}</body></html>`;
+
+  it('recognises the page FlixPatrol serves for a path that does not exist', () => {
+    expect(isNotFoundPage(page('Page Not Found \u2022 FlixPatrol', '<h1 class="text-h1">Page Not Found</h1>')))
+      .toBe(true);
+  });
+
+  it('leaves a real listing page alone', () => {
+    expect(isNotFoundPage(page('Netflix Most Watched Movies in 2025 \u2022 FlixPatrol'))).toBe(false);
+    expect(isNotFoundPage(page('TOP 10 on Netflix in the World on September 16, 2026 \u2022 FlixPatrol')))
+      .toBe(false);
+  });
+
+  it('keys off the title, not the body, so a page merely mentioning the phrase is not flagged', () => {
+    expect(isNotFoundPage(page('Netflix Most Watched Movies in 2025 \u2022 FlixPatrol', '<p>Page Not Found</p>')))
+      .toBe(false);
+  });
+
+  it('treats markup it cannot read as a normal page, so a detection failure never escalates', () => {
+    expect(isNotFoundPage('<html><body>no title here</body></html>')).toBe(false);
+    expect(isNotFoundPage('')).toBe(false);
   });
 });

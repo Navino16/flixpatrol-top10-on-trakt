@@ -416,12 +416,12 @@ describe('runPipeline Popular section', () => {
 
   // An empty scrape is not a failure: the key is present and empty, which asks the
   // backend to clear that kind.
-  it('sends an empty array for a kind the scrape returned empty', async () => {
+  it('omits the key for a kind the scrape returned empty, and writes the other', async () => {
     getPopular.mockResolvedValueOnce([]).mockResolvedValueOnce(oneItem);
     await runPipeline(baseDeps({ flixPatrolPopulars: popularConfig() }));
 
     expect(pushToList).toHaveBeenCalledOnce();
-    expect(contentOfWrite(0)).toEqual({ movie: [], show: ['id-0'] });
+    expect(contentOfWrite(0)).toEqual({ show: ['id-0'] });
   });
 
   it('derives the default list name from the platform and applies the prefix', async () => {
@@ -763,5 +763,59 @@ describe('runPipeline abort between lists', () => {
     expect(getMostHours).toHaveBeenCalledOnce();
     expect(pushToList).not.toHaveBeenCalled();
     expect(summary.showsAdded).toBe(0);
+  });
+});
+
+// An empty scrape used to reach pushToList as a present-but-empty key, which the
+// ListContent contract reads as "clear this kind" — so a chart that returned nothing
+// erased the user's list. Only Top10 was guarded; the other three were not.
+describe('a scrape that returns no item', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveMany.mockResolvedValue([]);
+  });
+
+  it('leaves a Popular list untouched instead of clearing it', async () => {
+    getPopular.mockResolvedValue([] as MediaItem[]);
+    await runPipeline(baseDeps({
+      flixPatrolPopulars: [{
+        platform: 'wikipedia', privacy: 'private', limit: 10, type: 'both',
+      }] as unknown as RunPipelineDeps['flixPatrolPopulars'],
+    }));
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(warnSpy.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/no movie|no show/i);
+  });
+
+  it('leaves a MostWatched list untouched instead of clearing it', async () => {
+    getMostWatched.mockResolvedValue([] as MediaItem[]);
+    await runPipeline(baseDeps({
+      flixPatrolMostWatched: [{
+        enabled: true, privacy: 'private', limit: 50, type: 'both', year: 2024,
+      }] as unknown as RunPipelineDeps['flixPatrolMostWatched'],
+    }));
+    expect(pushToList).not.toHaveBeenCalled();
+  });
+
+  it('leaves a MostHours list untouched instead of clearing it', async () => {
+    getMostHours.mockResolvedValue([] as MediaItem[]);
+    await runPipeline(baseDeps({
+      flixPatrolMostHours: [{
+        enabled: true, privacy: 'private', limit: 50, type: 'both', period: 'total', language: 'all',
+      }] as unknown as RunPipelineDeps['flixPatrolMostHours'],
+    }));
+    expect(pushToList).not.toHaveBeenCalled();
+  });
+
+  it('still writes the kind that did return items, on a `both` list', async () => {
+    getMostWatched.mockImplementation(async (type: string) => (
+      type === 'Movies' ? [{ title: 'Damsel', year: 2024 }] : []
+    ));
+    resolveMany.mockResolvedValue(['1']);
+    await runPipeline(baseDeps({
+      flixPatrolMostWatched: [{
+        enabled: true, privacy: 'private', limit: 50, type: 'both', year: 2024,
+      }] as unknown as RunPipelineDeps['flixPatrolMostWatched'],
+    }));
+    expect(kindsOfWrite(0)).toEqual(['movie']);
   });
 });

@@ -2314,3 +2314,65 @@ describe('FlixPatrol', () => {
     });
   });
 });
+
+// FlixPatrol answers a path that no longer exists with HTTP 200 and its "Page Not Found"
+// body. Every listing getter must surface that as an error: a silently empty result reads
+// as "this chart is empty today", which is a different and much less alarming fact.
+describe('listing getters on a page FlixPatrol does not serve', () => {
+  const NOT_FOUND_HTML = '<html><head><title>Page Not Found • FlixPatrol</title></head>'
+    + '<body><h1 class="text-h1">Page Not Found</h1></body></html>';
+
+  let flixpatrol: FlixPatrol;
+
+  beforeEach(() => {
+    flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
+    vi.spyOn(flixpatrol, 'getFlixPatrolHTMLPage').mockResolvedValue(NOT_FOUND_HTML);
+  });
+
+  it('getTop10Sections throws and names the path', async () => {
+    const config: FlixPatrolTop10 = {
+      platform: 'netflix', location: 'france', fallback: false, privacy: 'private', limit: 10, type: 'both',
+    };
+    await expect(flixpatrol.getTop10Sections(config)).rejects.toThrow(/\/top10\/netflix\/france/);
+  });
+
+  it('getPopular throws and names the path', async () => {
+    const config: FlixPatrolPopular = {
+      platform: 'wikipedia', privacy: 'private', limit: 10, type: 'movies',
+    };
+    await expect(flixpatrol.getPopular('Movies', config)).rejects.toThrow(/\/popular\/movies\/wikipedia/);
+  });
+
+  it('getMostWatched throws and names the path', async () => {
+    const config: FlixPatrolMostWatched = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+    await expect(flixpatrol.getMostWatched('Movies', config))
+      .rejects.toThrow(/\/hours\/netflix\/2024\/world\/movies\//);
+  });
+
+  it('getMostHours throws and names the path', async () => {
+    const config: FlixPatrolMostHours = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', period: 'total', language: 'all',
+    };
+    await expect(flixpatrol.getMostHours('Movies', config))
+      .rejects.toThrow(/most-hours-total/);
+  });
+
+  it('leaves detail pages alone, so one delisted title cannot fail a whole run', async () => {
+    // getMediaItem parses what it got and yields an unusable item the caller drops. Throwing
+    // here would cost the other 30 lists for one title FlixPatrol removed.
+    const config: FlixPatrolMostWatched = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+    vi.spyOn(flixpatrol, 'getFlixPatrolHTMLPage').mockImplementation(async (path: string) => (
+      path.startsWith('/title/')
+        ? NOT_FOUND_HTML
+        : '<html><head><title>Netflix Most Watched Movies in 2024 • FlixPatrol</title></head><body>'
+          + '<table class="card-table"><tbody><tr><td>'
+          + '<a class="flex gap-2 group items-center" href="/title/gone-2024/">Gone</a>'
+          + '</td></tr></tbody></table></body></html>'
+    ));
+    await expect(flixpatrol.getMostWatched('Movies', config)).resolves.toBeDefined();
+  });
+});
