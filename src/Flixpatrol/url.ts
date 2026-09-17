@@ -1,11 +1,9 @@
 import type { FlixPatrolMostWatched, FlixPatrolType } from '../types';
 
 /**
- * Chemin d'une page Most-watched, grammaire relevée le 2026-09-16 :
+ * Most-watched path grammar:
  * /hours/netflix/{year}/world/[{genre}-]{movies|tv-shows}[-from-{country}][-{premiere}][-grouped]/
- *
- * `netflix` et `world` sont figés : les autres plateformes n'ont pas de données annuelles,
- * et un pays dans le segment de portée ne résout pas — il passe par `-from-`.
+ * `netflix`/`world` are fixed: other platforms lack yearly data; a country there won't resolve, use `-from-`.
  */
 export function buildMostWatchedPath(
   config: FlixPatrolMostWatched,

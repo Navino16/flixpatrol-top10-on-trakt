@@ -11,8 +11,8 @@ const base: FlixPatrolMostWatched = {
 };
 
 describe('buildMostWatchedPath', () => {
-  // Chaque attendu ci-dessous a été vérifié en HTTP 200 non vide sur le site live
-  // le 2026-09-16 — voir spec §2.
+  // Each expectation below was verified as a non-empty HTTP 200 against the live site.
+  // See spec §2.
   it.for([
     { name: 'movies, nothing else', cfg: {}, type: 'Movies' as const, expected: '/hours/netflix/2025/world/movies/' },
     {

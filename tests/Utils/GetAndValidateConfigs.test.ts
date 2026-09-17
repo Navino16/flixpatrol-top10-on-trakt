@@ -807,7 +807,7 @@ describe('GetAndValidateConfigs', () => {
       expect(flixpatrolMostWatchedCountry).toContain('argentina');
       expect(flixpatrolMostWatchedCountry).toContain('south-korea');
       expect(flixpatrolMostWatchedCountry).toContain('united-states');
-      // Présents dans flixpatrolTop10Location, absents du select `from` de FlixPatrol.
+      // Present in flixpatrolTop10Location, absent from FlixPatrol's `from` select.
       expect(flixpatrolMostWatchedCountry).not.toContain('monaco');
       expect(flixpatrolMostWatchedCountry).not.toContain('china');
       expect(flixpatrolMostWatchedCountry).not.toContain('russia');
@@ -816,7 +816,7 @@ describe('GetAndValidateConfigs', () => {
     it('keeps the movie/show genre split, singular and plural included', () => {
       expect(flixpatrolMostWatchedMovieGenre).toHaveLength(23);
       expect(flixpatrolMostWatchedShowGenre).toHaveLength(25);
-      // FlixPatrol écrit `sports` pour les films et `sport` pour les séries.
+      // FlixPatrol writes `sports` for movies and `sport` for shows.
       expect(flixpatrolMostWatchedMovieGenre).toContain('sports');
       expect(flixpatrolMostWatchedMovieGenre).not.toContain('sport');
       expect(flixpatrolMostWatchedShowGenre).toContain('sport');
@@ -845,7 +845,7 @@ describe('GetAndValidateConfigs', () => {
       vi.mocked(config.get).mockReturnValue([{ ...base, country: 'monaco' }]);
       expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
       expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/"monaco"/);
-      // Le message renvoie au README plutôt que d'imprimer la liste entière.
+      // The message points to the README instead of dumping the whole list.
       expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow(/argentina/);
     });
 

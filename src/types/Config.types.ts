@@ -39,9 +39,9 @@ export const flixpatrolPopularPlatform = ['wikipedia', 'youtube'] as const;
 
 export const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
 
-// Sous-ensemble strict de flixpatrolTop10Location : le select `from` de la page /hours/
-// n'offre que ces 93 pays, et un pays hors liste renvoie une page "Page Not Found" en
-// HTTP 200, donc une liste vidée plutôt qu'une erreur. Relevé le 2026-09-16.
+// Strict subset of flixpatrolTop10Location: the /hours/ page's `from` select only offers
+// these 93 countries. A country outside this list returns a "Page Not Found" page as
+// HTTP 200 — an empty scrape rather than an error.
 export const flixpatrolMostWatchedCountry = ['argentina', 'australia', 'austria', 'bahamas', 'bahrain',
   'bangladesh', 'belgium', 'bolivia', 'brazil', 'bulgaria', 'canada', 'chile', 'colombia', 'costa-rica', 'croatia',
   'cyprus', 'czech-republic', 'denmark', 'dominican-republic', 'ecuador', 'egypt', 'estonia', 'finland', 'france',
@@ -54,8 +54,7 @@ export const flixpatrolMostWatchedCountry = ['argentina', 'australia', 'austria'
   'taiwan', 'thailand', 'trinidad-and-tobago', 'turkey', 'ukraine', 'united-arab-emirates', 'united-kingdom',
   'united-states', 'uruguay', 'venezuela', 'vietnam'] as const;
 
-// `sports` pour les films, `sport` pour les séries : c'est la graphie de FlixPatrol,
-// ne pas l'harmoniser.
+// `sports` for movies, `sport` for shows: that is FlixPatrol's own spelling, do not harmonize it.
 export const flixpatrolMostWatchedMovieGenre = ['action', 'adventure', 'animation', 'biography', 'comedy',
   'concerts', 'crime', 'documentary', 'drama', 'fairy-tale', 'family', 'fantasy', 'history', 'horror', 'musical',
   'record', 'romance', 'science-fiction', 'sports', 'superhero', 'thriller', 'war', 'western'] as const;
@@ -97,15 +96,15 @@ export const FlixPatrolPopularSchema = z.object({
 
 const currentYear = new Date().getFullYear();
 
-// L'union des deux z.enum plutôt qu'un z.enum sur le tableau fusionné : elle conserve le
-// type littéral de `genre`, qu'un cast vers [string, ...string[]] détruirait.
+// Union of the two z.enum rather than a z.enum over a merged array: it preserves the
+// literal type of `genre`, which a cast to [string, ...string[]] would destroy.
 const FlixPatrolMostWatchedGenreSchema = z.union([
   z.enum(flixpatrolMostWatchedMovieGenre),
   z.enum(flixpatrolMostWatchedShowGenre),
 ]);
 
-// Le message par défaut de Zod énumère les 93 valeurs ; celui-ci nomme la valeur refusée
-// et renvoie au README. Voir spec §5.
+// Zod's default message would enumerate all 93 values; this one names the rejected value
+// and points to the README instead. See spec §5.
 const FlixPatrolMostWatchedCountrySchema = z.enum(flixpatrolMostWatchedCountry, {
   error: (issue) => `country "${String(issue.input)}" is not one of the 93 countries FlixPatrol `
     + 'serves on the Most-watched pages — see the README for the full list. Note it is NOT the '
@@ -139,8 +138,8 @@ export const FlixPatrolMostWatchedSchema = z.object({
   }
   if (missing.length === 0) return;
 
-  // Une page de genre absente répond 200 "Page Not Found", donc un scrape vide, donc
-  // un kind vidé sans erreur : refuser ici est la seule barrière. Voir spec §1.
+  // A missing genre page answers 200 "Page Not Found", so an empty scrape, so a kind
+  // wiped without error: rejecting here is the only guard. See spec §1.
   ctx.addIssue({
     code: 'custom',
     path: ['genre'],
