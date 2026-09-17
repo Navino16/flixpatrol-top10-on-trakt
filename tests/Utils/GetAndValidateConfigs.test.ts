@@ -885,4 +885,33 @@ describe('GetAndValidateConfigs', () => {
       expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sport');
     });
   });
+
+  describe('getFlixPatrolMostWatched — migration', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('refuses to start when orderByViews is still present', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/orderByViews/);
+    });
+
+    it('refuses it even when set to false, since the key is what is obsolete', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: false }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(ConfigurationError);
+    });
+
+    it('names the offending entry by index', () => {
+      vi.mocked(config.get).mockReturnValue([base, { ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/FlixPatrolMostWatched\[1\]/);
+    });
+
+    it('stays silent on a clean config', () => {
+      vi.mocked(config.get).mockReturnValue([base]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow();
+    });
+  });
 });
