@@ -9,6 +9,9 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  parseWeeklySection,
+  parseWeeklyWeekIndex,
+  hasWeeklySection,
   isNotFoundPage,
   toCanonicalTitlePath,
 } from '../../src/Flixpatrol/parse';
@@ -454,5 +457,64 @@ describe('isNotFoundPage', () => {
   it('treats markup it cannot read as a normal page, so a detection failure never escalates', () => {
     expect(isNotFoundPage('<html><body>no title here</body></html>')).toBe(false);
     expect(isNotFoundPage('')).toBe(false);
+  });
+});
+
+const weeklyHtml = `
+<h2 class="text-h2">Netflix TOP 10 Movies (in English) Viewing Hours</h2>
+<table class="card-table">
+  <tr><td><a class="flex gap-2 items-center group" href="/title/first-movie/hours/">First</a></td></tr>
+  <tr><td><a class="flex gap-2 items-center group" href="/title/second-movie/hours/">Second</a></td></tr>
+</table>
+<h2 class="text-h2">Netflix TOP 10 Movies (in Not English) Viewing Hours</h2>
+<table class="card-table">
+  <tr><td><a class="flex gap-2 items-center group" href="/title/tercero/hours/">Tercero</a></td></tr>
+</table>
+<div>
+  <a href="/hours/netflix/2026-035/">35</a>
+  <a href="/hours/netflix/2026-037/">37</a>
+  <a href="/hours/netflix/2026-036/">36</a>
+  <a href="/hours/amazon-prime/2026-035/">az</a>
+</div>`;
+
+describe('parseWeeklySection', () => {
+  it('returns the hrefs of the table following the heading', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in English)', weeklyHtml))
+      .toEqual(['/title/first-movie/hours/', '/title/second-movie/hours/']);
+  });
+
+  it('does not bleed into the next section', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in Not English)', weeklyHtml))
+      .toEqual(['/title/tercero/hours/']);
+  });
+
+  it('returns [] for an unknown heading', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Documentaries', weeklyHtml)).toEqual([]);
+  });
+});
+
+describe('hasWeeklySection', () => {
+  it('is true for a heading that exists, even with an empty table', () => {
+    expect(hasWeeklySection('Netflix TOP 10 Movies (in English)', weeklyHtml)).toBe(true);
+    expect(hasWeeklySection('Netflix TOP 10 Movies (in English)',
+      '<h2>Netflix TOP 10 Movies (in English) Viewing Hours</h2><table></table>')).toBe(true);
+  });
+
+  it('is false for an unknown heading', () => {
+    expect(hasWeeklySection('Netflix TOP 10 Documentaries', weeklyHtml)).toBe(false);
+  });
+});
+
+describe('parseWeeklyWeekIndex', () => {
+  it('returns the highest week of that platform', () => {
+    expect(parseWeeklyWeekIndex('netflix', weeklyHtml)).toBe('2026-037');
+  });
+
+  it('does not mix platforms', () => {
+    expect(parseWeeklyWeekIndex('amazon-prime', weeklyHtml)).toBe('2026-035');
+  });
+
+  it('returns null when the platform has no week link', () => {
+    expect(parseWeeklyWeekIndex('netflix', '<div></div>')).toBeNull();
   });
 });
