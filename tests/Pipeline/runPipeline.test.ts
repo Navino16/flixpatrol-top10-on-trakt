@@ -618,6 +618,24 @@ describe('runPipeline Weekly section', () => {
     expect(pushToList).not.toHaveBeenCalled();
   });
 
+  // Regression: an amazon-prime + country entry used to count toward totalLists (via
+  // enabledWeekly) while the loop skipped it before either counter incremented, so a
+  // completed run reported listsProcessed < totalLists — a false failure signal.
+  it('keeps listsProcessed in sync with the total when an impossible entry is mixed in', async () => {
+    const deps = baseDeps({
+      flixPatrolWeekly: [
+        ...weeklyConfig(),
+        ...weeklyConfig({ platform: 'amazon-prime', location: 'france' }),
+      ],
+    });
+
+    const summary = await runPipeline(deps);
+
+    expect(summary.listsProcessed).toBe(1);
+    expect(lastPayload(deps.dispatch, 'run_start').body).toContain('1 lists');
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('1/1 lists');
+  });
+
   it('scrapes movies only when type is "movies"', async () => {
     const summary = await runPipeline(baseDeps({
       flixPatrolWeekly: weeklyConfig({ type: 'movies' }),
