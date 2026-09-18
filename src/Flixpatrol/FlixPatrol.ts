@@ -26,6 +26,7 @@ import type { FlixPatrolMatchResult } from './parse';
 import {
   parseDetailPage,
   parseMostHoursPage,
+  isNotFoundPage,
   parseMostWatchedPage,
   parsePopularPage,
   parseTop10KidsPage,
@@ -129,6 +130,18 @@ export class FlixPatrol {
     return null;
   }
 
+  /**
+   * A path FlixPatrol no longer serves answers 200 with its "Page Not Found" page, so an
+   * unguarded caller reads it as an empty chart — and the pipeline clears the list rather
+   * than reporting a dead URL. Detail pages are deliberately exempt: one delisted title
+   * must not cost the whole run.
+   */
+  private static assertPageExists(html: string, path: string): void {
+    if (isNotFoundPage(html)) {
+      throw new FlixPatrolError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+    }
+  }
+
   public async getTop10Sections(
     config: FlixPatrolTop10,
   ): Promise<{
@@ -148,10 +161,12 @@ export class FlixPatrol {
       }
     }
 
-    const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+    const path = `/top10/${config.platform}/${config.location}`;
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
     }
+    FlixPatrol.assertPageExists(html, path);
 
     let movies: MediaItem[] = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
@@ -256,10 +271,12 @@ export class FlixPatrol {
     config: FlixPatrolPopular,
   ): Promise<MediaItem[]> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
+    const path = `/popular/${urlType}/${config.platform}`;
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol popular page');
     }
+    FlixPatrol.assertPageExists(html, path);
     let results = parsePopularPage(html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
@@ -269,10 +286,12 @@ export class FlixPatrol {
     type: FlixPatrolType,
     config: FlixPatrolMostWatched,
   ): Promise<MediaItem[]> {
-    const html = await this.getFlixPatrolHTMLPage(buildMostWatchedPath(config, type));
+    const path = buildMostWatchedPath(config, type);
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
+    FlixPatrol.assertPageExists(html, path);
     let results = parseMostWatchedPage(html, config.original !== undefined && config.original);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
@@ -293,6 +312,7 @@ export class FlixPatrol {
     if (html === null) {
       throw new FlixPatrolError(`Unable to get FlixPatrol most-hours-${config.period} page`);
     }
+    FlixPatrol.assertPageExists(html, url);
     let results = parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);

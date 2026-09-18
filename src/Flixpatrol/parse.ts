@@ -70,6 +70,18 @@ function parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
   return results;
 }
 
+/** The title FlixPatrol gives the page it serves for a path that does not exist. */
+const NOT_FOUND_TITLE = 'Page Not Found';
+
+/**
+ * FlixPatrol answers a missing path with HTTP 200 and its "Page Not Found" page, never a
+ * 404, so no caller can tell a dead URL from an empty chart by status code alone. Keyed on
+ * the title only: matching the body would flag any page that quotes the phrase.
+ */
+export function isNotFoundPage(html: string): boolean {
+  return parsePage('//title', html).some((title) => title.trim().startsWith(NOT_FOUND_TITLE));
+}
+
 /**
  * Every expression tried for the Top10 section, strictest first.
  *
