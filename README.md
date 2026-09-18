@@ -427,6 +427,38 @@ Shows are always grouped by title, never listed season by season.
 </details>
 
 <details>
+<summary><strong>FlixPatrolWeekly</strong> — weekly /hours/ rankings (Netflix, Amazon Prime)</summary>
+
+| Name            | Description                                                                                | Mandatory | Values                                                                     | Default   |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|----------------------------------------------------------------------------|-----------|
+| enabled         | Enable this weekly list?                                                                   | Yes       | true, false                                                                | true      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                             | private   |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                        | both      |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 20                                                    |           |
+| platform        | Which platform's weekly chart                                                              | Yes       | netflix, amazon-prime                                                      |           |
+| location        | Worldwide chart, or a per-country chart (Netflix only)                                     | No        | world, or one of the 93 countries listed under FlixPatrolMostWatched above | world     |
+| language        | Filter the worldwide chart by language                                                     | No        | all, english, non-english                                                  | all       |
+| name            | Optional custom list name                                                                  | No        | Any valid string                                                           | see below |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                | true      |
+
+`limit` only reaches 20 with `language: "all"`: the worldwide chart then concatenates two
+sections of 10 (English first). Every other combination — a specific language, or any
+per-country `location` — tops out at 10, because that is all FlixPatrol publishes for a single
+section.
+
+A `location` other than `world` is **Netflix-only**: Amazon Prime publishes no per-country
+weekly page. That pairing (`platform: "amazon-prime"` with a country) only warns at config
+validation — the entry is skipped, never a hard error. Netflix's per-country page carries the
+platform's own official ranking, which carries no language split: a `language` set there also
+only warns, but the entry is **not** skipped — `language` is ignored and the list is still
+produced.
+
+Default list name: `{platform}-weekly-{language}` worldwide (the `-{language}` suffix is
+dropped for `all`), `{platform}-weekly-{location}` for a country entry.
+
+</details>
+
+<details>
 <summary><strong>Target</strong> — Which backend the lists are written to, and its credentials</summary>
 
 `Target` is a discriminated union on `type`: it carries the backend name **and** exactly the
@@ -614,6 +646,23 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
       "type": "movies",
       "period": "first-month",
       "language": "english"
+    }
+  ],
+  "FlixPatrolWeekly": [
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 20,
+      "type": "both",
+      "platform": "netflix"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 10,
+      "type": "both",
+      "platform": "netflix",
+      "location": "france"
     }
   ],
   "Target": {

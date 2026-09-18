@@ -292,6 +292,44 @@ describe('GetAndValidateConfigs', () => {
       });
     });
 
+    describe('getFlixPatrolWeekly', () => {
+      it('returns [] when the block is absent', () => {
+        vi.mocked(config.has).mockReturnValue(false);
+
+        expect(GetAndValidateConfigs.getFlixPatrolWeekly()).toEqual([]);
+      });
+
+      it('applies the defaults for location and language', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        const [entry] = GetAndValidateConfigs.getFlixPatrolWeekly();
+
+        expect(entry.location).toBe('world');
+        expect(entry.language).toBe('all');
+      });
+
+      it('should throw ConfigurationError for limit > 20', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 21, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
+      });
+
+      it('should throw ConfigurationError for an unknown platform', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'disney', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
+      });
+    });
+
     describe('getCacheOptions', () => {
       it('should return valid Cache options', () => {
         const validConfig = {
@@ -730,19 +768,30 @@ describe('GetAndValidateConfigs', () => {
         type: 'both',
       });
 
-      /** Builds the four list blocks, only FlixPatrolTop10 being populated by default. */
-      const listsWith = (privacies: string[], block = 'FlixPatrolTop10') => {
-        const empty = {
-          FlixPatrolTop10: [],
-          FlixPatrolPopular: [],
-          FlixPatrolMostWatched: [],
-          FlixPatrolMostHours: [],
-        } as unknown as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
-        return {
-          ...empty,
-          [block]: privacies.map(listEntry),
-        } as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
-      };
+      /** All five list blocks empty, as `checkTargetCompatibility` needs every one at once. */
+      const emptyLists = {
+        FlixPatrolTop10: [],
+        FlixPatrolPopular: [],
+        FlixPatrolMostWatched: [],
+        FlixPatrolMostHours: [],
+        FlixPatrolWeekly: [],
+      } as unknown as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
+
+      const weeklyEntry = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'both',
+        platform: 'netflix',
+        location: 'world',
+        language: 'all',
+      } as const;
+
+      /** Builds all five list blocks, only FlixPatrolTop10 being populated by default. */
+      const listsWith = (privacies: string[], block = 'FlixPatrolTop10') => ({
+        ...emptyLists,
+        [block]: privacies.map(listEntry),
+      } as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1]);
 
       const mdblist = { type: 'mdblist', apiKey: 'key' } as const;
       const floppy = { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
@@ -765,7 +814,7 @@ describe('GetAndValidateConfigs', () => {
           .toThrow(ConfigurationError);
       });
 
-      it.each(['FlixPatrolPopular', 'FlixPatrolMostWatched', 'FlixPatrolMostHours'])(
+      it.each(['FlixPatrolPopular', 'FlixPatrolMostWatched', 'FlixPatrolMostHours', 'FlixPatrolWeekly'])(
         'covers the %s block too',
         (block) => {
           expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['link'], block)))
@@ -797,6 +846,51 @@ describe('GetAndValidateConfigs', () => {
 
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
+      });
+
+      describe('FlixPatrolWeekly', () => {
+        it('warns when a country is set on amazon-prime', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, platform: 'amazon-prime', location: 'france' }],
+          });
+
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('FlixPatrolWeekly[0]'));
+          warn.mockRestore();
+        });
+
+        it('warns when language is set on a country entry', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, location: 'france', language: 'english' }],
+          });
+
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('language'));
+          warn.mockRestore();
+        });
+
+        it('accepts a world entry with a language', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
+          });
+
+          expect(warn).not.toHaveBeenCalled();
+          warn.mockRestore();
+        });
+
+        it('rejects link privacy on a non-trakt backend for the weekly block', () => {
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(floppy, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
+          })).toThrow(ConfigurationError);
+        });
       });
     });
   });

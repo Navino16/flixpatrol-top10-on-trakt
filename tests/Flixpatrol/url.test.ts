@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildMostWatchedPath } from '../../src/Flixpatrol/url';
-import type { FlixPatrolMostWatched } from '../../src/types';
+import { buildMostWatchedPath, WEEKLY_INDEX_PATH, buildWeeklyCountryPath, weeklyHeadings } from '../../src/Flixpatrol/url';
+import type { FlixPatrolMostWatched, FlixPatrolWeekly } from '../../src/types';
 
 const base: FlixPatrolMostWatched = {
   enabled: true,
@@ -87,5 +87,53 @@ describe('buildMostWatchedPath', () => {
     const path = buildMostWatchedPath(base, 'TV Shows');
     expect(path.startsWith('/')).toBe(true);
     expect(path.endsWith('/')).toBe(true);
+  });
+});
+
+const weekly: FlixPatrolWeekly = {
+  enabled: true, privacy: 'private', limit: 10, type: 'both',
+  platform: 'netflix', location: 'world', language: 'all',
+};
+
+describe('WEEKLY_INDEX_PATH', () => {
+  it('is the /hours/ base path', () => {
+    expect(WEEKLY_INDEX_PATH).toBe('/hours/');
+  });
+});
+
+describe('buildWeeklyCountryPath', () => {
+  // Verified as a non-empty HTTP 200 against the live site. See spec §2.
+  it('builds the country path', () => {
+    expect(buildWeeklyCountryPath('netflix', '2026-037', 'france'))
+      .toBe('/hours/netflix/2026-037/france/');
+  });
+});
+
+describe('weeklyHeadings', () => {
+  it('returns both language headings for all, English first', () => {
+    expect(weeklyHeadings(weekly, 'Movies')).toEqual([
+      'Netflix TOP 10 Movies (in English)',
+      'Netflix TOP 10 Movies (in Not English)',
+    ]);
+  });
+
+  it('maps non-english to the "Not English" wording FlixPatrol prints', () => {
+    expect(weeklyHeadings({ ...weekly, language: 'non-english' }, 'TV Shows'))
+      .toEqual(['Netflix TOP 10 TV Shows (in Not English)']);
+  });
+
+  it('labels amazon-prime with a space', () => {
+    expect(weeklyHeadings({ ...weekly, platform: 'amazon-prime', language: 'english' }, 'Movies'))
+      .toEqual(['Amazon Prime TOP 10 Movies (in English)']);
+  });
+
+  it('uses the official-rankings heading in country mode, ignoring language', () => {
+    expect(weeklyHeadings({ ...weekly, location: 'france' }, 'Movies'))
+      .toEqual(['TOP 10 Movies Official Rankings']);
+  });
+
+  it('ignores an explicit language in country mode too', () => {
+    expect(weeklyHeadings({ ...weekly, location: 'france', language: 'english' }, 'Movies'))
+      .toEqual(['TOP 10 Movies Official Rankings']);
   });
 });
