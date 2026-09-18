@@ -232,7 +232,7 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - `getTargetOptions()` returns the `Target` discriminated union straight from Zod — backend and credentials in one block, so `createTarget` narrows on `type` and hands the same object to the adapter
 - **Unmigrated-config detection**: `Target` absent, or present but failing the union — including the never-released intermediate shape where it carried only `type` — throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim from the root-level `Trakt`/`Floppy`/`Mdblist` block (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
 - **Obsolete blocks are not fatal**: once `Target` satisfies the union, a leftover root-level `Trakt`/`Floppy`/`Mdblist` block only produces one `warn` naming it. Rejecting a correctly migrated config over dead config would be an outage for nothing. Only `Trakt` ever shipped (2.17.0 and earlier); `Floppy` and `Mdblist` existed solely in an unreleased intermediate shape and are deliberately absent from README
-- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all five list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list). It is also where the two impossible `FlixPatrolWeekly` pairings are warned: a country entry on `amazon-prime` (no per-country weekly page exists) and a non-`all` `language` on any country entry (the official ranking it serves carries no language split) — both warn and leave the entry to the pipeline, which skips it
+- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all five list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list). It is also where the two impossible `FlixPatrolWeekly` pairings are warned: a country entry on `amazon-prime` (no per-country weekly page exists) — the pipeline then skips that entry — and a non-`all` `language` on any country entry (the official ranking it serves carries no language split), which only warns: `language` is ignored and the entry is still processed
 
 ### Key Types
 
@@ -245,7 +245,7 @@ type FlixPatrolConfigType = 'movies' | 'shows' | 'both'
 type FlixPatrolMostHoursPeriod = 'total' | 'first-week' | 'first-month'
 type FlixPatrolMostHoursLanguage = 'all' | 'english' | 'non-english'
 type FlixPatrolWeeklyPlatform = 'netflix' | 'amazon-prime'
-type FlixPatrolWeeklyLanguage = 'all' | 'english' | 'non-english'  // deliberately its own union — see spec §4
+type FlixPatrolWeeklyLanguage = 'all' | 'english' | 'non-english'  // deliberately its own union
 
 // Trakt types
 type TraktTVId = number | null
