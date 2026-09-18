@@ -152,6 +152,7 @@ export class Utils {
             language: 'english',
           },
         ],
+        FlixPatrolWeekly: [],
         Target: {
           type: 'trakt',
           saveFile: './config/.trakt',

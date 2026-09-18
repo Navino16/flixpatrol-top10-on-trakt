@@ -170,7 +170,7 @@ src/
 1. Creates the FlareSolverr session, if enabled (before any list, so a dead container fails fast)
 2. Initializes `FlixPatrol`. The `ListTarget` is **not** built here: `app.ts` builds it once per process and passes it in, so the daemon auth gate and every scheduled run share one adapter and one resolution cache
 3. Calls `target.connect()` (a no-op for floppy/mdblist, the OAuth device flow for trakt)
-4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours sequentially. For each list: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` per kind for backend ids → **one** `target.pushToList()` carrying both kinds, so everything a backend does per list (list lookup, items read, description stamp) is paid once even for `type: "both"`
+4. Dispatches `run_start`, then processes Top10 → Popular → MostWatched → MostHours → Weekly sequentially. For each list: scrape FlixPatrol into `MediaItem[]` (title + year) → `target.resolveMany()` per kind for backend ids → **one** `target.pushToList()` carrying both kinds, so everything a backend does per list (list lookup, items read, description stamp) is paid once even for `type: "both"`
 5. Dispatches `run_end` with a summary (lists processed, movies/shows added, duration)
 6. Destroys the FlareSolverr session in a `finally` block, so it also covers the early abort paths and thrown errors
 
@@ -212,10 +212,11 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 - Platform/location constants defined as const arrays (type guards derive from these)
 - Uses `impit` (Chrome impersonation) for direct HTTP requests, or an optional FlareSolverr client when configured. The impit path retries up to 3 times with 1s/2s/4s backoff on 408/429/500/502/503/504, and reports Cloudflare's `cf-mitigated` header when present — that header is what separates "FlixPatrol is down" from "we got bot-blocked". The FlareSolverr path has **no** retry loop: FlareSolverr retries internally, and wrapping a 12s challenge solve in a 3x backoff produces pathological runtimes
 - `FlareSolverr.disableMedia` is forwarded on `request.get` **only when true**, never as an explicit `false`. FlareSolverr lets the request parameter override its own `DISABLE_MEDIA` env var, so sending `false` would silently defeat an operator who enabled it on the container; our default means "no opinion", not "off". It is never sent on `sessions.create`, which does not read it — the measurement in #525 confirmed session creation is unaffected. Effect: ~17% off warm requests, challenge solve unchanged, no solve failures over 80 requests. The saving lands mostly on cold-cache runs, since detail pages are cached for `Cache.ttl`
-- `isNotFoundPage` / `FlixPatrol.assertPageExists`: FlixPatrol serves a path it does not know with **HTTP 200** and its "Page Not Found" page, never a 404, so no status check can catch a dead URL. The four listing getters (Top10, Popular, MostWatched, MostHours) throw a `FlixPatrolError` naming the path. **Detail pages are deliberately exempt**: one delisted title must not cost the other thirty lists. The detection keys on the page title alone — a body-wide match would flag any page quoting the phrase — and its failure mode is safe by construction: if FlixPatrol rewords that page, detection degrades to "empty scrape", which leaves the list untouched rather than destroying it
+- `isNotFoundPage` / `FlixPatrol.assertPageExists`: FlixPatrol serves a path it does not know with **HTTP 200** and its "Page Not Found" page, never a 404, so no status check can catch a dead URL. The five listing getters (Top10, Popular, MostWatched, MostHours, Weekly) throw a `FlixPatrolError` naming the path. **Detail pages are deliberately exempt**: one delisted title must not cost the other thirty lists. The detection keys on the page title alone — a body-wide match would flag any page quoting the phrase — and its failure mode is safe by construction: if FlixPatrol rewords that page, detection degrades to "empty scrape", which leaves the list untouched rather than destroying it
 - HTML parsing via JSDOM with XPath expressions
 - Returns `MediaItem[]` (title + year) and knows nothing about any backend. The Top10 `fallback` triggers when the *page* yields no result at all, no longer when no backend id could be resolved (behaviour change vs 2.17): a title FlixPatrol lists but the backend does not know is now reported as unmatched instead of silently swapping the whole list for another location's
 - File-system caching with `file-system-cache` (SHA1 keys, TTL-based) under `<Cache.savePath>/details`. The second level, `<Cache.savePath>/resolution-<backend>`, lives in `src/Targets/ResolutionCache.ts`. The 2.x `movies/` and `tv-shows/` directories are orphaned; `Utils.warnAboutOrphanedCaches()` names them once at startup and never deletes them
+- `getWeekly` memoizes `/hours/` (`weeklyIndexHtml`) for the lifetime of the `FlixPatrol` instance: that one page serves all eight world sections (2 platforms x 2 types x 2 languages) and carries the week index a country URL is built from, so a run with several `FlixPatrolWeekly` entries fetches it once. World mode costs one fetch; country mode a second, for the country page itself. The memo is never cleared mid-instance — `runPipeline.ts` builds one `FlixPatrol` per run, so a stale week index cannot outlive the run it was read in
 
 **`src/Trakt/TraktAPI.ts`** - Trakt.tv integration, wrapped by `TraktTarget`:
 - OAuth device flow: user visits verification_url, enters code, token saved to file. A token file that fails to parse is deleted and the flow restarts rather than crashing
@@ -227,11 +228,11 @@ Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only 
 **`src/Utils/GetAndValidateConfigs.ts`** - Configuration validation:
 - Zod schemas validate every config block at load time
 - Throws `ConfigurationError` on invalid config; `app.ts` catches it, dispatches an `error` notification, then exits 1
-- Optional blocks (`FlixPatrolMostHours`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error. `Target` is **not** optional since 3.0.0
+- Optional blocks (`FlixPatrolMostHours`, `FlixPatrolWeekly`, `Notifications`, `Schedule`, `FlareSolverr`) are read through `config.has()` and fall back to their defaults, so an absent block is never an error. `Target` is **not** optional since 3.0.0
 - `getTargetOptions()` returns the `Target` discriminated union straight from Zod — backend and credentials in one block, so `createTarget` narrows on `type` and hands the same object to the adapter
 - **Unmigrated-config detection**: `Target` absent, or present but failing the union — including the never-released intermediate shape where it carried only `type` — throws a `ConfigurationError` whose message prints the exact `Target` block to write, with the user's own values carried across verbatim from the root-level `Trakt`/`Floppy`/`Mdblist` block (placeholders otherwise — never an invented secret). The config file is never rewritten: the config directory is frequently a read-only Docker mount and users version that file
 - **Obsolete blocks are not fatal**: once `Target` satisfies the union, a leftover root-level `Trakt`/`Floppy`/`Mdblist` block only produces one `warn` naming it. Rejecting a correctly migrated config over dead config would be an outage for nothing. Only `Trakt` ever shipped (2.17.0 and earlier); `Floppy` and `Mdblist` existed solely in an unreleased intermediate shape and are deliberately absent from README
-- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all four list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list)
+- `checkTargetCompatibility(target, lists)` is the cross-check that cannot live in a schema — the `config` package loads `Target` and the list blocks independently. It rejects `link`/`friends` on non-Trakt backends across all five list blocks, naming block, index and value, and emits the single Floppy "visibility cannot be set" warning (once per run, never per list). It is also where the two impossible `FlixPatrolWeekly` pairings are warned: a country entry on `amazon-prime` (no per-country weekly page exists) and a non-`all` `language` on any country entry (the official ranking it serves carries no language split) — both warn and leave the entry to the pipeline, which skips it
 
 ### Key Types
 
@@ -243,6 +244,8 @@ type FlixPatrolPopularPlatform = 'wikipedia' | 'youtube' // 2 sources
 type FlixPatrolConfigType = 'movies' | 'shows' | 'both'
 type FlixPatrolMostHoursPeriod = 'total' | 'first-week' | 'first-month'
 type FlixPatrolMostHoursLanguage = 'all' | 'english' | 'non-english'
+type FlixPatrolWeeklyPlatform = 'netflix' | 'amazon-prime'
+type FlixPatrolWeeklyLanguage = 'all' | 'english' | 'non-english'  // deliberately its own union — see spec §4
 
 // Trakt types
 type TraktTVId = number | null
@@ -324,6 +327,17 @@ File: `config/default.json`
     type: 'movies' | 'shows' | 'both',
     period: 'total' | 'first-week' | 'first-month',
     language?: 'all' | 'english' | 'non-english',  // default: 'all'
+    name?: string,
+    normalizeName?: boolean
+  }],
+  FlixPatrolWeekly: [{  // optional block: absent means []
+    enabled: boolean,
+    privacy: TraktPrivacy,
+    limit: number,  // 1-20; only 'all' reaches 20 (two 10-row sections); anything else tops out at 10
+    type: 'movies' | 'shows' | 'both',
+    platform: 'netflix' | 'amazon-prime',
+    location?: FlixPatrolMostWatchedCountry | 'world',  // default: 'world'; non-'world' is Netflix-only
+    language?: 'all' | 'english' | 'non-english',  // default: 'all'; ignored on a non-'world' location
     name?: string,
     normalizeName?: boolean
   }],
@@ -417,6 +431,21 @@ second expression is its normal path, not an error case:
 //div[@id="{sectionId}"]//table[contains(@x-show, "'{langTab}'")]//a[@class="flex gap-2 group items-center"]/@href
 //div[@id="{sectionId}"]//table[@class="card-table"]//a[@class="flex gap-2 group items-center"]/@href
 ```
+
+**Weekly** (`/hours/` and its per-country pages) — `weeklySectionExpression`, one expression per
+heading, anchored on the `<h2>` text rather than the anchor's class:
+```xpath
+//h2[contains(., "{heading}")]/following::table[1]//a[starts-with(@href,"/title/")]/@href
+```
+Every other family above matches the anchor class with a **strict equality**
+(`@class="flex gap-2 group items-center"`). These weekly pages serve that same anchor with its
+classes in the **reverse** order — `flex gap-2 items-center group` — so a strict-equality
+expression matches zero anchors, measured with JSDOM against a real page (0 vs. 10 per section).
+Tailwind class order has already drifted once (see MostHours above); the `<h2>` heading is
+editorial text FlixPatrol has far less reason to touch, which is why this family anchors there
+instead. `{heading}` is built by `weeklyHeadings` (`src/Flixpatrol/url.ts`): `"{Platform} TOP 10
+{type} (in {English|Not English})"` on the worldwide page, `"TOP 10 {type} Official Rankings"` on
+a country page.
 
 **Detail page (title)** — `FlixPatrol.parseDetailTitle`, anchored on `div.info-grid-header`,
 with a bare `//h1` as last resort:
