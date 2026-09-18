@@ -8,6 +8,7 @@ import type {
   FlixPatrolMostHours,
   FlixPatrolPopular,
   FlixPatrolTop10,
+  FlixPatrolWeekly,
   CacheOptions,
   FlixPatrolOptions,
   FlixPatrolTop10Location,
@@ -31,9 +32,12 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  parseWeeklySection,
+  hasWeeklySection,
+  parseWeeklyWeekIndex,
   toCanonicalTitlePath,
 } from './parse';
-import { buildMostWatchedPath } from './url';
+import { buildMostWatchedPath, buildWeeklyCountryPath, weeklyHeadings, WEEKLY_INDEX_PATH } from './url';
 
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
@@ -46,6 +50,9 @@ export class FlixPatrol {
   private readonly impit: Impit;
 
   private readonly flareSolverr?: FlareSolverrClient;
+
+  /** Scoped to the instance, which lives exactly one run (runPipeline.ts builds it). */
+  private weeklyIndexHtml: string | null = null;
 
   constructor(
     cacheOptions: CacheOptions,
@@ -316,5 +323,52 @@ export class FlixPatrol {
     let results = parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
+  }
+
+  private async getWeeklyIndexPage(): Promise<string> {
+    if (this.weeklyIndexHtml !== null) {
+      return this.weeklyIndexHtml;
+    }
+    const html = await this.getFlixPatrolHTMLPage(WEEKLY_INDEX_PATH);
+    if (html === null) {
+      throw new FlixPatrolError('Unable to get FlixPatrol weekly hours page');
+    }
+    FlixPatrol.assertPageExists(html, WEEKLY_INDEX_PATH);
+    this.weeklyIndexHtml = html;
+    return html;
+  }
+
+  public async getWeekly(
+    type: FlixPatrolType,
+    config: FlixPatrolWeekly,
+  ): Promise<MediaItem[]> {
+    const indexHtml = await this.getWeeklyIndexPage();
+    let html = indexHtml;
+    let path = WEEKLY_INDEX_PATH;
+
+    if (config.location !== 'world') {
+      const week = parseWeeklyWeekIndex(config.platform, indexHtml);
+      if (week === null) {
+        throw new FlixPatrolError(`FlixPatrol lists no weekly page for ${config.platform}`);
+      }
+      path = buildWeeklyCountryPath(config.platform, week, config.location);
+      const countryHtml = await this.getFlixPatrolHTMLPage(path);
+      if (countryHtml === null) {
+        throw new FlixPatrolError(`Unable to get FlixPatrol weekly page ${path}`);
+      }
+      FlixPatrol.assertPageExists(countryHtml, path);
+      html = countryHtml;
+    }
+
+    const results: FlixPatrolMatchResult[] = [];
+    for (const heading of weeklyHeadings(config, type)) {
+      const section = parseWeeklySection(heading, html);
+      if (!hasWeeklySection(heading, html)) {
+        logger.warn(`FlixPatrol served ${path} without a "${heading}" section`);
+      }
+      results.push(...section);
+    }
+
+    return this.convertResultsToItems(results.slice(0, config.limit));
   }
 }
