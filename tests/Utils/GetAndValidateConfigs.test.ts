@@ -292,6 +292,44 @@ describe('GetAndValidateConfigs', () => {
       });
     });
 
+    describe('getFlixPatrolWeekly', () => {
+      it('returns [] when the block is absent', () => {
+        vi.mocked(config.has).mockReturnValue(false);
+
+        expect(GetAndValidateConfigs.getFlixPatrolWeekly()).toEqual([]);
+      });
+
+      it('applies the defaults for location and language', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        const [entry] = GetAndValidateConfigs.getFlixPatrolWeekly();
+
+        expect(entry.location).toBe('world');
+        expect(entry.language).toBe('all');
+      });
+
+      it('should throw ConfigurationError for limit > 20', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 21, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
+      });
+
+      it('should throw ConfigurationError for an unknown platform', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'disney', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
+      });
+    });
+
     describe('getCacheOptions', () => {
       it('should return valid Cache options', () => {
         const validConfig = {

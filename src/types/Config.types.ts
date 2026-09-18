@@ -165,6 +165,31 @@ export const FlixPatrolMostHoursSchema = z.object({
   normalizeName: z.boolean().optional(),
 });
 
+export const flixpatrolWeeklyPlatform = ['netflix', 'amazon-prime'] as const;
+// Deliberately not shared with flixpatrolMostHoursLanguage: sharing would make a future
+// MostHours-only value silently appear here too. See spec §4.
+export const flixpatrolWeeklyLanguage = ['all', 'english', 'non-english'] as const;
+const FlixPatrolWeeklyPlatformSchema = z.enum(flixpatrolWeeklyPlatform);
+const FlixPatrolWeeklyLanguageSchema = z.enum(flixpatrolWeeklyLanguage);
+// Reuses flixpatrolMostWatchedCountry: the weekly /hours/ page's `from` select offers the
+// same 93 countries, verified against the live site in both directions. See spec §4.
+const FlixPatrolWeeklyLocationSchema = z.union([
+  z.literal('world'),
+  z.enum(flixpatrolMostWatchedCountry),
+]);
+
+export const FlixPatrolWeeklySchema = z.object({
+  enabled: z.boolean(),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(20, 'limit must be between 1 and 20'),
+  type: FlixPatrolConfigTypeSchema,
+  platform: FlixPatrolWeeklyPlatformSchema,
+  location: FlixPatrolWeeklyLocationSchema.optional().default('world'),
+  language: FlixPatrolWeeklyLanguageSchema.optional().default('all'),
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
 export const TraktOptionsSchema = z.object({
   saveFile: z.string(),
   clientId: z.string(),
@@ -293,6 +318,10 @@ export type FlixPatrolMostWatchedGenre =
 export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
 export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
 export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
+export type FlixPatrolWeekly = z.infer<typeof FlixPatrolWeeklySchema>;
+export type FlixPatrolWeeklyPlatform = z.infer<typeof FlixPatrolWeeklyPlatformSchema>;
+export type FlixPatrolWeeklyLanguage = z.infer<typeof FlixPatrolWeeklyLanguageSchema>;
+export type FlixPatrolWeeklyLocation = z.infer<typeof FlixPatrolWeeklyLocationSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;

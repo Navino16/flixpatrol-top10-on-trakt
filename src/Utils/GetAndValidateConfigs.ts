@@ -8,6 +8,7 @@ import {
   FlixPatrolPopularSchema,
   FlixPatrolMostWatchedSchema,
   FlixPatrolMostHoursSchema,
+  FlixPatrolWeeklySchema,
   TargetSchema,
   CacheOptionsSchema,
   NotificationsSchema,
@@ -21,6 +22,7 @@ import type {
   FlixPatrolPopular,
   FlixPatrolMostWatched,
   FlixPatrolMostHours,
+  FlixPatrolWeekly,
   TargetOptions,
   TargetBackendName,
   TraktPrivacy,
@@ -271,6 +273,19 @@ export class GetAndValidateConfigs {
       }
       const data = config.get('FlixPatrolMostHours');
       return validateConfig(z.array(FlixPatrolMostHoursSchema), data, 'FlixPatrolMostHours');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getFlixPatrolWeekly(): FlixPatrolWeekly[] {
+    try {
+      if (!config.has('FlixPatrolWeekly')) {
+        return [];
+      }
+      const data = config.get('FlixPatrolWeekly');
+      return validateConfig(z.array(FlixPatrolWeeklySchema), data, 'FlixPatrolWeekly');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
