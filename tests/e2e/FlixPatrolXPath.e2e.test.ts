@@ -18,7 +18,7 @@ import {
   top10Expressions,
   top10KidsExpressions,
 } from '../../src/Flixpatrol/parse';
-import { buildWeeklyCountryPath } from '../../src/Flixpatrol/url';
+import { buildWeeklyCountryPath, WEEKLY_INDEX_PATH } from '../../src/Flixpatrol/url';
 import type {
   FlixPatrolMostHoursLanguage,
   FlixPatrolMostHoursPeriod,
@@ -64,10 +64,11 @@ const REQUEST_DELAY_MS = 1500;
 
 /**
  * Hard ceiling on live page loads, asserted at the end. It sits two slots above
- * what the tables below plan plus the two pages the "Weekly" section fetches on
- * demand (`/hours/` and one country page) and no more, that margin being what
- * lets the assertion tell "someone added a page" from "something is
- * re-fetching". Raising it must stay a deliberate act visible in a diff.
+ * what the tables below plan plus the two pages the "Weekly" bootstrap step
+ * fetches (`/hours/` and one country page derived from it) and no more, that
+ * margin being what lets the assertion tell "someone added a page" from
+ * "something is re-fetching". Raising it must stay a deliberate act visible in
+ * a diff.
  */
 const REQUEST_BUDGET = 35;
 
@@ -464,6 +465,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
   const pages = new Map<string, string>();
   const details = new Map<string, DerivedDetail>();
   let requestCount = 0;
+  /** The one weekly country page fetched, resolved at bootstrap from the live week index. */
+  let weeklyCountryPath: string;
 
   const page = (path: string): string => {
     const html = pages.get(path);
@@ -534,6 +537,16 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     for (const spec of DETAIL_SPECS) {
       await deriveDetail(spec);
     }
+
+    // The country path depends on the week read off the index page, so it cannot be a
+    // static entry in LISTING_PATHS: it is resolved here, sequentially, like DETAIL_SPECS.
+    const weeklyIndexHtml = await fetchPage(WEEKLY_INDEX_PATH);
+    const week = parseWeeklyWeekIndex('netflix', weeklyIndexHtml);
+    if (week === null) {
+      throw new Error(`${WEEKLY_INDEX_PATH} carries no netflix week index to build a country path from`);
+    }
+    weeklyCountryPath = buildWeeklyCountryPath('netflix', week, 'france');
+    await fetchPage(weeklyCountryPath);
   }, BOOTSTRAP_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -787,8 +800,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
   });
 
   describe('Weekly', () => {
-    it('/hours/ still serves the eight world sections', async () => {
-      const html = await fetchPage('/hours/');
+    it('/hours/ still serves the eight world sections', () => {
+      const html = page(WEEKLY_INDEX_PATH);
       for (const platform of ['Netflix', 'Amazon Prime']) {
         for (const type of ['Movies', 'TV Shows']) {
           for (const lang of ['English', 'Not English']) {
@@ -799,15 +812,13 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       }
     });
 
-    it('/hours/ still carries the netflix week index', async () => {
-      const html = await fetchPage('/hours/');
+    it('/hours/ still carries the netflix week index', () => {
+      const html = page(WEEKLY_INDEX_PATH);
       expect(parseWeeklyWeekIndex('netflix', html)).toMatch(/^\d{4}-\d{3}$/);
     });
 
-    it('a country page still serves both official-ranking sections', async () => {
-      const index = await fetchPage('/hours/');
-      const week = parseWeeklyWeekIndex('netflix', index) as string;
-      const html = await fetchPage(buildWeeklyCountryPath('netflix', week, 'france'));
+    it('a country page still serves both official-ranking sections', () => {
+      const html = page(weeklyCountryPath);
       for (const type of ['Movies', 'TV Shows']) {
         const heading = `TOP 10 ${type} Official Rankings`;
         expect(parseWeeklySection(heading, html).length, heading).toBeGreaterThanOrEqual(10);

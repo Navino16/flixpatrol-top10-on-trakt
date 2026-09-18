@@ -434,7 +434,7 @@ Shows are always grouped by title, never listed season by season.
 | enabled         | Enable this weekly list?                                                                   | Yes       | true, false                                         | true             |
 | privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                      | private          |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                 | both             |
-| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 20                             | 10               |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 20                             |                  |
 | platform        | Which platform's weekly chart                                                              | Yes       | netflix, amazon-prime                               |                  |
 | location        | Worldwide chart, or a per-country chart (Netflix only)                                     | No        | world, or one of the 93 countries listed under FlixPatrolMostWatched above | world |
 | language        | Filter the worldwide chart by language                                                     | No        | all, english, non-english                           | all              |
