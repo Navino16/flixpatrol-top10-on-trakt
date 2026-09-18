@@ -23,6 +23,7 @@ const h = vi.hoisted(() => {
     getPopular: vi.fn(),
     getMostWatched: vi.fn(),
     getMostHours: vi.fn(),
+    getWeekly: vi.fn(),
     createSession: vi.fn(),
     destroySession: vi.fn(),
     target: targetMock,
@@ -31,7 +32,7 @@ const h = vi.hoisted(() => {
 
 const {
   pushToList, connect, resolveMany, getTop10Sections, getPopular, getMostWatched, getMostHours,
-  createSession, destroySession, target,
+  getWeekly, createSession, destroySession, target,
 } = h;
 
 vi.mock('../../src/Flixpatrol', () => ({
@@ -41,6 +42,7 @@ vi.mock('../../src/Flixpatrol', () => ({
       getPopular: h.getPopular,
       getMostWatched: h.getMostWatched,
       getMostHours: h.getMostHours,
+      getWeekly: h.getWeekly,
     };
   }),
 }));
@@ -117,6 +119,7 @@ function baseDeps(overrides: Partial<RunPipelineDeps> = {}): RunPipelineDeps {
     flixPatrolPopulars: [],
     flixPatrolMostWatched: [],
     flixPatrolMostHours: [],
+    flixPatrolWeekly: [],
     dispatch: vi.fn().mockResolvedValue(undefined),
     dryRun: false,
     listNamePrefix: '',
@@ -160,6 +163,16 @@ function mostHoursConfig(
   }] as unknown as RunPipelineDeps['flixPatrolMostHours'];
 }
 
+const weeklyEntry = {
+  enabled: true, privacy: 'private', limit: 10, type: 'both', platform: 'netflix', location: 'world', language: 'all',
+};
+
+function weeklyConfig(
+  overrides: Record<string, unknown> = {},
+): RunPipelineDeps['flixPatrolWeekly'] {
+  return [{ ...weeklyEntry, ...overrides }] as unknown as RunPipelineDeps['flixPatrolWeekly'];
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   target.backend = 'trakt';
@@ -169,6 +182,7 @@ beforeEach(() => {
   getPopular.mockResolvedValue(oneItem);
   getMostWatched.mockResolvedValue(oneItem);
   getMostHours.mockResolvedValue(oneItem);
+  getWeekly.mockResolvedValue(oneItem);
 });
 
 describe('runPipeline abort checkpoint', () => {
@@ -565,6 +579,61 @@ describe('runPipeline MostHours section', () => {
     }));
 
     expect(listNameOfWrite(0)).toBe('netflix-most-hours-first-week-non-english');
+  });
+});
+
+describe('runPipeline Weekly section', () => {
+  it('names a world list after the platform and language', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ language: 'english' }),
+    }));
+    expect(pushToList).toHaveBeenCalledWith(expect.anything(), 'netflix-weekly-english', 'private');
+  });
+
+  it('omits the language suffix for "all"', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ language: 'all' }),
+    }));
+    expect(pushToList).toHaveBeenCalledWith(expect.anything(), 'netflix-weekly', 'private');
+  });
+
+  it('names a country list after the location', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ location: 'france' }),
+    }));
+    expect(pushToList).toHaveBeenCalledWith(expect.anything(), 'netflix-weekly-france', 'private');
+  });
+
+  it('skips a disabled entry', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ enabled: false }),
+    }));
+    expect(pushToList).not.toHaveBeenCalled();
+  });
+
+  it('skips a country entry on amazon-prime', async () => {
+    await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ platform: 'amazon-prime', location: 'france' }),
+    }));
+    expect(pushToList).not.toHaveBeenCalled();
+  });
+
+  it('scrapes movies only when type is "movies"', async () => {
+    const summary = await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ type: 'movies' }),
+    }));
+    expect(getWeekly).toHaveBeenCalledOnce();
+    expect(getWeekly).toHaveBeenCalledWith('Movies', expect.objectContaining({ platform: 'netflix' }));
+    expect(summary.moviesAdded).toBe(1);
+  });
+
+  it('scrapes shows only when type is "shows"', async () => {
+    const summary = await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ type: 'shows' }),
+    }));
+    expect(getWeekly).toHaveBeenCalledOnce();
+    expect(getWeekly).toHaveBeenCalledWith('TV Shows', expect.anything());
+    expect(summary.showsAdded).toBe(1);
   });
 });
 

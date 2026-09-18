@@ -123,6 +123,7 @@ async function bootstrapConfigs(): Promise<{
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,
       flixPatrolMostHours: lists.FlixPatrolMostHours,
+      flixPatrolWeekly: lists.FlixPatrolWeekly,
       flareSolverrOptions: GetAndValidateConfigs.getFlareSolverrOptions(),
       dispatch,
       dryRun,
