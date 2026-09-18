@@ -60,12 +60,13 @@ function validateConfig<T>(schema: z.ZodSchema<T>, data: unknown, context: strin
   return result.data;
 }
 
-/** Every list block, as `checkTargetCompatibility` needs all four at once. */
+/** Every list block, as `checkTargetCompatibility` needs all five at once. */
 export interface ListConfigs {
   FlixPatrolTop10: FlixPatrolTop10[];
   FlixPatrolPopular: FlixPatrolPopular[];
   FlixPatrolMostWatched: FlixPatrolMostWatched[];
   FlixPatrolMostHours: FlixPatrolMostHours[];
+  FlixPatrolWeekly: FlixPatrolWeekly[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object'
@@ -375,6 +376,7 @@ export class GetAndValidateConfigs {
         ['FlixPatrolPopular', lists.FlixPatrolPopular],
         ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
         ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
+        ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
       ];
       const offenders = blocks.flatMap(([block, entries]) => entries
         .map((entry, index) => ({ entry, index }))
@@ -395,6 +397,19 @@ export class GetAndValidateConfigs {
         + 'entry is ignored: lists are always created private. Flip the ones you want to share by '
         + 'hand in the Floppy web UI.');
     }
+
+    // Both warn and let the run continue: the pipeline (not this function) skips the
+    // entry, the same way an unusable `kids` combination is skipped on Top10.
+    lists.FlixPatrolWeekly.forEach((entry, index) => {
+      if (entry.location !== 'world' && entry.platform === 'amazon-prime') {
+        logger.warn(`FlixPatrolWeekly[${index}]: amazon-prime publishes no per-country weekly page, `
+          + 'entry skipped');
+      }
+      if (entry.location !== 'world' && entry.language !== 'all') {
+        logger.warn(`FlixPatrolWeekly[${index}]: language is ignored on a country entry, which `
+          + 'carries no language split');
+      }
+    });
   }
 
   public static getCacheOptions(): CacheOptions {
