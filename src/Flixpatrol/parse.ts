@@ -300,13 +300,23 @@ export function parseDetailPage(html: string): FlixPatrolDetail {
   };
 }
 
+/** Shared by weeklySectionExpression and hasWeeklySection so they never drift apart. */
+export function weeklyHeadingExpression(heading: string): string {
+  return `//h2[contains(., "${heading}")]`;
+}
+
 /**
  * Anchors on the heading text rather than the anchor class: these pages serve
  * `flex gap-2 items-center group`, the reverse of the order the other expressions
  * require, and the class order has already drifted once. See spec §5.
+ *
+ * `following::*[self::h2 or self::table][1]` stops at the next heading before
+ * requiring a table, so a heading rendered without one no longer adopts the
+ * following section's table instead of returning empty.
  */
 export function weeklySectionExpression(heading: string): string {
-  return `//h2[contains(., "${heading}")]/following::table[1]//a[starts-with(@href,"/title/")]/@href`;
+  return `${weeklyHeadingExpression(heading)}/following::*[self::h2 or self::table][1]`
+    + '/self::table//a[starts-with(@href,"/title/")]/@href';
 }
 
 export function parseWeeklySection(heading: string, html: string): FlixPatrolMatchResult[] {
@@ -318,7 +328,7 @@ export function parseWeeklySection(heading: string, html: string): FlixPatrolMat
  * only the first is a drift worth warning about. See spec §6.
  */
 export function hasWeeklySection(heading: string, html: string): boolean {
-  return parsePage(`//h2[contains(., "${heading}")]`, html).length > 0;
+  return parsePage(weeklyHeadingExpression(heading), html).length > 0;
 }
 
 /** Weeks are `YYYY-WWW`, zero-padded, so the lexicographic max is the latest one. */

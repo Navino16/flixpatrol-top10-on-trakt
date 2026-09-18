@@ -131,4 +131,9 @@ describe('weeklyHeadings', () => {
     expect(weeklyHeadings({ ...weekly, location: 'france' }, 'Movies'))
       .toEqual(['TOP 10 Movies Official Rankings']);
   });
+
+  it('ignores an explicit language in country mode too', () => {
+    expect(weeklyHeadings({ ...weekly, location: 'france', language: 'english' }, 'Movies'))
+      .toEqual(['TOP 10 Movies Official Rankings']);
+  });
 });

@@ -363,7 +363,10 @@ export class FlixPatrol {
     const results: FlixPatrolMatchResult[] = [];
     for (const heading of weeklyHeadings(config, type)) {
       const section = parseWeeklySection(heading, html);
-      if (!hasWeeklySection(heading, html)) {
+      // A non-empty section already proves the heading exists; only check on an
+      // empty one, since that is the only case where the two differ (drift vs. an
+      // empty week) and hasWeeklySection re-parses the whole page.
+      if (section.length === 0 && !hasWeeklySection(heading, html)) {
         logger.warn(`FlixPatrol served ${path} without a "${heading}" section`);
       }
       results.push(...section);

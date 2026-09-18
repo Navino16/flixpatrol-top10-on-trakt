@@ -167,7 +167,7 @@ export const FlixPatrolMostHoursSchema = z.object({
 
 export const flixpatrolWeeklyPlatform = ['netflix', 'amazon-prime'] as const;
 // Deliberately not shared with flixpatrolMostHoursLanguage: sharing would make a future
-// MostHours-only value silently appear here too. See spec §4.
+// MostHours-only value silently appear here too.
 export const flixpatrolWeeklyLanguage = ['all', 'english', 'non-english'] as const;
 const FlixPatrolWeeklyPlatformSchema = z.enum(flixpatrolWeeklyPlatform);
 const FlixPatrolWeeklyLanguageSchema = z.enum(flixpatrolWeeklyLanguage);

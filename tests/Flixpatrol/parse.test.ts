@@ -491,6 +491,14 @@ describe('parseWeeklySection', () => {
   it('returns [] for an unknown heading', () => {
     expect(parseWeeklySection('Netflix TOP 10 Documentaries', weeklyHtml)).toEqual([]);
   });
+
+  it('does not adopt the next section\'s table when its own heading has none', () => {
+    const bleedHtml = `
+<h2>Netflix TOP 10 Movies (in Not English)</h2>
+<h2>Amazon Prime TOP 10 Movies (in English)</h2>
+<table><tr><td><a href="/title/amazon-one/">Amazon One</a></td></tr></table>`;
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in Not English)', bleedHtml)).toEqual([]);
+  });
 });
 
 describe('hasWeeklySection', () => {
