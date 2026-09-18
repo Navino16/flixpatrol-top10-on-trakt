@@ -81,9 +81,12 @@ jobs:
         if: failure()
         run: docker logs --tail 200 "$FLARESOLVERR_CONTAINER"
 
-      # Secrets cannot be read in a step-level `if:`, so the guard on a missing
-      # DISCORD_WEBHOOK is a shell test, and it exits 0 — an unconfigured
-      # notification channel must never be reported as a drift failure.
+      # A repository secret is safe here and not in `e2e-floppy`: this workflow
+      # never runs on `pull_request`, so a fork can never read it.
+      #
+      # Secrets cannot be read in a step-level `if:`, so the missing-secret guard
+      # is a shell test that exits 0 — an unconfigured channel is not a drift
+      # failure. It warns, because a silent skip is how a canary goes unheard.
       - name: Notify Discord on drift
         if: failure()
         env:
@@ -91,7 +94,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK is not configured, skipping the notification"
+            echo "::warning::DISCORD_WEBHOOK is not configured: this drift failure was not notified"
             exit 0
           fi
           BODY=''
