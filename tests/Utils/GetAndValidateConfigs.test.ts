@@ -805,8 +805,12 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('accepts the very same lists on trakt', () => {
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
           .not.toThrow();
+
+        warn.mockRestore();
       });
 
       it('rejects "friends" on floppy', () => {
@@ -844,7 +848,9 @@ describe('GetAndValidateConfigs', () => {
         GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
-        expect(warn).not.toHaveBeenCalled();
+        // trakt now also warns about its own deprecation, unrelated to Floppy's visibility warning.
+        const messages = warn.mock.calls.map(([text]) => String(text));
+        expect(messages.some((text) => text.includes('cannot set list visibility'))).toBe(false);
         warn.mockRestore();
       });
 
@@ -876,7 +882,8 @@ describe('GetAndValidateConfigs', () => {
         it('accepts a world entry with a language', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+          // mdblist here, not trakt: trakt now unconditionally warns about its own deprecation.
+          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
           });
@@ -890,6 +897,39 @@ describe('GetAndValidateConfigs', () => {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
           })).toThrow(ConfigurationError);
+        });
+      });
+
+      describe('Trakt deprecation', () => {
+        it('warns that Trakt is removed in 4.0.0', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, emptyLists);
+
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('4.0.0'));
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('Trakt'));
+          warn.mockRestore();
+        });
+
+        it('warns instead of throwing on link/friends when the backend is Trakt', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            trakt,
+            listsWith(['link', 'friends']),
+          )).not.toThrow();
+
+          const message = warn.mock.calls.map(([text]) => String(text)).join('\n');
+          expect(message).toContain('FlixPatrolTop10[0].privacy = "link"');
+          expect(message).toContain('FlixPatrolTop10[1].privacy = "friends"');
+          warn.mockRestore();
+        });
+
+        it('still throws on link/friends when the backend is not Trakt', () => {
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            mdblist,
+            listsWith(['friends']),
+          )).toThrow(ConfigurationError);
         });
       });
     });

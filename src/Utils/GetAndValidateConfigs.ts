@@ -235,6 +235,25 @@ function checkMostWatchedMigration(data: unknown): void {
   ].join('\n'));
 }
 
+/**
+ * Every list entry using a privacy level only Trakt can express, rendered as
+ * `block[index].privacy = "value"`. Shared by the fatal path (non-Trakt backends) and
+ * the deprecation warning (Trakt), so the two cannot drift apart.
+ */
+function collectPrivacyOffenders(lists: ListConfigs): string[] {
+  const blocks: [string, { privacy: TraktPrivacy }[]][] = [
+    ['FlixPatrolTop10', lists.FlixPatrolTop10],
+    ['FlixPatrolPopular', lists.FlixPatrolPopular],
+    ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
+    ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
+    ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
+  ];
+  return blocks.flatMap(([block, entries]) => entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
+    .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
+}
+
 export class GetAndValidateConfigs {
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
     try {
@@ -370,26 +389,23 @@ export class GetAndValidateConfigs {
    * are emitted, so they appear once per run rather than once per list entry.
    */
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
-    if (target.type !== 'trakt') {
-      const blocks: [string, { privacy: TraktPrivacy }[]][] = [
-        ['FlixPatrolTop10', lists.FlixPatrolTop10],
-        ['FlixPatrolPopular', lists.FlixPatrolPopular],
-        ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
-        ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
-        ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
-      ];
-      const offenders = blocks.flatMap(([block, entries]) => entries
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
-        .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
+    const offenders = collectPrivacyOffenders(lists);
 
+    if (target.type === 'trakt') {
+      logger.warn('Trakt support is deprecated and will be removed in 4.0.0. Move `Target` to '
+        + '"floppy" or "mdblist" — see the "Choosing Your Platform" section of the README. '
+        + 'Your current configuration keeps working until then.');
       if (offenders.length > 0) {
-        throw new ConfigurationError([
-          `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
-          + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
-          ...offenders,
-        ].join('\n'));
+        logger.warn(['The "link" and "friends" privacy levels are removed in 4.0.0 alongside Trakt, '
+          + 'as no other backend can express them. Use "private" or "public" instead for:',
+        ...offenders].join('\n'));
       }
+    } else if (offenders.length > 0) {
+      throw new ConfigurationError([
+        `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
+        + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
+        ...offenders,
+      ].join('\n'));
     }
 
     if (target.type === 'floppy') {
