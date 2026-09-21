@@ -73,32 +73,6 @@ export class Utils {
             type: 'shows',
           },
           {
-            platform: 'amazon-prime',
-            location: 'world',
-            fallback: false,
-            privacy: 'private',
-            limit: 10,
-            name: 'Amazon Prime Top 10',
-            normalizeName: false,
-            type: 'both',
-          },
-          {
-            platform: 'apple-tv',
-            location: 'world',
-            fallback: false,
-            privacy: 'private',
-            limit: 10,
-            type: 'both',
-          },
-          {
-            platform: 'paramount-plus',
-            location: 'world',
-            fallback: false,
-            privacy: 'private',
-            limit: 10,
-            type: 'both',
-          },
-          {
             platform: 'netflix',
             location: 'united-states',
             fallback: false,
@@ -121,7 +95,7 @@ export class Utils {
         ],
         FlixPatrolMostWatched: [
           {
-            enabled: true,
+            enabled: false,
             privacy: 'public',
             limit: 50,
             type: 'both',
@@ -130,21 +104,21 @@ export class Utils {
         ],
         FlixPatrolMostHours: [
           {
-            enabled: true,
+            enabled: false,
             privacy: 'public',
             limit: 50,
             type: 'both',
             period: 'total',
           },
           {
-            enabled: true,
+            enabled: false,
             privacy: 'public',
             limit: 50,
             type: 'both',
             period: 'first-week',
           },
           {
-            enabled: true,
+            enabled: false,
             privacy: 'public',
             limit: 50,
             type: 'both',
