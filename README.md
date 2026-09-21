@@ -129,6 +129,18 @@ else in the configuration stays the same.
 
 ### Trakt (default)
 
+> **Warning**
+> **Trakt support is deprecated and will be removed in 4.0.0.** Trakt has closed its API to
+> third-party services — MDBList, SIMKL and WeTrakr were all blocked without notice — and has
+> repeatedly broken authentication for integrations like this one. Rather than wait to be cut
+> off, this project is moving away from it.
+>
+> Use [Floppy](#floppy-setup) or [mdblist](#mdblist-setup) instead. Both are supported today and
+> your existing lists can be rebuilt on either in a single run.
+>
+> The `link` and `friends` privacy levels go away at the same time: no other backend can express
+> them. Replace them with `private` or `public`.
+
 ```json
 {
   "Target": {
@@ -704,6 +716,9 @@ The `FlareSolverr` block is fully optional and disabled by default — omit it (
 </details>
 
 ### Trakt Setup
+
+> **Warning**
+> Deprecated — removed in 4.0.0. See [Choosing Your Platform](#choosing-your-platform).
 
 To run this application you need a Trakt account and a Client ID / Client Secret.
 
