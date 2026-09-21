@@ -10,8 +10,25 @@ import type {
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolConfigType, FlixPatrolMostWatched, FlixPatrolMostHours,
-  FlixPatrolPopular, FlixPatrolTop10, FlixPatrolWeekly,
+  FlixPatrolPopular, FlixPatrolTop10, FlixPatrolType, FlixPatrolWeekly,
 } from '../types';
+
+/** What every entry of the four twin blocks carries, whatever extra options it also has. */
+interface ListBlockEntry {
+  type: FlixPatrolConfigType;
+  privacy: ListPrivacy;
+  name?: string;
+  normalizeName?: boolean;
+}
+
+/** One list block, reduced to the three things that actually differ between the four. */
+interface ListBlock<T extends ListBlockEntry> {
+  entries: T[];
+  /** Absent means every entry is processed. */
+  skip?: (entry: T) => boolean;
+  defaultName: (entry: T) => string;
+  scrape: (kind: FlixPatrolType, entry: T) => Promise<MediaItem[]>;
+}
 
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
@@ -214,6 +231,40 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     return false;
   };
 
+  /**
+   * Runs one of the four blocks that share this exact shape. Top10 is deliberately not one
+   * of them: its getter returns both kinds in a single call and reports scraping loss.
+   *
+   * Returns true when a shutdown signal stopped the run, so the caller returns the summary.
+   */
+  const processBlock = async <T extends ListBlockEntry>(block: ListBlock<T>): Promise<boolean> => {
+    for (const entry of block.entries) {
+      if (block.skip?.(entry) === true) continue;
+
+      currentList++;
+      const listName = Utils.getListName(entry, block.defaultName(entry), deps.listNamePrefix);
+      logger.info('==============================');
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+      logger.info(`Scraping FlixPatrol ${kindsLabel(entry.type)} for "${listName}"`);
+
+      const content: ListContent = {};
+      if (entry.type === 'movies' || entry.type === 'both') {
+        const items = await block.scrape('Movies', entry);
+        const ids = await resolveSection(items, 'movie', listName);
+        if (ids !== null) content.movie = ids;
+      }
+
+      if (entry.type === 'shows' || entry.type === 'both') {
+        const items = await block.scrape('TV Shows', entry);
+        const ids = await resolveSection(items, 'show', listName);
+        if (ids !== null) content.show = ids;
+      }
+      if (await writeList(content, listName, entry.privacy)) return true;
+      summary.listsProcessed++;
+    }
+    return false;
+  };
+
   await target.connect();
 
   // Fire-and-forget so the pipeline never waits on a notification round-trip. The caller
@@ -224,6 +275,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     timestamp: new Date().toISOString(),
   });
 
+  // Not a processBlock call: getTop10Sections returns both kinds in one call and reports
+  // how many scraped items were dropped, which no other block does.
   for (const top10 of deps.flixPatrolTop10) {
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
@@ -254,118 +307,46 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   }
 
 
-  for (const popular of deps.flixPatrolPopulars) {
-    currentList++;
-    const listName = Utils.getListName(popular, `${popular.platform}-popular`, deps.listNamePrefix);
-    logger.info('==============================');
-    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-    logger.info(`Scraping FlixPatrol ${kindsLabel(popular.type)} for "${listName}"`);
+  if (await processBlock({
+    entries: deps.flixPatrolPopulars,
+    defaultName: (popular) => `${popular.platform}-popular`,
+    scrape: (kind, popular) => flixpatrol.getPopular(kind, popular),
+  })) return summary;
 
-    const content: ListContent = {};
-    if (popular.type === 'movies' || popular.type === 'both') {
-      const popularMovies = await flixpatrol.getPopular('Movies', popular);
-      const ids = await resolveSection(popularMovies, 'movie', listName);
-      if (ids !== null) content.movie = ids;
-    }
+  if (await processBlock({
+    entries: deps.flixPatrolMostWatched,
+    skip: (mostWatched) => !mostWatched.enabled,
+    defaultName: (mostWatched) => {
+      let name = `most-watched-${mostWatched.year}-netflix`;
+      name = mostWatched.genre !== undefined ? `${name}-${mostWatched.genre}` : name;
+      name = mostWatched.original !== undefined ? `${name}-original` : name;
+      name = mostWatched.premiere !== undefined ? `${name}-${mostWatched.premiere}-premiere` : name;
+      name = mostWatched.country !== undefined ? `${name}-from-${mostWatched.country}` : name;
+      return name;
+    },
+    scrape: (kind, mostWatched) => flixpatrol.getMostWatched(kind, mostWatched),
+  })) return summary;
 
-    if (popular.type === 'shows' || popular.type === 'both') {
-      const popularShows = await flixpatrol.getPopular('TV Shows', popular);
-      const ids = await resolveSection(popularShows, 'show', listName);
-      if (ids !== null) content.show = ids;
-    }
-    if (await writeList(content, listName, popular.privacy)) return summary;
-    summary.listsProcessed++;
-  }
+  if (await processBlock({
+    entries: deps.flixPatrolMostHours,
+    skip: (mostHours) => !mostHours.enabled,
+    defaultName: (mostHours) => {
+      const name = `netflix-most-hours-${mostHours.period}`;
+      return mostHours.language === 'all' ? name : `${name}-${mostHours.language}`;
+    },
+    scrape: (kind, mostHours) => flixpatrol.getMostHours(kind, mostHours),
+  })) return summary;
 
-  for (const mostWatched of deps.flixPatrolMostWatched) {
-    if (mostWatched.enabled) {
-      currentList++;
-      let defaultName = `most-watched-${mostWatched.year}-netflix`;
-      defaultName = mostWatched.genre !== undefined ? `${defaultName}-${mostWatched.genre}` : defaultName;
-      defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
-      defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
-      defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
-      const listName = Utils.getListName(mostWatched, defaultName, deps.listNamePrefix);
-      logger.info('==============================');
-      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-      logger.info(`Scraping FlixPatrol ${kindsLabel(mostWatched.type)} for "${listName}"`);
-
-      const content: ListContent = {};
-      if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
-        const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched);
-        const ids = await resolveSection(mostWatchedMovies, 'movie', listName);
-        if (ids !== null) content.movie = ids;
-      }
-
-      if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
-        const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched);
-        const ids = await resolveSection(mostWatchedShows, 'show', listName);
-        if (ids !== null) content.show = ids;
-      }
-      if (await writeList(content, listName, mostWatched.privacy)) return summary;
-      summary.listsProcessed++;
-    }
-  }
-
-  for (const mostHours of deps.flixPatrolMostHours) {
-    if (mostHours.enabled) {
-      currentList++;
-      let defaultName = `netflix-most-hours-${mostHours.period}`;
-      if (mostHours.language !== 'all') {
-        defaultName += `-${mostHours.language}`;
-      }
-      const listName = Utils.getListName(mostHours, defaultName, deps.listNamePrefix);
-      logger.info('==============================');
-      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-      logger.info(`Scraping FlixPatrol ${kindsLabel(mostHours.type)} for "${listName}"`);
-
-      const content: ListContent = {};
-      if (mostHours.type === 'movies' || mostHours.type === 'both') {
-        const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours);
-        const ids = await resolveSection(mostHoursMovies, 'movie', listName);
-        if (ids !== null) content.movie = ids;
-      }
-
-      if (mostHours.type === 'shows' || mostHours.type === 'both') {
-        const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours);
-        const ids = await resolveSection(mostHoursShows, 'show', listName);
-        if (ids !== null) content.show = ids;
-      }
-      if (await writeList(content, listName, mostHours.privacy)) return summary;
-      summary.listsProcessed++;
-    }
-  }
-
-  for (const weekly of deps.flixPatrolWeekly) {
-    if (!weekly.enabled) continue;
-    // checkTargetCompatibility already warned about this combination at config-validation
-    // time, so no warning here — and it is excluded from enabledWeekly above, not just here.
-    if (isAmazonCountryWeekly(weekly)) continue;
-
-    currentList++;
-    const defaultName = weekly.location !== 'world'
+  if (await processBlock({
+    entries: deps.flixPatrolWeekly,
+    // checkTargetCompatibility already warned about the amazon-prime + country combination
+    // at config-validation time, so it is skipped silently here.
+    skip: (weekly) => !weekly.enabled || isAmazonCountryWeekly(weekly),
+    defaultName: (weekly) => (weekly.location !== 'world'
       ? `${weekly.platform}-weekly-${weekly.location}`
-      : `${weekly.platform}-weekly${weekly.language === 'all' ? '' : `-${weekly.language}`}`;
-    const listName = Utils.getListName(weekly, defaultName, deps.listNamePrefix);
-    logger.info('==============================');
-    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-    logger.info(`Scraping FlixPatrol ${kindsLabel(weekly.type)} for "${listName}"`);
-
-    const content: ListContent = {};
-    if (weekly.type === 'movies' || weekly.type === 'both') {
-      const weeklyMovies = await flixpatrol.getWeekly('Movies', weekly);
-      const ids = await resolveSection(weeklyMovies, 'movie', listName);
-      if (ids !== null) content.movie = ids;
-    }
-
-    if (weekly.type === 'shows' || weekly.type === 'both') {
-      const weeklyShows = await flixpatrol.getWeekly('TV Shows', weekly);
-      const ids = await resolveSection(weeklyShows, 'show', listName);
-      if (ids !== null) content.show = ids;
-    }
-    if (await writeList(content, listName, weekly.privacy)) return summary;
-    summary.listsProcessed++;
-  }
+      : `${weekly.platform}-weekly${weekly.language === 'all' ? '' : `-${weekly.language}`}`),
+    scrape: (kind, weekly) => flixpatrol.getWeekly(kind, weekly),
+  })) return summary;
 
   summary.durationMs = Date.now() - runStartAt;
   const movedVerb = deps.dryRun ? 'would be added' : 'added';
