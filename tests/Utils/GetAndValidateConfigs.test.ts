@@ -805,7 +805,7 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('accepts the very same lists on trakt', () => {
-        // Mutes the deprecation warning this backend now emits; not under test here.
+        // A trakt target always warns about its own deprecation; muted here, not under test.
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
@@ -847,11 +847,15 @@ describe('GetAndValidateConfigs', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
         GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
+
+        // A trakt target always warns about its own deprecation; that is the only warning expected here.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).not.toMatch(/cannot set list visibility/);
+        warn.mockClear();
+
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
-        // A trakt target warns about its own deprecation; this assertion targets Floppy's visibility warning only.
-        const messages = warn.mock.calls.map(([text]) => String(text));
-        expect(messages.some((text) => text.includes('cannot set list visibility'))).toBe(false);
+        expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
       });
 
