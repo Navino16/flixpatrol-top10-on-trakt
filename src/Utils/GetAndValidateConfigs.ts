@@ -172,6 +172,7 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
   trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
     + 'client id and client secret into the `Target` block.',
+  mdblist: 'Copy your API key from https://mdblist.com/preferences into the `Target` block.',
 };
 
 /** "a", "a and b", "a, b and c". */

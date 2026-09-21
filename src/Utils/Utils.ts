@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from './Logger';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../types';
+import { MDBLIST_TEMPLATE_API_KEY } from '../types';
 
 /**
  * Scraping cache directories of 2.x, left unread by the move to a two-level cache
@@ -154,10 +154,8 @@ export class Utils {
         ],
         FlixPatrolWeekly: [],
         Target: {
-          type: 'trakt',
-          saveFile: './config/.trakt',
-          clientId: TRAKT_TEMPLATE_CLIENT_ID,
-          clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+          type: 'mdblist',
+          apiKey: MDBLIST_TEMPLATE_API_KEY,
         },
         Cache: {
           enabled: true,

@@ -102,10 +102,8 @@
   ],
   "FlixPatrolWeekly": [],
   "Target": {
-    "type": "trakt",
-    "saveFile": "./config/.trakt",
-    "clientId": "You need to replace this client ID",
-    "clientSecret": "You need to replace this client secret"
+    "type": "mdblist",
+    "apiKey": "You need to replace this API key"
   },
   "Cache": {
     "enabled": true,

@@ -214,18 +214,23 @@ export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
  */
 export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
 export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
+export const MDBLIST_TEMPLATE_API_KEY = 'You need to replace this API key';
 
 /**
  * Template credentials per backend, keyed by the field they occupy in the `Target` block.
- * Only `trakt` is listed, being the only backend the template carries credentials for.
+ * Floppy is absent because it ships no template: it needs a self-hosted `url` the app
+ * cannot guess a placeholder for.
  *
- * `saveFile` is deliberately absent: `./config/.trakt` is a sensible default users are
- * expected to keep, not a placeholder to replace.
+ * `saveFile` is deliberately absent from the `trakt` entry: `./config/.trakt` is a
+ * sensible default users are expected to keep, not a placeholder to replace.
  */
 export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
   trakt: {
     clientId: TRAKT_TEMPLATE_CLIENT_ID,
     clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+  },
+  mdblist: {
+    apiKey: MDBLIST_TEMPLATE_API_KEY,
   },
 };
 

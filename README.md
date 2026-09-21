@@ -681,10 +681,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
     }
   ],
   "Target": {
-    "type": "trakt",
-    "saveFile": "./config/.trakt",
-    "clientId": "You need to replace this client ID",
-    "clientSecret": "You need to replace this client secret"
+    "type": "mdblist",
+    "apiKey": "You need to replace this API key"
   },
   "Cache": {
     "enabled": true,
@@ -937,11 +935,12 @@ copy it into `config/default.json` in place of the old block. Your file is never
 the config directory is frequently a read-only mount and usually version-controlled. See
 [Migrating from 2.x](#migrating-from-2x).
 
-**Startup fails saying `Target.clientId` / `Target.clientSecret` still hold the placeholder values.**
-The `config/default.json` the app generated on first run was never edited. Replace the placeholders
-with real credentials — [create a Trakt API application](https://trakt.tv/oauth/applications/new)
-and copy its client id and secret into the `Target` block. The check runs field by field, so
-replacing only one of the two is still caught and the message names the one left over.
+**Startup fails saying a `Target` field still holds a placeholder value.**
+The `config/default.json` the app generated on first run was never edited. A fresh install ships
+`Target.apiKey` for mdblist — replace it with your real key from your
+[preferences page](https://mdblist.com/preferences/). The same check catches unreplaced Trakt
+`clientId`/`clientSecret` if you configured that backend by hand instead. It runs field by field,
+so replacing only some of the fields is still caught and the message names the ones left over.
 
 **Warning about an obsolete root-level `Trakt` block.**
 Nothing is broken: the run proceeds normally. Credentials now live inside `Target`, so the
