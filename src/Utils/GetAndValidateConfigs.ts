@@ -398,8 +398,9 @@ export class GetAndValidateConfigs {
         + 'hand in the Floppy web UI.');
     }
 
-    // Both warn and let the run continue: the pipeline (not this function) skips the
-    // entry, the same way an unusable `kids` combination is skipped on Top10.
+    // Neither fails the run, and they differ in what follows: the amazon-prime pairing is skipped
+    // by the pipeline, the way an unusable `kids` combination is on Top10, while a country entry
+    // with a language is still processed — `language` is simply ignored.
     lists.FlixPatrolWeekly.forEach((entry, index) => {
       if (entry.location !== 'world' && entry.platform === 'amazon-prime') {
         logger.warn(`FlixPatrolWeekly[${index}]: amazon-prime publishes no per-country weekly page, `
