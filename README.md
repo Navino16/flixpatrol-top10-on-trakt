@@ -118,7 +118,7 @@ else in the configuration stays the same.
 > [Migrating from 2.x](#migrating-from-2x) — the app detects the old format at startup and
 > prints the exact block to write.
 
-|                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
+|                    | Trakt free (deprecated)        | Trakt VIP (deprecated) | mdblist free  | mdblist 1–3 €/month | Floppy                                      |
 |--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
 | Lists              | 5                              | 100               | 4 static           | 20 to 80            | unlimited                                   |
 | Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
@@ -127,7 +127,7 @@ else in the configuration stays the same.
 | `privacy` honoured | 4 levels                       | 4 levels          | public/private only | public/private only | ignored, set it by hand in the web UI       |
 | Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
 
-### Trakt (default)
+### Trakt (deprecated)
 
 > **Warning**
 > **Trakt support is deprecated and will be removed in 4.0.0.** Trakt has closed its API to
@@ -182,6 +182,9 @@ Trakt concepts with no equivalent elsewhere, so **the app refuses to start** whe
 `friends` is used with `Target.type` set to `floppy` or `mdblist` — the error names each
 offending block and index. On Floppy, visibility cannot be set through the API at all: every
 list is created private and a warning says so once at startup.
+
+`link` and `friends` are deprecated and removed in 4.0.0 on every backend — see
+[Trakt (deprecated)](#trakt-deprecated).
 
 ## Migrating from 2.x
 

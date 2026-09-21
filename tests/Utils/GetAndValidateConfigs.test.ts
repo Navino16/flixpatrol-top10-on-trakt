@@ -805,6 +805,7 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('accepts the very same lists on trakt', () => {
+        // Mutes the deprecation warning this backend now emits; not under test here.
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
@@ -848,7 +849,7 @@ describe('GetAndValidateConfigs', () => {
         GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
-        // trakt now also warns about its own deprecation, unrelated to Floppy's visibility warning.
+        // A trakt target warns about its own deprecation; this assertion targets Floppy's visibility warning only.
         const messages = warn.mock.calls.map(([text]) => String(text));
         expect(messages.some((text) => text.includes('cannot set list visibility'))).toBe(false);
         warn.mockRestore();
@@ -882,7 +883,7 @@ describe('GetAndValidateConfigs', () => {
         it('accepts a world entry with a language', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          // mdblist here, not trakt: trakt now unconditionally warns about its own deprecation.
+          // mdblist here, not trakt: a trakt target always warns about its own deprecation.
           GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
@@ -906,6 +907,7 @@ describe('GetAndValidateConfigs', () => {
 
           GetAndValidateConfigs.checkTargetCompatibility(trakt, emptyLists);
 
+          expect(warn).toHaveBeenCalledTimes(1);
           expect(warn).toHaveBeenCalledWith(expect.stringContaining('4.0.0'));
           expect(warn).toHaveBeenCalledWith(expect.stringContaining('Trakt'));
           warn.mockRestore();
