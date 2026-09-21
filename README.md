@@ -482,7 +482,7 @@ credentials that backend needs. The block is mandatory.
 | Name                | Description                                                                            | Mandatory             | Values                 | Default         |
 |---------------------|----------------------------------------------------------------------------------------|-----------------------|------------------------|-----------------|
 | type                | Which backend receives the generated lists                                             | Yes                   | trakt, floppy, mdblist |                 |
-| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | ./config/.trakt |
+| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | None — no shipped template supplies one; `./config/.trakt` is the conventional value |
 | clientId            | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))     | If `type: "trakt"`    | A valid string         |                 |
 | clientSecret        | Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new)) | If `type: "trakt"`    | A valid string         |                 |
 | url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
@@ -730,7 +730,19 @@ To run this application you need a Trakt account and a Client ID / Client Secret
 2. [Create a new application](https://trakt.tv/oauth/applications/new) with:
    - **Redirect uri:** `urn:ietf:wg:oauth:2.0:oob`
    - Other fields are optional
-3. Set the Client ID / Client Secret in `./config/default.json`
+3. Replace the `Target` block in `./config/default.json` with the Trakt shape:
+
+```json
+{
+  "Target": {
+    "type": "trakt",
+    "saveFile": "./config/.trakt",
+    "clientId": "your-trakt-client-id",
+    "clientSecret": "your-trakt-client-secret"
+  }
+}
+```
+
 4. Run the app and follow the on-screen instructions
 
 ### Floppy Setup
