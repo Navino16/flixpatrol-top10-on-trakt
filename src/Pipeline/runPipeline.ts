@@ -10,7 +10,7 @@ import type {
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolConfigType, FlixPatrolMostWatched, FlixPatrolMostHours,
-  FlixPatrolPopular, FlixPatrolTop10,
+  FlixPatrolPopular, FlixPatrolTop10, FlixPatrolWeekly,
 } from '../types';
 
 export interface RunPipelineDeps {
@@ -24,6 +24,7 @@ export interface RunPipelineDeps {
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
   flixPatrolMostHours: FlixPatrolMostHours[];
+  flixPatrolWeekly: FlixPatrolWeekly[];
   flareSolverrOptions?: FlareSolverrOptions;
   dispatch: (event: NotificationEvent, payload: NotificationPayload) => Promise<void>;
   dryRun: boolean;
@@ -77,6 +78,14 @@ function kindsLabel(type: FlixPatrolConfigType): string {
   return 'movies and shows';
 }
 
+/**
+ * Amazon publishes no per-country weekly page. Shared by the counter and the loop so
+ * `totalLists` and the loop's skip can never drift apart.
+ */
+function isAmazonCountryWeekly(weekly: FlixPatrolWeekly): boolean {
+  return weekly.location !== 'world' && weekly.platform === 'amazon-prime';
+}
+
 async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClient): Promise<RunSummary> {
   const dryRunTag = deps.dryRun ? '[DRY-RUN] ' : '';
 
@@ -95,8 +104,9 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   const enabledMostWatched = deps.flixPatrolMostWatched.filter((m) => m.enabled).length;
   const enabledMostHours = deps.flixPatrolMostHours.filter((m) => m.enabled).length;
+  const enabledWeekly = deps.flixPatrolWeekly.filter((w) => w.enabled && !isAmazonCountryWeekly(w)).length;
 
-  logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
+  logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, ${enabledWeekly} Weekly, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
   // Only the backend name is logged: every other field of the target config is a
@@ -106,6 +116,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
   logger.silly(`flixPatrolMostHours: ${JSON.stringify(deps.flixPatrolMostHours)}`);
+  logger.silly(`flixPatrolWeekly: ${JSON.stringify(deps.flixPatrolWeekly)}`);
 
   const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
   const { target } = deps;
@@ -113,7 +124,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   const totalLists = deps.flixPatrolTop10.length
     + deps.flixPatrolPopulars.length
     + enabledMostWatched
-    + enabledMostHours;
+    + enabledMostHours
+    + enabledWeekly;
   let currentList = 0;
   const runStartAt = Date.now();
   const summary: RunSummary = {
@@ -322,6 +334,37 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       if (await writeList(content, listName, mostHours.privacy)) return summary;
       summary.listsProcessed++;
     }
+  }
+
+  for (const weekly of deps.flixPatrolWeekly) {
+    if (!weekly.enabled) continue;
+    // checkTargetCompatibility already warned about this combination at config-validation
+    // time, so no warning here — and it is excluded from enabledWeekly above, not just here.
+    if (isAmazonCountryWeekly(weekly)) continue;
+
+    currentList++;
+    const defaultName = weekly.location !== 'world'
+      ? `${weekly.platform}-weekly-${weekly.location}`
+      : `${weekly.platform}-weekly${weekly.language === 'all' ? '' : `-${weekly.language}`}`;
+    const listName = Utils.getListName(weekly, defaultName, deps.listNamePrefix);
+    logger.info('==============================');
+    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+    logger.info(`Scraping FlixPatrol ${kindsLabel(weekly.type)} for "${listName}"`);
+
+    const content: ListContent = {};
+    if (weekly.type === 'movies' || weekly.type === 'both') {
+      const weeklyMovies = await flixpatrol.getWeekly('Movies', weekly);
+      const ids = await resolveSection(weeklyMovies, 'movie', listName);
+      if (ids !== null) content.movie = ids;
+    }
+
+    if (weekly.type === 'shows' || weekly.type === 'both') {
+      const weeklyShows = await flixpatrol.getWeekly('TV Shows', weekly);
+      const ids = await resolveSection(weeklyShows, 'show', listName);
+      if (ids !== null) content.show = ids;
+    }
+    if (await writeList(content, listName, weekly.privacy)) return summary;
+    summary.listsProcessed++;
   }
 
   summary.durationMs = Date.now() - runStartAt;

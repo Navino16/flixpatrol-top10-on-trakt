@@ -107,6 +107,7 @@ async function bootstrapConfigs(): Promise<{
       FlixPatrolPopular: GetAndValidateConfigs.getFlixPatrolPopular(),
       FlixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
       FlixPatrolMostHours: GetAndValidateConfigs.getFlixPatrolMostHours(),
+      FlixPatrolWeekly: GetAndValidateConfigs.getFlixPatrolWeekly(),
     };
     // Cross-check and backend-wide warnings need both halves loaded, hence here
     // and not inside any single schema.
@@ -122,6 +123,7 @@ async function bootstrapConfigs(): Promise<{
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,
       flixPatrolMostHours: lists.FlixPatrolMostHours,
+      flixPatrolWeekly: lists.FlixPatrolWeekly,
       flareSolverrOptions: GetAndValidateConfigs.getFlareSolverrOptions(),
       dispatch,
       dryRun,

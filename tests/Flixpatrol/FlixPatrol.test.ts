@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
+import { WEEKLY_INDEX_PATH } from '../../src/Flixpatrol/url';
 import { logger } from '../../src/Utils/Logger';
-import type { FlixPatrolTop10, FlixPatrolPopular, FlixPatrolMostWatched, FlixPatrolMostHours } from '../../src/types';
+import { FlixPatrolError } from '../../src/Utils/Errors';
+import type {
+  FlixPatrolTop10,
+  FlixPatrolPopular,
+  FlixPatrolMostWatched,
+  FlixPatrolMostHours,
+  FlixPatrolWeekly,
+} from '../../src/types';
 
 // A single shared `mockFetch` is returned from every `new Impit(...)`, so a test can
 // arm the responses without knowing how many instances the scraper builds.
@@ -2311,6 +2320,131 @@ describe('FlixPatrol', () => {
 
       expect(Array.isArray(result)).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/streaming-services/most-hours-first-week/netflix/'));
+    });
+  });
+
+  describe('getWeekly', () => {
+    let flixpatrol: FlixPatrol;
+    let getPageSpy: MockInstance<(path: string) => Promise<string | null>>;
+    let warnSpy: MockInstance<typeof logger.warn>;
+
+    const weeklyConfig: FlixPatrolWeekly = {
+      enabled: true,
+      privacy: 'private',
+      limit: 10,
+      type: 'movies',
+      platform: 'netflix',
+      location: 'world',
+      language: 'english',
+    };
+
+    // Detail pages are only distinguished by title; year is irrelevant to these tests.
+    const weeklyDetailPage = (title: string) => `
+      <div class="info-grid"><div class="info-grid-header">
+        <h1 class="mb-4 text-h1">${title}</h1>
+      </div></div>
+    `;
+
+    beforeEach(() => {
+      flixpatrol = new FlixPatrol({ enabled: false, savePath: '', ttl: 0 });
+      getPageSpy = vi.spyOn(flixpatrol, 'getFlixPatrolHTMLPage');
+      warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    });
+
+    it('reads both language sections for "all", English first', async () => {
+      const weeklyHtml = `
+        <h2>Netflix TOP 10 Movies (in English)</h2>
+        <table>
+          <tr><td><a href="/title/first">First</a></td></tr>
+          <tr><td><a href="/title/second">Second</a></td></tr>
+        </table>
+        <h2>Netflix TOP 10 Movies (in Not English)</h2>
+        <table><tr><td><a href="/title/tercero">Tercero</a></td></tr></table>
+      `;
+      const titles: Record<string, string> = {
+        '/title/first/': 'First',
+        '/title/second/': 'Second',
+        '/title/tercero/': 'Tercero',
+      };
+      getPageSpy.mockImplementation(async (path: string) => (
+        path === WEEKLY_INDEX_PATH ? weeklyHtml : weeklyDetailPage(titles[path])
+      ));
+
+      const items = await flixpatrol.getWeekly('Movies', { ...weeklyConfig, language: 'all' });
+
+      expect(items.map((i) => i.title)).toEqual(['First', 'Second', 'Tercero']);
+    });
+
+    it('fetches /hours/ once for two calls', async () => {
+      getPageSpy.mockResolvedValue(`
+        <h2>Netflix TOP 10 Movies (in English)</h2><table></table>
+        <h2>Netflix TOP 10 TV Shows (in English)</h2><table></table>
+      `);
+
+      await flixpatrol.getWeekly('Movies', weeklyConfig);
+      await flixpatrol.getWeekly('TV Shows', weeklyConfig);
+
+      expect(getPageSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('honours limit', async () => {
+      const weeklyHtml = `
+        <h2>Netflix TOP 10 Movies (in English)</h2>
+        <table>
+          <tr><td><a href="/title/m1">M1</a></td></tr>
+          <tr><td><a href="/title/m2">M2</a></td></tr>
+        </table>
+      `;
+      getPageSpy.mockImplementation(async (path: string) => (
+        path === WEEKLY_INDEX_PATH ? weeklyHtml : weeklyDetailPage('Movie')
+      ));
+
+      const items = await flixpatrol.getWeekly('Movies', { ...weeklyConfig, limit: 1 });
+
+      expect(items).toHaveLength(1);
+    });
+
+    it('does not warn when the heading is present but the table is empty', async () => {
+      getPageSpy.mockResolvedValue('<h2>Netflix TOP 10 Movies (in English)</h2><table></table>');
+
+      // language 'english' on purpose: 'all' would look for a second heading this HTML lacks.
+      await flixpatrol.getWeekly('Movies', { ...weeklyConfig, language: 'english' });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('warns and returns [] when the heading is absent', async () => {
+      getPageSpy.mockResolvedValue('<h2>Something else</h2>');
+
+      const items = await flixpatrol.getWeekly('Movies', weeklyConfig);
+
+      expect(items).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('TOP 10 Movies'));
+    });
+
+    it('throws when /hours/ is the Page Not Found body', async () => {
+      getPageSpy.mockResolvedValue('<title>Page Not Found • FlixPatrol</title>');
+
+      await expect(flixpatrol.getWeekly('Movies', weeklyConfig)).rejects.toThrow(FlixPatrolError);
+    });
+
+    it('resolves the country path from the week index', async () => {
+      getPageSpy.mockImplementation(async (path: string) => (
+        path === WEEKLY_INDEX_PATH
+          ? '<a href="/hours/netflix/2026-037/world/">Netflix</a>'
+          : '<div>country page</div>'
+      ));
+
+      await flixpatrol.getWeekly('Movies', { ...weeklyConfig, location: 'france' });
+
+      expect(getPageSpy).toHaveBeenCalledWith('/hours/netflix/2026-037/france/');
+    });
+
+    it('throws when the platform has no week in the index', async () => {
+      getPageSpy.mockResolvedValue('<div>no weeks here</div>');
+
+      await expect(flixpatrol.getWeekly('Movies', { ...weeklyConfig, location: 'france' }))
+        .rejects.toThrow(FlixPatrolError);
     });
   });
 });

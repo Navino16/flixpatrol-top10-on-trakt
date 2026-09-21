@@ -1,4 +1,4 @@
-import type { FlixPatrolMostWatched, FlixPatrolType } from '../types';
+import type { FlixPatrolMostWatched, FlixPatrolType, FlixPatrolWeekly, FlixPatrolWeeklyPlatform } from '../types';
 
 /**
  * Most-watched path grammar:
@@ -26,4 +26,34 @@ export function buildMostWatchedPath(
   }
 
   return `/hours/netflix/${config.year}/world/${segment}/`;
+}
+
+/** The one page that serves every platform's latest week; also carries the week index. */
+export const WEEKLY_INDEX_PATH = '/hours/';
+
+export function buildWeeklyCountryPath(
+  platform: FlixPatrolWeeklyPlatform,
+  week: string,
+  country: string,
+): string {
+  return `/hours/${platform}/${week}/${country}/`;
+}
+
+const WEEKLY_PLATFORM_LABEL: Record<FlixPatrolWeeklyPlatform, string> = {
+  'netflix': 'Netflix',
+  'amazon-prime': 'Amazon Prime',
+};
+
+// FlixPatrol prints "Not English"; the config says "non-english".
+const WEEKLY_LANGUAGE_LABEL = { english: 'English', 'non-english': 'Not English' } as const;
+
+export function weeklyHeadings(config: FlixPatrolWeekly, type: FlixPatrolType): string[] {
+  if (config.location !== 'world') {
+    return [`TOP 10 ${type} Official Rankings`];
+  }
+  const platform = WEEKLY_PLATFORM_LABEL[config.platform];
+  const languages = config.language === 'all'
+    ? (['english', 'non-english'] as const)
+    : ([config.language] as const);
+  return languages.map((l) => `${platform} TOP 10 ${type} (in ${WEEKLY_LANGUAGE_LABEL[l]})`);
 }
