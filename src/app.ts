@@ -178,8 +178,13 @@ async function main(): Promise<void> {
     });
 
     try {
-      await runPipeline(deps);
+      const summary = await runPipeline(deps);
       await flushPendingDispatches();
+      // run_end already carries the dead paths, so no separate error notification is
+      // dispatched here — but the process must still fail so cron/systemd sees it.
+      if (summary.deadPaths.length > 0) {
+        process.exit(1);
+      }
     } catch (err) {
       await dispatchErrorAndExit(err);
     }

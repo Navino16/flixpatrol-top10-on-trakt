@@ -1,6 +1,6 @@
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
-import { logger, FlixPatrolError } from '../Utils';
+import { logger, FlixPatrolError, FlixPatrolPageNotFoundError } from '../Utils';
 import type { MediaItem } from '../Targets';
 import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
@@ -145,7 +145,7 @@ export class FlixPatrol {
    */
   private static assertPageExists(html: string, path: string): void {
     if (isNotFoundPage(html)) {
-      throw new FlixPatrolError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+      throw new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
     }
   }
 
@@ -349,7 +349,13 @@ export class FlixPatrol {
     if (config.location !== 'world') {
       const week = parseWeeklyWeekIndex(config.platform, indexHtml);
       if (week === null) {
-        throw new FlixPatrolError(`FlixPatrol lists no weekly page for ${config.platform}`);
+        // Not a fetch failure: the platform is simply absent from the /hours/ index this
+        // week, so it is a dead-path skip like any other rather than a fatal error.
+        const deadPath = `/hours/${config.platform}/`;
+        throw new FlixPatrolPageNotFoundError(
+          deadPath,
+          `FlixPatrol lists no weekly page for ${config.platform} — treating ${deadPath} as dead`,
+        );
       }
       path = buildWeeklyCountryPath(config.platform, week, config.location);
       const countryHtml = await this.getFlixPatrolHTMLPage(path);

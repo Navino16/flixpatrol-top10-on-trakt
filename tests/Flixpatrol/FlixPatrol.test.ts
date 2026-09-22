@@ -3,7 +3,6 @@ import type { MockInstance } from 'vitest';
 import { FlixPatrol } from '../../src/Flixpatrol/FlixPatrol';
 import { WEEKLY_INDEX_PATH } from '../../src/Flixpatrol/url';
 import { logger } from '../../src/Utils/Logger';
-import { FlixPatrolError } from '../../src/Utils/Errors';
 import type {
   FlixPatrolTop10,
   FlixPatrolPopular,
@@ -2425,7 +2424,8 @@ describe('FlixPatrol', () => {
     it('throws when /hours/ is the Page Not Found body', async () => {
       getPageSpy.mockResolvedValue('<title>Page Not Found • FlixPatrol</title>');
 
-      await expect(flixpatrol.getWeekly('Movies', weeklyConfig)).rejects.toThrow(FlixPatrolError);
+      await expect(flixpatrol.getWeekly('Movies', weeklyConfig))
+        .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: WEEKLY_INDEX_PATH });
     });
 
     it('resolves the country path from the week index', async () => {
@@ -2440,11 +2440,11 @@ describe('FlixPatrol', () => {
       expect(getPageSpy).toHaveBeenCalledWith('/hours/netflix/2026-037/france/');
     });
 
-    it('throws when the platform has no week in the index', async () => {
+    it('throws a dead-path error naming the platform when it has no week in the index', async () => {
       getPageSpy.mockResolvedValue('<div>no weeks here</div>');
 
       await expect(flixpatrol.getWeekly('Movies', { ...weeklyConfig, location: 'france' }))
-        .rejects.toThrow(FlixPatrolError);
+        .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: '/hours/netflix/' });
     });
   });
 });
@@ -2467,14 +2467,16 @@ describe('listing getters on a page FlixPatrol does not serve', () => {
     const config: FlixPatrolTop10 = {
       platform: 'netflix', location: 'france', fallback: false, privacy: 'private', limit: 10, type: 'both',
     };
-    await expect(flixpatrol.getTop10Sections(config)).rejects.toThrow(/\/top10\/netflix\/france/);
+    await expect(flixpatrol.getTop10Sections(config))
+      .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: '/top10/netflix/france' });
   });
 
   it('getPopular throws and names the path', async () => {
     const config: FlixPatrolPopular = {
       platform: 'wikipedia', privacy: 'private', limit: 10, type: 'movies',
     };
-    await expect(flixpatrol.getPopular('Movies', config)).rejects.toThrow(/\/popular\/movies\/wikipedia/);
+    await expect(flixpatrol.getPopular('Movies', config))
+      .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: '/popular/movies/wikipedia' });
   });
 
   it('getMostWatched throws and names the path', async () => {
@@ -2482,7 +2484,7 @@ describe('listing getters on a page FlixPatrol does not serve', () => {
       enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
     };
     await expect(flixpatrol.getMostWatched('Movies', config))
-      .rejects.toThrow(/\/hours\/netflix\/2024\/world\/movies\//);
+      .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: '/hours/netflix/2024/world/movies/' });
   });
 
   it('getMostHours throws and names the path', async () => {
@@ -2490,7 +2492,10 @@ describe('listing getters on a page FlixPatrol does not serve', () => {
       enabled: true, privacy: 'private', limit: 50, type: 'movies', period: 'total', language: 'all',
     };
     await expect(flixpatrol.getMostHours('Movies', config))
-      .rejects.toThrow(/most-hours-total/);
+      .rejects.toMatchObject({
+        name: 'FlixPatrolPageNotFoundError',
+        path: '/streaming-services/most-hours-total/netflix/',
+      });
   });
 
   it('leaves detail pages alone, so one delisted title cannot fail a whole run', async () => {

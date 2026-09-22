@@ -4,7 +4,7 @@ import type {
 } from '../Targets';
 import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
-import { logger, Utils } from '../Utils';
+import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
 import type {
   NotificationEvent, NotificationPayload, RunSummary,
 } from '../Notifications';
@@ -150,6 +150,34 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     moviesAdded: 0,
     showsAdded: 0,
     durationMs: 0,
+    deadPaths: [],
+  };
+  // Kept alongside summary.deadPaths (bare paths, the machine-readable field consumers
+  // parse) so the run_end notification body can explain itself in prose.
+  const deadPathMessages: string[] = [];
+
+  /**
+   * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead — reported
+   * and skipped, entry left untouched, rather than aborting the other lists still queued.
+   * Any other `FlixPatrolError` stays fatal, since it would hit every list alike.
+   */
+  const skipIfDeadPath = async (listName: string, run: () => Promise<void>): Promise<boolean> => {
+    try {
+      await run();
+      return false;
+    } catch (err) {
+      if (err instanceof FlixPatrolPageNotFoundError) {
+        logger.error(`Skipping "${listName}": ${err.message}`);
+        // Several entries can hit the same dead page — a dead /hours/ index fails every
+        // weekly entry — so the same path must not be reported N times.
+        if (!summary.deadPaths.includes(err.path)) {
+          summary.deadPaths.push(err.path);
+          deadPathMessages.push(err.message);
+        }
+        return true;
+      }
+      throw err;
+    }
   };
 
   /**
@@ -247,18 +275,29 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
       logger.info(`Scraping FlixPatrol ${kindsLabel(entry.type)} for "${listName}"`);
 
+      // Popular and MostWatched build a distinct URL per kind, so a dead page on one kind
+      // must not discard the other: each kind gets its own skipIfDeadPath, and the entry
+      // itself is skipped only once every requested kind died.
       const content: ListContent = {};
+      const kindSucceeded: boolean[] = [];
+
       if (entry.type === 'movies' || entry.type === 'both') {
-        const items = await block.scrape('Movies', entry);
-        const ids = await resolveSection(items, 'movie', listName);
-        if (ids !== null) content.movie = ids;
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
+          const items = await block.scrape('Movies', entry);
+          const ids = await resolveSection(items, 'movie', listName);
+          if (ids !== null) content.movie = ids;
+        })));
       }
 
       if (entry.type === 'shows' || entry.type === 'both') {
-        const items = await block.scrape('TV Shows', entry);
-        const ids = await resolveSection(items, 'show', listName);
-        if (ids !== null) content.show = ids;
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
+          const items = await block.scrape('TV Shows', entry);
+          const ids = await resolveSection(items, 'show', listName);
+          if (ids !== null) content.show = ids;
+        })));
       }
+
+      if (!kindSucceeded.some(Boolean)) continue;
       if (await writeList(content, listName, entry.privacy)) return true;
       summary.listsProcessed++;
     }
@@ -285,23 +324,26 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
     logger.info(`Scraping FlixPatrol ${kindsLabel(top10.type)} for "${baseListName}"`);
 
-    const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
-
     const content: ListContent = {};
-    if (movies.length > 0) {
-      if (rawCounts.movies > movies.length) {
-        logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
+    const skipped = await skipIfDeadPath(baseListName, async () => {
+      const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
+
+      if (movies.length > 0) {
+        if (rawCounts.movies > movies.length) {
+          logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
+        }
+        const ids = await resolveSection(movies, 'movie', baseListName);
+        if (ids !== null) content.movie = ids;
       }
-      const ids = await resolveSection(movies, 'movie', baseListName);
-      if (ids !== null) content.movie = ids;
-    }
-    if (shows.length > 0) {
-      if (rawCounts.shows > shows.length) {
-        logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
+      if (shows.length > 0) {
+        if (rawCounts.shows > shows.length) {
+          logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
+        }
+        const ids = await resolveSection(shows, 'show', baseListName);
+        if (ids !== null) content.show = ids;
       }
-      const ids = await resolveSection(shows, 'show', baseListName);
-      if (ids !== null) content.show = ids;
-    }
+    });
+    if (skipped) continue;
     if (await writeList(content, baseListName, top10.privacy)) return summary;
     summary.listsProcessed++;
   }
@@ -350,9 +392,12 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   summary.durationMs = Date.now() - runStartAt;
   const movedVerb = deps.dryRun ? 'would be added' : 'added';
+  const deadPathsSuffix = deadPathMessages.length > 0
+    ? ` — ${deadPathMessages.length} dead path(s) skipped: ${deadPathMessages.join('; ')}`
+    : '';
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
-    body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}`,
+    body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}${deadPathsSuffix}`,
     timestamp: new Date().toISOString(),
     summary,
   });
