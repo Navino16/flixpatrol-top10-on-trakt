@@ -1,4 +1,6 @@
-import { logger, MdblistError } from '../../Utils';
+import {
+  logger, MdblistError, Utils,
+} from '../../Utils';
 import type { CacheOptions, MdblistOptions } from '../../types';
 import type {
   ListContent, ListPrivacy, ListTarget, MediaItem, MediaKind, TargetBackend,
@@ -43,6 +45,12 @@ interface MdblistPagination {
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
 type Bucket = 'movies' | 'shows';
+
+const RETRY_STATUS_CODES = new Set([500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+// Longer than Floppy's 250/500/1000ms: mdblist is a remote third-party API, so what is
+// retried here is real network latency, not a millisecond-scale SQLite writer lock.
+const RETRY_BACKOFF_MS = [1000, 2000, 4000];
 
 const readSearchResult = (value: unknown): MdblistSearchResult | null => {
   if (!isRecord(value)) return null;
@@ -188,10 +196,11 @@ export class MdblistTarget implements ListTarget {
   }
 
   /**
-   * Single point of passage to the API, appending the key to the query string. Any
-   * status outside `expected` throws an MdblistError.
+   * Single point of passage to the API, one attempt only, appending the key to the query
+   * string. Any status outside `expected` throws an MdblistError; a transport failure
+   * (DNS, ECONNRESET, timeout) throws one carrying no status at all.
    */
-  private async request(
+  private async requestOnce(
     method: HttpMethod,
     path: string,
     body?: unknown,
@@ -222,6 +231,40 @@ export class MdblistTarget implements ListTarget {
       );
     }
     return { status: response.status, payload, headers: response.headers };
+  }
+
+  /**
+   * `requestOnce` with a retry on transient 5xx and on a transport failure (no status at
+   * all). A 4xx is never retried — `isUnsearchable` already handles 400/404/422 by
+   * dropping the item. List creation is not idempotent and goes through `requestOnce`
+   * instead — see `getOrCreateList`.
+   */
+  private async request(
+    method: HttpMethod,
+    path: string,
+    body?: unknown,
+    expected: number[] = [200],
+  ): Promise<{ status: number; payload: unknown; headers: Response['headers'] }> {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+      try {
+        return await this.requestOnce(method, path, body, expected);
+      } catch (error) {
+        const status = error instanceof MdblistError ? error.status : undefined;
+        const retryable = status === undefined || RETRY_STATUS_CODES.has(status);
+        if (!retryable) throw error;
+
+        const reason = (error as Error).message;
+        if (attempt === MAX_RETRIES) {
+          logger.error(`Giving up on ${method} ${path} after ${MAX_RETRIES} attempts: ${reason}`);
+          throw error;
+        }
+        logger.warn(`Retry attempt ${attempt} for ${method} ${path}: ${reason}`);
+        await Utils.sleep(RETRY_BACKOFF_MS[attempt - 1]);
+      }
+    }
+
+    // Unreachable: the loop either returns or throws on its last attempt.
+    throw new MdblistError(`${method} ${path} exhausted its attempts`);
   }
 
   private logRemainingQuota(headers: Response['headers']): void {
@@ -360,12 +403,35 @@ export class MdblistTarget implements ListTarget {
       return 0;
     }
     logger.warn(`List "${listName}" was not found on mdblist, creating it`);
-    const created = await this.request(
-      'POST',
-      '/lists/user/add',
-      { name: listName, private: isPrivate(privacy) },
-      [200, 201],
-    );
+
+    let created: { payload: unknown };
+    try {
+      // `requestOnce`, never `request`: `POST /lists/user/add` is not idempotent, and
+      // under a transient failure a response lost on the wire looks identical to a
+      // creation that never happened, so replaying it can create a duplicate list — the
+      // same trap already hit, and fixed, on Floppy (#533/#536).
+      created = await this.requestOnce(
+        'POST',
+        '/lists/user/add',
+        { name: listName, private: isPrivate(privacy) },
+        [200, 201],
+      );
+    } catch (error) {
+      const reason = (error as Error).message;
+      let reread: Map<string, number>;
+      try {
+        reread = await this.fetchListIndex();
+      } catch (rereadError) {
+        // The re-read failing too must not bury the creation attempt that triggered it.
+        throw new MdblistError(`List creation "${listName}" failed (${reason}), and the recovery `
+          + `re-read failed too: ${(rereadError as Error).message}`);
+      }
+      const committed = reread.get(listName);
+      if (committed === undefined) throw error;
+      logger.warn(`Creating "${listName}" reported ${reason}, but the list exists: reusing it`);
+      return committed;
+    }
+
     const id = readCreatedListId(created.payload);
     if (id === null) throw new MdblistError(`Failed to create list "${listName}"`);
     // Record it so a later lookup in the same run hits the memo instead of paying

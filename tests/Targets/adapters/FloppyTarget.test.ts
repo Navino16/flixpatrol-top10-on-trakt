@@ -435,6 +435,30 @@ describe('FloppyTarget pagination', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('retries a transport failure and succeeds when the retry does', async () => {
+      fetchMock
+        .mockRejectedValueOnce(new Error('fetch failed'))
+        .mockResolvedValueOnce(json({ results: [] }));
+
+      const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+      await vi.runAllTimersAsync();
+
+      expect(await pending).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up with a FloppyError once transport failures exhaust all attempts', async () => {
+      fetchMock.mockRejectedValue(new Error('fetch failed'));
+
+      const assertion = expect(
+        target.resolveMany([{ title: 'X', year: 2000 }], 'movie'),
+      ).rejects.toThrow(FloppyError);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
     it('retries 502, 503 and 504 as well', async () => {
       for (const status of [502, 503, 504]) {
         fetchMock.mockReset();
@@ -458,8 +482,13 @@ describe('FloppyTarget pagination', () => {
    */
   describe('list creation, which cannot be replayed', () => {
     beforeEach(() => {
+      vi.useFakeTimers();
       vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
     const creations = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls
@@ -502,6 +531,20 @@ describe('FloppyTarget pagination', () => {
       await expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public'))
         .rejects.toThrow(/500: Internal server error\./);
     });
+
+    it('names the creation attempt when the recovery re-read also fails', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json({ results: [] })) // lookup: absent
+        .mockResolvedValueOnce(json({ detail: 'Internal server error.' }, 500)) // creation fails, not retried
+        .mockResolvedValue(json({ detail: 'down' }, 503)); // re-read fails on every attempt
+
+      const assertion = expect(target.pushToList({ movie: ['tmdb:1'] }, 'my-list', 'public'))
+        .rejects.toThrow(/500: Internal server error\./);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(creations(fetchMock)).toHaveLength(1);
+    });
   });
 
   it('gives up instead of looping forever when the cursor never ends', async () => {
@@ -528,11 +571,13 @@ describe('FloppyTarget search resilience', () => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     target = new FloppyTarget(options, cacheOptions, false);
+    vi.useFakeTimers();
     vi.spyOn(logger, 'warn').mockImplementation(() => logger);
     vi.spyOn(logger, 'error').mockImplementation(() => logger);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -553,12 +598,19 @@ describe('FloppyTarget search resilience', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Skipping item'));
   });
 
-  it('drops the item on 404 and 422 as well', async () => {
+  it('does not retry a 400, dropping the item after exactly one attempt', async () => {
+    fetchMock.mockResolvedValueOnce(json({ detail: 'Bad request.' }, 400));
+    expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the item on 404 and 422 as well, after exactly one attempt', async () => {
     for (const status of [404, 422]) {
       fetchMock.mockReset();
       fetchMock.mockResolvedValue(json({ detail: 'nope' }, status));
 
       expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     }
   });
 
@@ -575,7 +627,6 @@ describe('FloppyTarget search resilience', () => {
   // A 5xx is retried three times first; exhausting the attempts means the backend is
   // down, which would hit every item, so it must still fail the run.
   it('still fails the run once the 5xx retries are exhausted', async () => {
-    vi.useFakeTimers();
     fetchMock.mockResolvedValue(json({ detail: 'boom' }, 500));
 
     const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
@@ -584,6 +635,5 @@ describe('FloppyTarget search resilience', () => {
     await assertion;
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    vi.useRealTimers();
   });
 });
