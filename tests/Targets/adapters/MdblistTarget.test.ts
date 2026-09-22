@@ -5,7 +5,7 @@ import { MdblistTarget } from '../../../src/Targets/adapters/MdblistTarget';
 import { MdblistError } from '../../../src/Utils/Errors';
 import { logger } from '../../../src/Utils';
 
-const options = { apiKey: 'key' };
+const options = { apiKey: 'key', id: 'main' };
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => ({
@@ -165,7 +165,7 @@ describe('MdblistTarget', () => {
   });
 
   it('writes nothing in dry-run mode', async () => {
-    const dry = new MdblistTarget({ apiKey: 'key' }, cacheOptions, true);
+    const dry = new MdblistTarget({ apiKey: 'key', id: 'main' }, cacheOptions, true);
     fetchMock.mockResolvedValue(json([{ id: 42, name: 'my-list' }]));
     await dry.pushToList({ movie: ['27205'] }, 'my-list', 'public');
     const writes = fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST');

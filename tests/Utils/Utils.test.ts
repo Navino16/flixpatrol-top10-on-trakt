@@ -243,7 +243,24 @@ describe('Utils', () => {
       expect(message).toContain(path.join('./config/.cache', 'movies'));
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).toContain(path.join('./config/.cache', 'resolution-trakt'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-floppy'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-mdblist'));
       expect(message).toMatch(/no longer read/);
+      warn.mockRestore();
+    });
+
+    it('names a pre-multi-target Floppy or mdblist namespace as orphaned', () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+      vi.mocked(fs.existsSync)
+        .mockImplementation((target) => `${target}`.endsWith('resolution-floppy') || `${target}`.endsWith('resolution-mdblist'));
+
+      Utils.warnAboutOrphanedCaches('./config/.cache');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0][0] as unknown as string;
+      expect(message).toContain(path.join('./config/.cache', 'resolution-floppy'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-mdblist'));
+      expect(message).not.toContain(path.join('./config/.cache', 'resolution-trakt'));
       warn.mockRestore();
     });
 

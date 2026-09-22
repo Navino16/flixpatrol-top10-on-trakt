@@ -4,10 +4,14 @@ import { logger } from './Logger';
 import { MDBLIST_TEMPLATE_API_KEY } from '../types';
 
 /**
- * Cache directories no longer read: the 2.x scraping layout, plus the resolution
- * namespace of the Trakt backend removed in 4.0.0.
+ * Cache directories no longer read: the 2.x scraping layout, the resolution namespace
+ * of the Trakt backend removed in 4.0.0, and the pre-multi-target Floppy/mdblist
+ * namespaces — now `resolution-<backend>-<id>`, since a single `resolution-<backend>`
+ * would collide between two targets of the same backend.
  */
-const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows', 'resolution-trakt'] as const;
+const ORPHANED_CACHE_DIRECTORIES = [
+  'movies', 'tv-shows', 'resolution-trakt', 'resolution-floppy', 'resolution-mdblist',
+] as const;
 
 export class Utils {
   public static sleep(time: number) {
