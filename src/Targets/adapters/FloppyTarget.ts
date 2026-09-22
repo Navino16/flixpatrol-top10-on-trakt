@@ -211,7 +211,8 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * `requestOnce` with a retry on transient 5xx.
+   * `requestOnce` with a retry on transient 5xx and on a transport failure (no status
+   * at all — DNS, ECONNRESET, timeout).
    *
    * A 5xx is retried because Floppy on SQLite — the self-hosted default — answers 500
    * when a write loses the race for the single writer lock, and every verb routed here is
@@ -230,7 +231,8 @@ export class FloppyTarget implements ListTarget {
         return await this.requestOnce(method, path, body, expected);
       } catch (error) {
         const status = error instanceof FloppyError ? error.status : undefined;
-        if (status === undefined || !RETRY_STATUS_CODES.has(status)) throw error;
+        const retryable = status === undefined || RETRY_STATUS_CODES.has(status);
+        if (!retryable) throw error;
 
         const reason = (error as Error).message;
         if (attempt === MAX_RETRIES) {

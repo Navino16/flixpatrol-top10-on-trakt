@@ -435,6 +435,30 @@ describe('FloppyTarget pagination', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('retries a transport failure and succeeds when the retry does', async () => {
+      fetchMock
+        .mockRejectedValueOnce(new Error('fetch failed'))
+        .mockResolvedValueOnce(json({ results: [] }));
+
+      const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+      await vi.runAllTimersAsync();
+
+      expect(await pending).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up with a FloppyError once transport failures exhaust all attempts', async () => {
+      fetchMock.mockRejectedValue(new Error('fetch failed'));
+
+      const assertion = expect(
+        target.resolveMany([{ title: 'X', year: 2000 }], 'movie'),
+      ).rejects.toThrow(FloppyError);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
     it('retries 502, 503 and 504 as well', async () => {
       for (const status of [502, 503, 504]) {
         fetchMock.mockReset();
@@ -553,12 +577,19 @@ describe('FloppyTarget search resilience', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Skipping item'));
   });
 
-  it('drops the item on 404 and 422 as well', async () => {
+  it('does not retry a 400, dropping the item after exactly one attempt', async () => {
+    fetchMock.mockResolvedValueOnce(json({ detail: 'Bad request.' }, 400));
+    expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the item on 404 and 422 as well, after exactly one attempt', async () => {
     for (const status of [404, 422]) {
       fetchMock.mockReset();
       fetchMock.mockResolvedValue(json({ detail: 'nope' }, status));
 
       expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     }
   });
 

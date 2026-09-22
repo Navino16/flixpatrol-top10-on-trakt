@@ -172,9 +172,17 @@ describe('MdblistTarget', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('raises an MdblistError on a failing response', async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: 'boom' }, 500));
-    await expect(target.pushToList({ movie: ['1'] }, 'my-list', 'public')).rejects.toThrow(MdblistError);
+  it('raises an MdblistError on a failing response, once the 5xx retries are exhausted', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    fetchMock.mockResolvedValue(json({ error: 'boom' }, 500));
+
+    const assertion = expect(target.pushToList({ movie: ['1'] }, 'my-list', 'public'))
+      .rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+    vi.useRealTimers();
   });
 
   /**
@@ -457,6 +465,134 @@ describe('MdblistTarget list index memo', () => {
 });
 
 /**
+ * mdblist is a remote third-party API, unlike Floppy which is self-hosted — the backoff
+ * (1s/2s/4s) is deliberately longer than Floppy's, since it waits out real network
+ * latency rather than a millisecond-scale SQLite lock.
+ */
+describe('MdblistTarget retry on transient failures', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: MdblistTarget;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new MdblistTarget(options, cacheOptions, false);
+    vi.useFakeTimers();
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('retries a transport failure and resolves when the retry succeeds', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce(json({ search: [] }));
+
+    const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+    await vi.runAllTimersAsync();
+
+    expect(await pending).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up with an MdblistError once transport failures exhaust all attempts', async () => {
+    fetchMock.mockRejectedValue(new Error('fetch failed'));
+
+    const assertion = expect(
+      target.resolveMany([{ title: 'X', year: 2000 }], 'movie'),
+    ).rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries 502, 503 and 504 as well', async () => {
+    for (const status of [502, 503, 504]) {
+      fetchMock.mockReset();
+      fetchMock
+        .mockResolvedValueOnce(json({ error: 'nope' }, status))
+        .mockResolvedValueOnce(json({ search: [] }));
+
+      const pending = target.resolveMany([{ title: 'X', year: 2000 }], 'movie');
+      await vi.runAllTimersAsync();
+      await pending;
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it('never retries a 4xx outside the unsearchable set, which carries meaning rather than a fault', async () => {
+    fetchMock.mockResolvedValue(json({ error: 'nope' }, 401));
+
+    const assertion = expect(
+      target.resolveMany([{ title: 'X', year: 2000 }], 'movie'),
+    ).rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `POST /lists/user/add` is not idempotent: a response lost on the wire looks identical
+ * to a creation that never happened, so it must never go through the retrying `request`
+ * — the same trap already hit, and fixed, on Floppy (#533/#536).
+ */
+describe('MdblistTarget list creation, which cannot be replayed', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let target: MdblistTarget;
+
+  const creations = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls
+    .filter((c) => (c[0] as string).includes('/lists/user/add'));
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    target = new MdblistTarget(options, cacheOptions, false);
+    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('posts the creation once and adopts the list a failed POST had committed anyway', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([])) // index: absent
+      .mockResolvedValueOnce(json({ error: 'boom' }, 500)) // creation fails, not retried
+      .mockResolvedValueOnce(json([{ id: 42, name: 'my-list' }])) // re-read: it exists
+      .mockResolvedValueOnce(json({ movies: [], shows: [] }))
+      .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
+
+    await target.pushToList({ movie: ['27205'] }, 'my-list', 'public');
+
+    expect(creations(fetchMock)).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/lists/user?'))).toHaveLength(2);
+  });
+
+  it('reports the original failure when the re-read finds nothing', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([]))
+      .mockResolvedValueOnce(json({ error: 'boom' }, 500))
+      .mockResolvedValueOnce(json([]));
+
+    await expect(target.pushToList({ movie: ['27205'] }, 'my-list', 'public'))
+      .rejects.toThrow(MdblistError);
+
+    expect(creations(fetchMock)).toHaveLength(1);
+  });
+});
+
+/**
  * mdblist rejects anything past Latin-1 in `query` with 400 `Invalid search query` —
  * measured against the live API: curly quotes, dashes, ellipsis and CJK all fail, while
  * `é` passes. A single unsearchable title used to abort the whole run (reported by a
@@ -471,6 +607,7 @@ describe('MdblistTarget search resilience', () => {
     vi.stubGlobal('fetch', fetchMock);
     target = new MdblistTarget(options, cacheOptions, false);
     vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    vi.spyOn(logger, 'error').mockImplementation(() => logger);
   });
 
   afterEach(() => {
@@ -522,12 +659,19 @@ describe('MdblistTarget search resilience', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Skipping item'));
   });
 
-  it('drops the item on 404 and 422 as well', async () => {
+  it('does not retry a 400, dropping the item after exactly one attempt', async () => {
+    fetchMock.mockResolvedValueOnce(json({ message: 'Invalid search query' }, 400));
+    expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the item on 404 and 422 as well, after exactly one attempt', async () => {
     for (const status of [404, 422]) {
       fetchMock.mockReset();
       fetchMock.mockResolvedValue(json({ message: 'nope' }, status));
 
       expect(await target.resolveMany([{ title: 'X', year: 2000 }], 'movie')).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     }
   });
 
@@ -543,17 +687,25 @@ describe('MdblistTarget search resilience', () => {
     }
   });
 
-  it('still fails the run on a 5xx', async () => {
+  it('still fails the run on a 5xx once the retries are exhausted', async () => {
+    vi.useFakeTimers();
     fetchMock.mockResolvedValue(json({ error: 'boom' }, 503));
 
-    await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+    const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
       .rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+    vi.useRealTimers();
   });
 
-  it('still fails the run on a transport error, which carries no status', async () => {
+  it('still fails the run on a transport error once the retries are exhausted', async () => {
+    vi.useFakeTimers();
     fetchMock.mockRejectedValue(new Error('fetch failed'));
 
-    await expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
+    const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
       .rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+    vi.useRealTimers();
   });
 });
