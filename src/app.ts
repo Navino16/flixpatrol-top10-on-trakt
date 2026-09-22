@@ -115,7 +115,7 @@ async function bootstrapConfigs(): Promise<{
 
     // Built exactly once per process: the daemon auth gate below and every
     // scheduled run then share one adapter, and one resolution cache. Only the first
-    // configured target is wired up for now; running every entry is Task 6's job.
+    // configured target is wired up; writing every entry needs the multi-target loop.
     const target = createTarget(targetsOptions[0], cacheOptions, dryRun);
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,

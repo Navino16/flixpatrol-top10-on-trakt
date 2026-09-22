@@ -662,7 +662,7 @@ describe('GetAndValidateConfigs', () => {
           expect(message).toContain('"type": "mdblist"');
           expect(message).not.toContain('my-id');
           expect(message).not.toContain('my-secret');
-          expect(message).toContain('Credentials live in the `Target` block itself');
+          expect(message).toContain('Credentials live inside each `Targets` entry');
           expect(message).toContain('./config/.trakt');
           // Not a schema dump.
           expect(message).not.toMatch(/invalid discriminator/i);
@@ -681,6 +681,22 @@ describe('GetAndValidateConfigs', () => {
           expect(message).toContain('"type": "mdblist"');
           expect(message).toContain('"apiKey": "<your mdblist API key>"');
           expect(message).not.toContain('unrelated');
+        });
+
+        // A genuinely empty config — nothing migrated yet, nothing left over either — must
+        // still get a block to paste, not a bare Zod "expected array, received undefined".
+        it('gives an example Targets block on an empty configuration', () => {
+          useConfig({});
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetsOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).toContain('"Targets"');
+          expect(message).toContain('"type": "mdblist"');
         });
       });
 

@@ -105,7 +105,7 @@ function renderTargetsBlock(
     return `      ${JSON.stringify(key)}: ${JSON.stringify(carried ?? placeholder)}`;
   });
   const body = [
-    `      "id": ${JSON.stringify(type)}`,
+    '      "id": "main"',
     `      "type": ${JSON.stringify(type)}`,
     ...fields,
   ].join(',\n');
@@ -115,7 +115,7 @@ function renderTargetsBlock(
 /** "Then remove the old `X`, `Y` blocks." — or, when there is none, that there never was one. */
 function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
   if (presentObsoleteBlocks.length === 0) {
-    return 'Credentials live in the `Target` block itself: there is no separate root-level '
+    return 'Credentials live inside each `Targets` entry: there is no separate root-level '
       + 'credential block.';
   }
   return `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
@@ -328,11 +328,10 @@ export class GetAndValidateConfigs {
         return parsed.data;
       }
 
-      // A singular `Target` — or a leftover root `Trakt` block with neither `Target` nor
-      // `Targets` yet, the one shape 2.17.0 and earlier ever shipped — is an unambiguous
-      // pre-4.0.0 file, so it gets the block to paste rather than a discriminated-union
-      // error saying nothing about what to do next.
-      if (rawTargets === undefined && (config.has('Target') || presentObsoleteBlocks.includes('Trakt'))) {
+      // Absent `Targets` covers every pre-4.0.0 shape, including an empty config: it gets
+      // the block to paste rather than a raw discriminated-union error saying nothing
+      // about what to do next.
+      if (rawTargets === undefined) {
         const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
         throw new ConfigurationError(
           buildTargetsMigrationMessage(isRecord(rawTarget) ? rawTarget : undefined, presentObsoleteBlocks),
