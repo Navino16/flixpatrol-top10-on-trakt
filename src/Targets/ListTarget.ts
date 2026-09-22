@@ -1,3 +1,7 @@
+import type { ListPrivacy } from '../types';
+
+export type { ListPrivacy };
+
 /** The only two media kinds this project synchronises. */
 export type MediaKind = 'movie' | 'show';
 
@@ -6,9 +10,6 @@ export type MediaKind = 'movie' | 'show';
  * movies-first whatever the key order it was handed.
  */
 export const MEDIA_KINDS: readonly MediaKind[] = ['movie', 'show'];
-
-/** Privacy vocabulary of the configuration. */
-export type ListPrivacy = 'private' | 'public';
 
 export type TargetBackend = 'floppy' | 'mdblist';
 
