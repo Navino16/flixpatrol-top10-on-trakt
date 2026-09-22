@@ -248,7 +248,7 @@ describe('Utils', () => {
       warn.mockRestore();
     });
 
-    it('warns when only one of the two directories is left', () => {
+    it('warns when only one of the three directories is left', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync)
         .mockImplementation((target) => `${target}`.endsWith('tv-shows'));
@@ -262,7 +262,7 @@ describe('Utils', () => {
       warn.mockRestore();
     });
 
-    it('stays silent when neither directory exists', () => {
+    it('stays silent when none of the directories exist', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
