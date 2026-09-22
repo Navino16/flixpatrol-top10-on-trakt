@@ -361,6 +361,8 @@ If there is any configuration error, the tool will exit with information about t
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                                     | true                                       |
 | kids            | Get Kids Top 10 (Netflix only, requires specific country)                                  | No        | true, false                                                                                                                                     | false                                      |
 
+**Note on `fallback`:** The fallback is tried only when the configured location exists but has no rankings (empty chart). If the location does not exist for that platform (e.g. Hulu for Russia), the entry is skipped, the list stays unchanged, and the run reports a dead path — `fallback` cannot fix that, as it would silently fill the list with the wrong location's content.
+
 </details>
 
 <details>
