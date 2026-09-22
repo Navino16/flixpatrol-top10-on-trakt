@@ -272,21 +272,29 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
       logger.info(`Scraping FlixPatrol ${kindsLabel(entry.type)} for "${listName}"`);
 
+      // Popular and MostWatched build a distinct URL per kind, so a dead page on one kind
+      // must not discard the other: each kind gets its own skipIfDeadPath, and the entry
+      // itself is skipped only once every requested kind died.
       const content: ListContent = {};
-      const skipped = await skipIfDeadPath(listName, async () => {
-        if (entry.type === 'movies' || entry.type === 'both') {
+      const kindSucceeded: boolean[] = [];
+
+      if (entry.type === 'movies' || entry.type === 'both') {
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
           const items = await block.scrape('Movies', entry);
           const ids = await resolveSection(items, 'movie', listName);
           if (ids !== null) content.movie = ids;
-        }
+        })));
+      }
 
-        if (entry.type === 'shows' || entry.type === 'both') {
+      if (entry.type === 'shows' || entry.type === 'both') {
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
           const items = await block.scrape('TV Shows', entry);
           const ids = await resolveSection(items, 'show', listName);
           if (ids !== null) content.show = ids;
-        }
-      });
-      if (skipped) continue;
+        })));
+      }
+
+      if (!kindSucceeded.some(Boolean)) continue;
       if (await writeList(content, listName, entry.privacy)) return true;
       summary.listsProcessed++;
     }

@@ -959,10 +959,10 @@ describe('runPipeline dead FlixPatrol paths', () => {
     expect(summary.listsProcessed).toBe(1);
   });
 
-  // Movies scraped fine, but the shows half of this `both` entry is dead: nothing must be
-  // written for either kind, since `content` is only handed to writeList once both kinds
-  // of the same entry have been attempted — see processBlock.
-  it('writes nothing for a `both` entry when only one of its two kinds hits a dead path', async () => {
+  // Movies scraped fine, but the shows half of this `both` entry is dead: the movies half
+  // is still written, and the `show` key is left absent from the pushed content rather
+  // than set to `[]` — see the ListContent tri-state in src/Targets/ListTarget.ts.
+  it('writes the surviving kind for a `both` entry when only one of its two kinds hits a dead path', async () => {
     const config = [{
       platform: 'wikipedia', privacy: 'private', limit: 10, type: 'both', name: 'half-dead',
     }] as unknown as RunPipelineDeps['flixPatrolPopulars'];
@@ -976,8 +976,88 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     const summary = await runPipeline(baseDeps({ flixPatrolPopulars: config }));
 
+    expect(pushToList).toHaveBeenCalledTimes(1);
+    const content = contentOfWrite(0);
+    expect(content.movie).toBeDefined();
+    expect('show' in content).toBe(false);
+    expect(summary.deadPaths).toEqual([path]);
+    expect(summary.listsProcessed).toBe(1);
+  });
+
+  it('skips a `both` entry entirely when both of its kinds hit a dead path', async () => {
+    const config = [{
+      platform: 'wikipedia', privacy: 'private', limit: 10, type: 'both', name: 'all-dead',
+    }] as unknown as RunPipelineDeps['flixPatrolPopulars'];
+    const moviePath = '/popular/movies/wikipedia';
+    const showPath = '/popular/tv-shows/wikipedia';
+    getPopular.mockImplementation(async (kind: unknown) => {
+      const path = kind === 'TV Shows' ? showPath : moviePath;
+      throw new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+    });
+
+    const summary = await runPipeline(baseDeps({ flixPatrolPopulars: config }));
+
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(summary.deadPaths.sort()).toEqual([moviePath, showPath].sort());
+    expect(summary.listsProcessed).toBe(0);
+  });
+
+  it('skips a single-kind entry (type: "movies") whose page is dead', async () => {
+    const config = [{
+      platform: 'wikipedia', privacy: 'private', limit: 10, type: 'movies', name: 'dead-movies-only',
+    }] as unknown as RunPipelineDeps['flixPatrolPopulars'];
+    const path = '/popular/movies/wikipedia';
+    getPopular.mockRejectedValueOnce(
+      new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`),
+    );
+
+    const summary = await runPipeline(baseDeps({ flixPatrolPopulars: config }));
+
     expect(pushToList).not.toHaveBeenCalled();
     expect(summary.deadPaths).toEqual([path]);
+    expect(summary.listsProcessed).toBe(0);
+  });
+
+  // Change A: a non-'world' Weekly entry whose platform has no listed week is a dead
+  // FlixPatrol path (/hours/{platform}/), not a fatal error — see FlixPatrol.getWeekly.
+  it('skips a Weekly entry whose platform has no listed week, and continues the run', async () => {
+    const deadPath = '/hours/netflix/';
+    getWeekly.mockRejectedValueOnce(
+      new FlixPatrolPageNotFoundError(deadPath, `FlixPatrol lists no weekly page for netflix — treating ${deadPath} as dead`),
+    );
+
+    const summary = await runPipeline(baseDeps({
+      flixPatrolWeekly: weeklyConfig({ type: 'movies', location: 'france' }),
+    }));
+
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(summary.deadPaths).toEqual([deadPath]);
+    expect(summary.listsProcessed).toBe(0);
+  });
+
+  // The second entry uses location 'world' rather than a country: amazon-prime + a
+  // country is filtered out earlier by isAmazonCountryWeekly, so 'world' is the only way
+  // to reach getWeekly on that platform here — the path naming under test does not
+  // depend on which branch of getWeekly threw.
+  it('records two distinct dead paths when two different Weekly platforms have no listed week', async () => {
+    const netflixPath = '/hours/netflix/';
+    const amazonPath = '/hours/amazon-prime/';
+    getWeekly
+      .mockRejectedValueOnce(
+        new FlixPatrolPageNotFoundError(netflixPath, `FlixPatrol lists no weekly page for netflix — treating ${netflixPath} as dead`),
+      )
+      .mockRejectedValueOnce(
+        new FlixPatrolPageNotFoundError(amazonPath, `FlixPatrol lists no weekly page for amazon-prime — treating ${amazonPath} as dead`),
+      );
+
+    const summary = await runPipeline(baseDeps({
+      flixPatrolWeekly: [
+        ...weeklyConfig({ type: 'movies', platform: 'netflix', location: 'france' }),
+        ...weeklyConfig({ type: 'movies', platform: 'amazon-prime', location: 'world' }),
+      ],
+    }));
+
+    expect(summary.deadPaths.sort()).toEqual([amazonPath, netflixPath].sort());
     expect(summary.listsProcessed).toBe(0);
   });
 

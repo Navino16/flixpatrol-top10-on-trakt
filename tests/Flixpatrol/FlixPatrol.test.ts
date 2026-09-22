@@ -2440,11 +2440,11 @@ describe('FlixPatrol', () => {
       expect(getPageSpy).toHaveBeenCalledWith('/hours/netflix/2026-037/france/');
     });
 
-    it('throws when the platform has no week in the index', async () => {
+    it('throws a dead-path error naming the platform when it has no week in the index', async () => {
       getPageSpy.mockResolvedValue('<div>no weeks here</div>');
 
       await expect(flixpatrol.getWeekly('Movies', { ...weeklyConfig, location: 'france' }))
-        .rejects.toThrow(FlixPatrolError);
+        .rejects.toMatchObject({ name: 'FlixPatrolPageNotFoundError', path: '/hours/netflix/' });
     });
   });
 });
