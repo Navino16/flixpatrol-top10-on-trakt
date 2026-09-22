@@ -220,17 +220,51 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
 };
 
 /**
+ * An id becomes a path segment of the resolution cache (`resolution-<backend>-<id>`), so the
+ * pattern excludes anything that could escape the cache directory.
+ */
+export const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+const TargetIdSchema = z.string()
+  .min(1, 'id must not be empty')
+  .max(32, 'id must be at most 32 characters')
+  .regex(TARGET_ID_PATTERN, 'id must start with a lowercase letter or digit and contain only '
+    + 'lowercase letters, digits, hyphens and underscores');
+
+/**
  * The backend selector and its credentials form one discriminated union rather than a
  * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
  * backend needs and "type: floppy with only mdblist credentials" is not representable.
  */
-export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
-export const MdblistTargetSchema = MdblistOptionsSchema.extend({ type: z.literal('mdblist') });
+export const FloppyTargetSchema = FloppyOptionsSchema.extend({
+  type: z.literal('floppy'),
+  id: TargetIdSchema,
+});
+export const MdblistTargetSchema = MdblistOptionsSchema.extend({
+  type: z.literal('mdblist'),
+  id: TargetIdSchema,
+});
 
 export const TargetSchema = z.discriminatedUnion('type', [
   FloppyTargetSchema,
   MdblistTargetSchema,
 ]);
+
+export const TargetsSchema = z.array(TargetSchema)
+  .min(1, 'Targets must contain at least one entry')
+  .superRefine((targets, ctx) => {
+    const seen = new Set<string>();
+    targets.forEach((target, index) => {
+      if (seen.has(target.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: `Duplicate target id "${target.id}" — every entry of \`Targets\` needs a unique id.`,
+        });
+      }
+      seen.add(target.id);
+    });
+  });
 
 export const CacheOptionsSchema = z.object({
   enabled: z.boolean(),

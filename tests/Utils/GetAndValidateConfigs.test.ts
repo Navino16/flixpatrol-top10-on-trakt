@@ -10,7 +10,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
-import { MDBLIST_TEMPLATE_API_KEY, ListPrivacySchema } from '../../src/types';
+import { MDBLIST_TEMPLATE_API_KEY, ListPrivacySchema, TargetsSchema } from '../../src/types';
 
 vi.mock('config', () => ({
   default: {
@@ -522,17 +522,17 @@ describe('GetAndValidateConfigs', () => {
       };
 
       it('returns the inlined floppy credentials', () => {
-        useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
+        useConfig({ Target: { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
 
         expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
-          type: 'floppy', url: 'http://floppy:8000', apiKey: 'token',
+          id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token',
         });
       });
 
       it('returns the inlined mdblist credentials', () => {
-        useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
+        useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: 'key' } });
 
-        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({ type: 'mdblist', apiKey: 'key' });
+        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({ id: 'main', type: 'mdblist', apiKey: 'key' });
       });
 
       it('throws when url is not a valid URL', () => {
@@ -673,17 +673,17 @@ describe('GetAndValidateConfigs', () => {
         // Floppy ships no template credential, so nothing can be left unreplaced
         // for it and the guard must stay out of the way.
         it('leaves floppy alone, since it ships no template credential', () => {
-          useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
+          useConfig({ Target: { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
           expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
         });
 
         it('accepts a real mdblist api key', () => {
-          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
+          useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: 'key' } });
           expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
         });
 
         it('rejects an untouched mdblist template configuration', () => {
-          useConfig({ Target: { type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY } });
+          useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY } });
 
           expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
 
@@ -697,7 +697,7 @@ describe('GetAndValidateConfigs', () => {
       // Dead config is not a reason to refuse to start: a correct migration that
       // left the old block behind must boot, with a warning and nothing more.
       describe('obsolete root-level blocks alongside a valid Target', () => {
-        const validTarget = { type: 'mdblist', apiKey: 'key' };
+        const validTarget = { id: 'main', type: 'mdblist', apiKey: 'key' };
 
         it('starts normally and warns once when a root Trakt block is left over', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
@@ -782,8 +782,8 @@ describe('GetAndValidateConfigs', () => {
         [block]: privacies.map(listEntry),
       } as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1]);
 
-      const mdblist = { type: 'mdblist', apiKey: 'key' } as const;
-      const floppy = { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
+      const mdblist = { id: 'main', type: 'mdblist', apiKey: 'key' } as const;
+      const floppy = { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
 
       it('accepts private and public on every backend', () => {
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private', 'public'])))
@@ -847,6 +847,33 @@ describe('GetAndValidateConfigs', () => {
           warn.mockRestore();
         });
       });
+    });
+  });
+
+  describe('TargetsSchema', () => {
+    const mdblist = (id: string) => ({ id, type: 'mdblist' as const, apiKey: 'key' });
+
+    it('accepts two entries sharing a backend type', () => {
+      const parsed = TargetsSchema.safeParse([mdblist('main'), mdblist('backup')]);
+      expect(parsed.success).toBe(true);
+    });
+
+    it('rejects an empty array', () => {
+      expect(TargetsSchema.safeParse([]).success).toBe(false);
+    });
+
+    it('names the duplicated id', () => {
+      const parsed = TargetsSchema.safeParse([mdblist('main'), mdblist('main')]);
+      expect(parsed.success).toBe(false);
+      expect(JSON.stringify(parsed.error?.issues)).toContain('main');
+    });
+
+    it.each(['Main', 'my target', '-lead', 'a'.repeat(33), ''])('rejects the id %j', (id) => {
+      expect(TargetsSchema.safeParse([mdblist(id)]).success).toBe(false);
+    });
+
+    it.each(['main', 'floppy-perso', 'mdblist_2', 'a'])('accepts the id %j', (id) => {
+      expect(TargetsSchema.safeParse([mdblist(id)]).success).toBe(true);
     });
   });
 
