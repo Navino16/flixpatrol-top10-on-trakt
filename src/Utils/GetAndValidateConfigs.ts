@@ -59,7 +59,7 @@ function validateConfig<T>(schema: z.ZodSchema<T>, data: unknown, context: strin
   return result.data;
 }
 
-/** Every list block, as `checkTargetCompatibility` needs all five at once. */
+/** Every list block, bundled for `checkTargetCompatibility` even though it only reads one today. */
 export interface ListConfigs {
   FlixPatrolTop10: FlixPatrolTop10[];
   FlixPatrolPopular: FlixPatrolPopular[];
@@ -113,6 +113,16 @@ function renderTargetBlock(
   return `  "Target": {\n${body}\n  }`;
 }
 
+/** "Then remove the old `X`, `Y` blocks." — or, when there is none, that there never was one. */
+function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
+  if (presentObsoleteBlocks.length === 0) {
+    return 'Credentials live in the `Target` block itself: there is no separate root-level '
+      + 'credential block.';
+  }
+  return `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
+    + `block${presentObsoleteBlocks.length > 1 ? 's' : ''}.`;
+}
+
 /**
  * Builds the migration message. It shows the block to write rather than the schema
  * error, whose "invalid discriminator value" says nothing about what to do next.
@@ -127,11 +137,6 @@ function buildMigrationMessage(
   const head = presentObsoleteBlocks.includes(sourceBlock)
     ? `Replace your root-level \`${sourceBlock}\` block with:`
     : 'Your `Target` block must now carry the credentials of the selected backend. Replace it with:';
-  const tail = presentObsoleteBlocks.length > 0
-    ? `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
-      + `block${presentObsoleteBlocks.length > 1 ? 's' : ''}.`
-    : 'Credentials live in the `Target` block itself: there is no separate root-level '
-      + 'credential block.';
 
   return [
     'Configuration format changed in 3.0.0.',
@@ -142,7 +147,36 @@ function buildMigrationMessage(
     // wrote most recently rather than the obsolete block's.
     renderTargetBlock(type, [targetRecord, obsoleteRecord]),
     '',
-    tail,
+    buildRemovalTail(presentObsoleteBlocks),
+  ].join('\n');
+}
+
+/**
+ * Builds the message for a Trakt-flavoured configuration: a root-level `Trakt` block, a
+ * `Target.type` of `"trakt"`, or both. Trakt was removed outright in 4.0.0 rather than
+ * renamed like Floppy/mdblist, and nothing in a Trakt config maps onto either surviving
+ * backend, so this offers both instead of guessing one on the user's behalf.
+ */
+function buildTraktRemovedMessage(
+  presentObsoleteBlocks: ObsoleteBlockName[],
+  targetRecord: Record<string, unknown> | undefined,
+): string {
+  const head = presentObsoleteBlocks.includes('Trakt')
+    ? 'Replace your root-level `Trakt` block with one of:'
+    : 'Your `Target` block still selects the removed `trakt` backend. Replace it with one of:';
+
+  return [
+    'Trakt support was removed in 4.0.0.',
+    '',
+    head,
+    '',
+    renderTargetBlock('floppy', [targetRecord]),
+    '',
+    'or',
+    '',
+    renderTargetBlock('mdblist', [targetRecord]),
+    '',
+    buildRemovalTail(presentObsoleteBlocks),
   ].join('\n');
 }
 
@@ -291,12 +325,22 @@ export class GetAndValidateConfigs {
    *
    * Two signals mark an unmigrated file: a root-level credential block nothing reads
    * any more, and a `Target` carrying only the selector — including no `Target` at all.
+   * A Trakt-flavoured file is detected first and handled separately, since Trakt has no
+   * single replacement backend to default to.
    */
   private static detectUnmigratedConfig(
     rawTarget: unknown,
     presentObsoleteBlocks: ObsoleteBlockName[],
   ): string | null {
     const targetRecord = isRecord(rawTarget) ? rawTarget : undefined;
+    const selectedType = targetRecord?.type;
+
+    // Trakt was removed, not renamed: unlike Floppy/mdblist there is no single backend to
+    // default to, so an explicit `type: "trakt"`, or a leftover root `Trakt` block with no
+    // backend chosen yet, always offers both rather than guessing one for the user.
+    if (selectedType === 'trakt' || (presentObsoleteBlocks.includes('Trakt') && selectedType === undefined)) {
+      return buildTraktRemovedMessage(presentObsoleteBlocks, targetRecord);
+    }
 
     // A `Target` present but not an object is not an unmigrated shape, so let the schema
     // report it instead of guessing a migration.
@@ -310,12 +354,10 @@ export class GetAndValidateConfigs {
     if (presentObsoleteBlocks.length === 0 && !selectorOnly) return null;
 
     // Which backend to show: what the user selected, else the single obsolete block they
-    // kept, else the default. A root-level `Trakt` block no longer maps to a backend, so
-    // it falls through to the mdblist default rather than carrying its values across.
-    const selected = targetRecord?.type;
+    // kept, else the default.
     let type: TargetBackendName = 'mdblist';
-    if (isBackendName(selected)) {
-      type = selected;
+    if (isBackendName(selectedType)) {
+      type = selectedType;
     } else if (presentObsoleteBlocks.length === 1) {
       type = targetBackend
         .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'mdblist';

@@ -562,10 +562,11 @@ describe('GetAndValidateConfigs', () => {
       // A raw Zod dump on an unmigrated file reads "invalid discriminator value" and
       // tells the user nothing. These lock the actionable message instead.
       describe('unmigrated configurations', () => {
-        // Trakt is no longer a selectable backend, so a root-level `Trakt` block can no
-        // longer be carried into a `Target` of that type: the message falls back to the
-        // mdblist placeholder template instead.
-        it('falls back to the mdblist placeholder template when only a root Trakt block is present', () => {
+        // Trakt is no longer a selectable backend at all (removed, not renamed), so a
+        // root-level `Trakt` block with no `Target` yet offers BOTH surviving backends,
+        // names the root `Trakt` block it must replace, and points at 4.0.0 rather than
+        // the unrelated 3.0.0 incident.
+        it('names the root Trakt block and offers both surviving backends when only a root Trakt block is present', () => {
           useConfig({
             Trakt: { saveFile: './config/.trakt', clientId: 'my-id', clientSecret: 'my-secret' },
           });
@@ -577,7 +578,11 @@ describe('GetAndValidateConfigs', () => {
             message = (err as Error).message;
           }
 
-          expect(message).toContain('Configuration format changed in 3.0.0.');
+          expect(message).toContain('Trakt support was removed in 4.0.0.');
+          expect(message).toContain('Replace your root-level `Trakt` block with one of:');
+          expect(message).toContain('"type": "floppy"');
+          expect(message).toContain('"url": "<your Floppy instance URL>"');
+          expect(message).toContain('"apiKey": "<your Floppy API token>"');
           expect(message).toContain('"type": "mdblist"');
           expect(message).toContain('"apiKey": "<your mdblist API key>"');
           expect(message).not.toContain('my-id');
@@ -585,6 +590,34 @@ describe('GetAndValidateConfigs', () => {
           expect(message).toContain('Then remove the old `Trakt` block.');
           // Not a schema dump.
           expect(message).not.toMatch(/invalid|expected|Target\.type:/i);
+        });
+
+        // The modal upgrade path: a 3.1.x user who followed the 3.0.0 instructions,
+        // deleted their root `Trakt` block, and kept `Target.type: "trakt"`. Without this,
+        // the schema's raw "Invalid discriminator value" never mentions Trakt or 4.0.0.
+        it('names the removed trakt backend and offers both surviving backends when Target.type is "trakt"', () => {
+          useConfig({
+            Target: {
+              type: 'trakt', saveFile: './config/.trakt', clientId: 'my-id', clientSecret: 'my-secret',
+            },
+          });
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).toContain('Trakt support was removed in 4.0.0.');
+          expect(message).toContain('Your `Target` block still selects the removed `trakt` backend.');
+          expect(message).toContain('"type": "floppy"');
+          expect(message).toContain('"type": "mdblist"');
+          expect(message).not.toContain('my-id');
+          expect(message).not.toContain('my-secret');
+          expect(message).toContain('Credentials live in the `Target` block itself');
+          // Not a schema dump.
+          expect(message).not.toMatch(/invalid discriminator/i);
         });
 
         // A selector-only `Target` was only ever produced by a pre-release build,
