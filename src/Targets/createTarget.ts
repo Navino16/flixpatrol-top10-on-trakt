@@ -13,7 +13,13 @@ export function createTarget(
   switch (options.type) {
     case 'floppy':
       return new FloppyTarget(options, cacheOptions, dryRun);
-    default:
+    case 'mdblist':
       return new MdblistTarget(options, cacheOptions, dryRun);
+    default: {
+      // Compiler-checked exhaustiveness: a third TargetOptions variant fails to build here
+      // instead of silently landing on whichever adapter used to be the catch-all.
+      const exhaustive: never = options;
+      throw new Error(`Unhandled Target.type: ${JSON.stringify(exhaustive)}`);
+    }
   }
 }
