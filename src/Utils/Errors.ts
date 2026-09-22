@@ -35,9 +35,12 @@ export class FlixPatrolError extends AppError {
  * which hits every list alike and must stay fatal.
  */
 export class FlixPatrolPageNotFoundError extends FlixPatrolError {
-  constructor(message: string) {
+  public readonly path: string;
+
+  constructor(path: string, message: string) {
     super(message);
     this.name = 'FlixPatrolPageNotFoundError';
+    this.path = path;
   }
 }
 

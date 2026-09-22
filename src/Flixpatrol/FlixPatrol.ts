@@ -145,7 +145,7 @@ export class FlixPatrol {
    */
   private static assertPageExists(html: string, path: string): void {
     if (isNotFoundPage(html)) {
-      throw new FlixPatrolPageNotFoundError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+      throw new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
     }
   }
 

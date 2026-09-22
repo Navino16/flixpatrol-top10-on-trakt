@@ -6,7 +6,10 @@ export interface RunSummary {
   moviesAdded: number;
   showsAdded: number;
   durationMs: number;
-  /** FlixPatrol paths that answered "Page Not Found" — each one's entry was skipped, not counted below. */
+  /**
+   * FlixPatrol paths that answered "Page Not Found" — each one's entry was skipped,
+   * not counted in `listsProcessed`.
+   */
   deadPaths: string[];
 }
 

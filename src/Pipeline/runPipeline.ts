@@ -154,10 +154,10 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   };
 
   /**
-   * Runs one entry's scrape+resolve. A `FlixPatrolPageNotFoundError` means that entry's
-   * FlixPatrol page is dead — reported and skipped, entry left untouched, rather than
-   * aborting the other lists still queued. Any other error (a genuine fetch failure)
-   * stays fatal, since it would hit every list alike.
+   * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead —
+   * reported and skipped, entry left untouched, rather than aborting the other lists
+   * still queued. Any other `FlixPatrolError` — typically a fetch failure — stays fatal,
+   * since it would hit every list alike.
    */
   const skipIfDeadPath = async (listName: string, run: () => Promise<void>): Promise<boolean> => {
     try {
@@ -166,7 +166,11 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     } catch (err) {
       if (err instanceof FlixPatrolPageNotFoundError) {
         logger.error(`Skipping "${listName}": ${err.message}`);
-        summary.deadPaths.push(err.message);
+        // The weekly index page is memoized per FlixPatrol instance: if it is the dead
+        // page, every weekly entry re-throws the same path.
+        if (!summary.deadPaths.includes(err.path)) {
+          summary.deadPaths.push(err.path);
+        }
         return true;
       }
       throw err;

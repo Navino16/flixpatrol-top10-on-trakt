@@ -162,7 +162,7 @@ src/
 2. Builds the `NotificationManager` early, so later failures can be notified. Two failures cannot be: a config file that can't be written, and a broken `Notifications` block — no working notifier exists yet at that point.
 3. Loads and validates all configurations via `GetAndValidateConfigs`, then runs the startup checks that need several blocks at once: `Utils.warnAboutOrphanedCaches()` and `GetAndValidateConfigs.checkTargetCompatibility()`
 4. Branches on `Schedule.enabled`:
-   - **one-shot** (default, or when no Trakt token exists yet): runs the pipeline once, then exits. `SIGINT` dispatches an `error` notification and exits 130.
+   - **one-shot** (default, or when no Trakt token exists yet): runs the pipeline once, then exits. `SIGINT` dispatches an `error` notification and exits 130; a completed run instead exits 1 when `summary.deadPaths` is non-empty.
    - **daemon**: hands the pipeline to `Scheduler`, which re-runs it on each cron tick. `SIGTERM`/`SIGINT` stop the scheduler gracefully.
 5. Every exit path flushes pending notification dispatches before `process.exit`, so fire-and-forget notifications are not cut off.
 
@@ -183,7 +183,7 @@ Two guards in `resolveSection`, both returning `null` so the caller OMITS that k
 
 `ListContent` still carries a present-but-empty state meaning "clear this kind"; the pipeline simply never produces it from a scrape. A dead path is reported instead, loudly and by name, by `FlixPatrol.assertPageExists` — see the FlixPatrol section below.
 
-A dead path surfaces as a `FlixPatrolPageNotFoundError` (`src/Utils/Errors.ts`, a `FlixPatrolError` subclass). Both the Top10 loop and `processBlock` wrap their per-entry scrape in the same `skipIfDeadPath` helper: catching that subclass logs an `error` naming the path, records it in `summary.deadPaths`, and moves to the next entry without calling `pushToList` — the dead entry's list is left untouched and does not count toward `listsProcessed`. Any other error — a genuine fetch failure, thrown as the base `FlixPatrolError` after `getFlixPatrolHTMLPage`'s 3 retries are exhausted — is rethrown and still aborts the run: it hits every list alike, so skipping it would misreport a site-wide outage as 31 individually dead paths. The run itself never throws on a dead path; `run_end` names every one collected, and `app.ts` exits 1 in one-shot mode when `summary.deadPaths` is non-empty, without dispatching a separate `error` notification for the same incident.
+A dead path surfaces as a `FlixPatrolPageNotFoundError` (`src/Utils/Errors.ts`, a `FlixPatrolError` subclass). Both the Top10 loop and `processBlock` wrap their per-entry scrape in the same `skipIfDeadPath` helper: catching that subclass logs an `error` naming the path, records it in `summary.deadPaths`, and moves to the next entry without calling `pushToList` — the dead entry's list is left untouched and does not count toward `listsProcessed`. Any other `FlixPatrolError` — typically a fetch failure — is rethrown and still aborts the run: it hits every list alike, so skipping it would misreport a site-wide outage as 31 individually dead paths. The run itself never throws on a dead path; `run_end` names every one collected, and `app.ts` exits 1 in one-shot mode when `summary.deadPaths` is non-empty, without dispatching a separate `error` notification for the same incident.
 
 Between lists, an abort checkpoint honours `SIGTERM`/`SIGINT` — it stops only after the current list write, never mid-write.
 
