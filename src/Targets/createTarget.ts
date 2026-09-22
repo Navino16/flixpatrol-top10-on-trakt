@@ -23,3 +23,12 @@ export function createTarget(
     }
   }
 }
+
+/** Builds one adapter per `Targets` entry, preserving array order. */
+export function createTargets(
+  options: TargetOptions[],
+  cacheOptions: CacheOptions,
+  dryRun: boolean,
+): ListTarget[] {
+  return options.map((entry) => createTarget(entry, cacheOptions, dryRun));
+}

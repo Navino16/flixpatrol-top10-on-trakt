@@ -1,5 +1,6 @@
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
-import { createTarget } from './Targets';
+import { createTargets } from './Targets';
+import type { ListTarget } from './Targets';
 import { NotificationManager } from './Notifications';
 import type {
   NotificationEvent,
@@ -95,6 +96,7 @@ async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> 
 async function bootstrapConfigs(): Promise<{
   deps: Omit<RunPipelineDeps, 'signal'>;
   schedule: ScheduleOptions;
+  targets: ListTarget[];
 }> {
   try {
     logger.info('Loading all configurations values');
@@ -113,13 +115,14 @@ async function bootstrapConfigs(): Promise<{
     // and not inside any single schema.
     GetAndValidateConfigs.checkTargetCompatibility(targetsOptions, lists);
 
-    // Built exactly once per process: the daemon auth gate below and every
-    // scheduled run then share one adapter, and one resolution cache. Only the first
-    // configured target is wired up; writing every entry needs the multi-target loop.
-    const target = createTarget(targetsOptions[0], cacheOptions, dryRun);
+    // Built exactly once per process: the daemon auth gate below and every scheduled
+    // run then share the same adapters, and therefore the same resolution caches.
+    const targets = createTargets(targetsOptions, cacheOptions, dryRun);
+    // RunPipelineDeps still carries a single `target`: looping over every entry is
+    // Task 8's job. Until then the pipeline only ever writes the first one.
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,
-      target,
+      target: targets[0],
       flixPatrolTop10: lists.FlixPatrolTop10,
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,
@@ -133,22 +136,28 @@ async function bootstrapConfigs(): Promise<{
       appVersion: version,
     };
     const schedule = GetAndValidateConfigs.getScheduleOptions();
-    return { deps, schedule };
+    return { deps, schedule, targets };
   } catch (err) {
     return dispatchErrorAndExit(err);
   }
 }
 
 async function main(): Promise<void> {
-  const { deps, schedule } = await bootstrapConfigs();
+  const { deps, schedule, targets } = await bootstrapConfigs();
 
-  // Backends whose credentials come straight from the config (floppy, mdblist)
-  // report requiresInteractiveAuth === false, so the daemon starts immediately.
-  // A future backend with an OAuth device flow would need a one-shot run to complete first.
-  const { target } = deps;
-  const authenticated = !target.requiresInteractiveAuth || target.isAuthenticated();
+  // One target still needing a human interaction is enough to force a one-shot run: the
+  // daemon would otherwise tick forever on a backend that can never authenticate itself.
+  const authenticated = targets.every(
+    (target) => !target.requiresInteractiveAuth || target.isAuthenticated(),
+  );
   if (schedule.enabled && !authenticated) {
-    logger.warn(`Schedule is enabled but ${target.backend} has no usable credentials yet — running once so the initial authentication can complete, then exiting. The scheduler will start on the next launch.`);
+    const pending = targets
+      .filter((target) => target.requiresInteractiveAuth && !target.isAuthenticated())
+      .map((target) => `"${target.id}"`)
+      .join(', ');
+    logger.warn(`Schedule is enabled but ${pending} has no usable credentials yet — running once so `
+      + 'the initial authentication can complete, then exiting. The scheduler will start on the '
+      + 'next launch.');
   }
 
   if (!schedule.enabled || !authenticated) {

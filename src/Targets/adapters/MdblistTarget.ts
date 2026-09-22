@@ -133,6 +133,8 @@ const readPagination = (payload: unknown): MdblistPagination | null => {
  * need natively.
  */
 export class MdblistTarget implements ListTarget {
+  public readonly id: string;
+
   public readonly backend: TargetBackend = 'mdblist';
 
   public readonly requiresInteractiveAuth = false;
@@ -160,6 +162,7 @@ export class MdblistTarget implements ListTarget {
   // `id` is not part of `MdblistOptions`: it identifies the Target entry, not the backend
   // credentials, and only this constructor needs it (to namespace the resolution cache).
   constructor(options: MdblistOptions & { id: string }, cacheOptions: CacheOptions, dryRun: boolean) {
+    this.id = options.id;
     this.apiKey = options.apiKey;
     this.dryRun = dryRun;
     this.cache = new ResolutionCache(cacheOptions, 'mdblist', options.id);

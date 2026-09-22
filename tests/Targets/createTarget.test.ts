@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TargetOptions } from '../../src/types';
-import { createTarget } from '../../src/Targets/createTarget';
+import { createTarget, createTargets } from '../../src/Targets/createTarget';
 
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 
@@ -22,5 +22,21 @@ describe('createTarget', () => {
     // Only reachable past a schema bug, since TargetSchema rejects any other `type` first.
     const bogus = { type: 'plex', apiKey: 'k' } as unknown as TargetOptions;
     expect(() => createTarget(bogus, cacheOptions, false)).toThrow(/Unhandled Target\.type/);
+  });
+
+  it('builds one adapter per entry, preserving order and ids', () => {
+    const targets = createTargets(
+      [
+        { id: 'disk', type: 'floppy', url: 'http://host:8000', apiKey: 'token' },
+        { id: 'cloud', type: 'mdblist', apiKey: 'key' },
+      ],
+      { enabled: false, savePath: '/tmp', ttl: 60 },
+      false,
+    );
+
+    expect(targets.map((target) => [target.id, target.backend])).toEqual([
+      ['disk', 'floppy'],
+      ['cloud', 'mdblist'],
+    ]);
   });
 });
