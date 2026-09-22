@@ -371,9 +371,17 @@ export class FloppyTarget implements ListTarget {
       // committed, so replaying it creates a duplicate list.
       created = await this.requestOnce('POST', '/api/v1/lists/', { name: listName }, [200, 201]);
     } catch (error) {
-      const committed = await this.findListByName(listName);
+      const reason = (error as Error).message;
+      let committed: number | null;
+      try {
+        committed = await this.findListByName(listName);
+      } catch (rereadError) {
+        // The re-read failing too must not bury the creation attempt that triggered it.
+        throw new FloppyError(`List creation "${listName}" failed (${reason}), and the recovery `
+          + `re-read failed too: ${(rereadError as Error).message}`);
+      }
       if (committed === null) throw error;
-      logger.warn(`Creating "${listName}" reported ${(error as Error).message}, but the list exists: reusing it`);
+      logger.warn(`Creating "${listName}" reported ${reason}, but the list exists: reusing it`);
       return committed;
     }
 

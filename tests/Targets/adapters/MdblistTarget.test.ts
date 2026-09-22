@@ -172,19 +172,6 @@ describe('MdblistTarget', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('raises an MdblistError on a failing response, once the 5xx retries are exhausted', async () => {
-    vi.useFakeTimers();
-    vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-    vi.spyOn(logger, 'error').mockImplementation(() => logger);
-    fetchMock.mockResolvedValue(json({ error: 'boom' }, 500));
-
-    const assertion = expect(target.pushToList({ movie: ['1'] }, 'my-list', 'public'))
-      .rejects.toThrow(MdblistError);
-    await vi.runAllTimersAsync();
-    await assertion;
-    vi.useRealTimers();
-  });
-
   /**
    * `GET /lists/{id}/items` returns BOTH buckets, so a `type: "both"` list needs
    * a single read, and remove/add each take one bulk call for the two kinds.
@@ -464,11 +451,6 @@ describe('MdblistTarget list index memo', () => {
   });
 });
 
-/**
- * mdblist is a remote third-party API, unlike Floppy which is self-hosted — the backoff
- * (1s/2s/4s) is deliberately longer than Floppy's, since it waits out real network
- * latency rather than a millisecond-scale SQLite lock.
- */
 describe('MdblistTarget retry on transient failures', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let target: MdblistTarget;
@@ -538,6 +520,17 @@ describe('MdblistTarget retry on transient failures', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('raises an MdblistError on a failing list-index read, once the 5xx retries are exhausted', async () => {
+    fetchMock.mockResolvedValue(json({ error: 'boom' }, 500));
+
+    const assertion = expect(target.pushToList({ movie: ['1'] }, 'my-list', 'public'))
+      .rejects.toThrow(MdblistError);
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });
 
 /**
@@ -556,11 +549,13 @@ describe('MdblistTarget list creation, which cannot be replayed', () => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     target = new MdblistTarget(options, cacheOptions, false);
+    vi.useFakeTimers();
     vi.spyOn(logger, 'warn').mockImplementation(() => logger);
     vi.spyOn(logger, 'error').mockImplementation(() => logger);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -585,8 +580,24 @@ describe('MdblistTarget list creation, which cannot be replayed', () => {
       .mockResolvedValueOnce(json({ error: 'boom' }, 500))
       .mockResolvedValueOnce(json([]));
 
+    // Pinned to the creation call, not just "some MdblistError": a re-read failure would
+    // also throw an MdblistError, and that is the defect this fix and I1 guard against.
     await expect(target.pushToList({ movie: ['27205'] }, 'my-list', 'public'))
-      .rejects.toThrow(MdblistError);
+      .rejects.toThrow(/\/lists\/user\/add/);
+
+    expect(creations(fetchMock)).toHaveLength(1);
+  });
+
+  it('names the creation attempt when the recovery re-read also fails', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json([])) // initial index: absent
+      .mockResolvedValueOnce(json({ error: 'boom' }, 500)) // creation fails, not retried
+      .mockResolvedValue(json({ error: 'down' }, 503)); // re-read fails on every attempt
+
+    const assertion = expect(target.pushToList({ movie: ['27205'] }, 'my-list', 'public'))
+      .rejects.toThrow(/\/lists\/user\/add/);
+    await vi.runAllTimersAsync();
+    await assertion;
 
     expect(creations(fetchMock)).toHaveLength(1);
   });
@@ -606,11 +617,13 @@ describe('MdblistTarget search resilience', () => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     target = new MdblistTarget(options, cacheOptions, false);
+    vi.useFakeTimers();
     vi.spyOn(logger, 'warn').mockImplementation(() => logger);
     vi.spyOn(logger, 'error').mockImplementation(() => logger);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -688,24 +701,24 @@ describe('MdblistTarget search resilience', () => {
   });
 
   it('still fails the run on a 5xx once the retries are exhausted', async () => {
-    vi.useFakeTimers();
     fetchMock.mockResolvedValue(json({ error: 'boom' }, 503));
 
     const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
       .rejects.toThrow(MdblistError);
     await vi.runAllTimersAsync();
     await assertion;
-    vi.useRealTimers();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('still fails the run on a transport error once the retries are exhausted', async () => {
-    vi.useFakeTimers();
     fetchMock.mockRejectedValue(new Error('fetch failed'));
 
     const assertion = expect(target.resolveMany([{ title: 'X', year: 2000 }], 'movie'))
       .rejects.toThrow(MdblistError);
     await vi.runAllTimersAsync();
     await assertion;
-    vi.useRealTimers();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

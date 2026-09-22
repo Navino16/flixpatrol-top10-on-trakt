@@ -235,11 +235,8 @@ export class MdblistTarget implements ListTarget {
 
   /**
    * `requestOnce` with a retry on transient 5xx and on a transport failure (no status at
-   * all). mdblist is remote and third-party, so a `fetch` rejection here is exactly the
-   * "GET .../search/movie... failed: fetch failed" incident this retry exists to survive
-   * instead of killing the whole run. A 4xx is never retried: it carries meaning, and
-   * `isUnsearchable` already handles the 400/404/422 case that should drop an item rather
-   * than fail the run. List creation is not idempotent and goes through `requestOnce`
+   * all). A 4xx is never retried — `isUnsearchable` already handles 400/404/422 by
+   * dropping the item. List creation is not idempotent and goes through `requestOnce`
    * instead — see `getOrCreateList`.
    */
   private async request(
@@ -420,12 +417,18 @@ export class MdblistTarget implements ListTarget {
         [200, 201],
       );
     } catch (error) {
-      // The list the failed POST may have committed anyway is adopted; only a name
-      // still absent from a fresh index rethrows the original error.
-      const reread = await this.fetchListIndex();
+      const reason = (error as Error).message;
+      let reread: Map<string, number>;
+      try {
+        reread = await this.fetchListIndex();
+      } catch (rereadError) {
+        // The re-read failing too must not bury the creation attempt that triggered it.
+        throw new MdblistError(`List creation "${listName}" failed (${reason}), and the recovery `
+          + `re-read failed too: ${(rereadError as Error).message}`);
+      }
       const committed = reread.get(listName);
       if (committed === undefined) throw error;
-      logger.warn(`Creating "${listName}" reported ${(error as Error).message}, but the list exists: reusing it`);
+      logger.warn(`Creating "${listName}" reported ${reason}, but the list exists: reusing it`);
       return committed;
     }
 
