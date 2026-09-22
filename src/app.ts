@@ -118,11 +118,9 @@ async function bootstrapConfigs(): Promise<{
     // Built exactly once per process: the daemon auth gate below and every scheduled
     // run then share the same adapters, and therefore the same resolution caches.
     const targets = createTargets(targetsOptions, cacheOptions, dryRun);
-    // RunPipelineDeps still carries a single `target`: looping over every entry is
-    // Task 8's job. Until then the pipeline only ever writes the first one.
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,
-      target: targets[0],
+      targets,
       flixPatrolTop10: lists.FlixPatrolTop10,
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,

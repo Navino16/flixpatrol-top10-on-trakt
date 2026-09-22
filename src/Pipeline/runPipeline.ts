@@ -6,7 +6,7 @@ import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
 import type {
-  NotificationEvent, NotificationPayload, RunSummary,
+  NotificationEvent, NotificationPayload, RunSummary, TargetSummary,
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolConfigType, FlixPatrolMostWatched, FlixPatrolMostHours,
@@ -15,6 +15,12 @@ import type {
 
 /** One list as FlixPatrol returned it, before any backend resolution. */
 type ScrapedList = Partial<Record<MediaKind, MediaItem[]>>;
+
+/** One target and the tally the run keeps for it. */
+interface ActiveTarget {
+  target: ListTarget;
+  summary: TargetSummary;
+}
 
 /** What every entry of the four twin blocks carries, whatever extra options it also has. */
 interface ListBlockEntry {
@@ -36,10 +42,10 @@ interface ListBlock<T extends ListBlockEntry> {
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
   /**
-   * Built once by the caller so the daemon auth gate and every run share one adapter
-   * instance, and therefore one resolution cache.
+   * Built once by the caller so the daemon auth gate and every run share the same
+   * adapters, and therefore the same resolution caches.
    */
-  target: ListTarget;
+  targets: ListTarget[];
   flixPatrolTop10: FlixPatrolTop10[];
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
@@ -129,9 +135,9 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, ${enabledWeekly} Weekly, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
-  // Only the backend name is logged: every other field of the target config is a
+  // Only id and backend are logged: every other field of a target config is a
   // credential or an internal url.
-  logger.silly(`target: ${JSON.stringify({ backend: deps.target.backend })}`);
+  logger.silly(`targets: ${JSON.stringify(deps.targets.map(({ id, backend }) => ({ id, backend })))}`);
   logger.silly(`flixPatrolTop10: ${JSON.stringify(deps.flixPatrolTop10)}`);
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
@@ -139,7 +145,22 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.silly(`flixPatrolWeekly: ${JSON.stringify(deps.flixPatrolWeekly)}`);
 
   const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
-  const { target } = deps;
+  const active: ActiveTarget[] = deps.targets.map((target) => ({
+    target,
+    summary: {
+      id: target.id,
+      backend: target.backend,
+      listsProcessed: 0,
+      moviesAdded: 0,
+      showsAdded: 0,
+      status: 'ok',
+    },
+  }));
+  const allDropped = (): boolean => active.every((entry) => entry.summary.status !== 'ok');
+  // The id only matters once there is more than one target to tell apart.
+  const labelOf = (target: ListTarget): string => (active.length > 1
+    ? `"${target.id}" (${target.backend})`
+    : target.backend);
 
   const totalLists = deps.flixPatrolTop10.length
     + deps.flixPatrolPopulars.length
@@ -149,9 +170,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   let currentList = 0;
   const runStartAt = Date.now();
   const summary: RunSummary = {
-    listsProcessed: 0,
-    moviesAdded: 0,
-    showsAdded: 0,
+    targets: active.map((entry) => entry.summary),
     durationMs: 0,
     deadPaths: [],
   };
@@ -193,6 +212,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
    * Returns null when the kind must be left untouched.
    */
   const resolveSection = async (
+    { target }: ActiveTarget,
     items: MediaItem[],
     kind: MediaKind,
     listName: string,
@@ -213,26 +233,24 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     // array instead, and does wipe the kind.
     if (items.length > 0 && ids.length === 0) {
       logger.warn(`None of the ${items.length} ${kind}s scraped from FlixPatrol could be matched on `
-        + `${target.backend} — list "${listName}" left unchanged`);
+        + `${labelOf(target)} — list "${listName}" left unchanged`);
       return null;
     }
     if (items.length > ids.length) {
-      logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${target.backend} `
+      logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${labelOf(target)} `
         + `(${items.length} found, ${ids.length} matched)`);
     }
-    logger.info(`Resolved ${ids.length}/${countLabel(items.length, kind)} for "${listName}" on ${target.backend}`);
+    logger.info(`Resolved ${ids.length}/${countLabel(items.length, kind)} for "${listName}" on ${labelOf(target)}`);
     logger.debug(`${listName} ${kind}s: ${describeItems(items)}`);
     return ids;
   };
 
   /**
    * Writes a list once with both kinds, so whatever the backend does per list rather
-   * than per kind is paid a single time.
-   *
-   * Returns true when a shutdown signal arrived before the write, meaning nothing was
-   * written and the run must stop.
+   * than per kind is paid a single time. Returns true when a shutdown signal stopped it.
    */
   const writeList = async (
+    entry: ActiveTarget,
     content: ListContent,
     listName: string,
     privacy: ListPrivacy,
@@ -241,24 +259,63 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     if (kinds.length === 0) {
       return false;
     }
-    // One write per list puts the abort checkpoint between two lists, so a stop cannot
-    // land between the movie half and the show half of the same list.
+    // One write per list and target puts the abort checkpoint between two writes, so a
+    // stop cannot land between the movie half and the show half of the same list.
     if (await abortedBeforeWrite()) {
       return true;
     }
-    await target.pushToList(content, listName, privacy);
+    await entry.target.pushToList(content, listName, privacy);
     const written: string[] = [];
     for (const kind of kinds) {
       const count = (content[kind] as string[]).length;
       written.push(countLabel(count, kind));
       if (kind === 'movie') {
-        summary.moviesAdded += count;
+        entry.summary.moviesAdded += count;
       } else {
-        summary.showsAdded += count;
+        entry.summary.showsAdded += count;
       }
     }
     const verb = deps.dryRun ? 'Would update' : 'Updated';
-    logger.info(`${verb} "${listName}" with ${written.join(' and ')}`);
+    const where = active.length > 1 ? ` on ${labelOf(entry.target)}` : '';
+    logger.info(`${verb} "${listName}" with ${written.join(' and ')}${where}`);
+    return false;
+  };
+
+  const dropTarget = (entry: ActiveTarget, err: unknown, during: string): void => {
+    entry.summary.status = 'aborted';
+    entry.summary.error = `${err}`;
+    logger.error(`Target "${entry.target.id}" (${entry.target.backend}) failed ${during} and is dropped `
+      + `from this run: ${err}`);
+    if (allDropped()) {
+      logger.error('Every target has been dropped — the remaining lists are skipped');
+    }
+  };
+
+  /**
+   * A target that throws is dropped from the run on the spot, so a backend that is down
+   * costs one failure rather than one per remaining list. Returns true on a shutdown signal.
+   */
+  const writeListOnTargets = async (
+    scraped: ScrapedList,
+    listName: string,
+    privacy: ListPrivacy,
+  ): Promise<boolean> => {
+    for (const entry of active) {
+      if (entry.summary.status !== 'ok') continue;
+      try {
+        const content: ListContent = {};
+        for (const kind of MEDIA_KINDS) {
+          const items = scraped[kind];
+          if (items === undefined) continue;
+          const ids = await resolveSection(entry, items, kind, listName);
+          if (ids !== null) content[kind] = ids;
+        }
+        if (await writeList(entry, content, listName, privacy)) return true;
+        entry.summary.listsProcessed++;
+      } catch (err) {
+        dropTarget(entry, err, `on "${listName}"`);
+      }
+    }
     return false;
   };
 
@@ -271,6 +328,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   const processBlock = async <T extends ListBlockEntry>(block: ListBlock<T>): Promise<boolean> => {
     for (const entry of block.entries) {
       if (block.skip?.(entry) === true) continue;
+      if (allDropped()) return false;
 
       currentList++;
       const listName = Utils.getListName(entry, block.defaultName(entry), deps.listNamePrefix);
@@ -300,21 +358,18 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
       if (!kindSucceeded.some(Boolean)) continue;
 
-      const content: ListContent = {};
-      for (const kind of MEDIA_KINDS) {
-        const items = scraped[kind];
-        if (items === undefined) continue;
-        const ids = await resolveSection(items, kind, listName);
-        if (ids !== null) content[kind] = ids;
-      }
-
-      if (await writeList(content, listName, entry.privacy)) return true;
-      summary.listsProcessed++;
+      if (await writeListOnTargets(scraped, listName, entry.privacy)) return true;
     }
     return false;
   };
 
-  await target.connect();
+  for (const entry of active) {
+    try {
+      await entry.target.connect();
+    } catch (err) {
+      dropTarget(entry, err, 'to connect');
+    }
+  }
 
   // Fire-and-forget so the pipeline never waits on a notification round-trip. The caller
   // tracks the dispatch and flushes it before any process.exit.
@@ -327,6 +382,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   // Not a processBlock call: getTop10Sections returns both kinds in one call and reports
   // how many scraped items were dropped, which no other block does.
   for (const top10 of deps.flixPatrolTop10) {
+    if (allDropped()) break;
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
     const baseListName = Utils.getListName(top10, defaultName, deps.listNamePrefix);
@@ -353,16 +409,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     });
     if (skipped) continue;
 
-    const content: ListContent = {};
-    for (const kind of MEDIA_KINDS) {
-      const items = scraped[kind];
-      if (items === undefined) continue;
-      const ids = await resolveSection(items, kind, baseListName);
-      if (ids !== null) content[kind] = ids;
-    }
-
-    if (await writeList(content, baseListName, top10.privacy)) return summary;
-    summary.listsProcessed++;
+    if (await writeListOnTargets(scraped, baseListName, top10.privacy)) return summary;
   }
 
 
@@ -412,9 +459,12 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   const deadPathsSuffix = deadPathMessages.length > 0
     ? ` — ${deadPathMessages.length} dead path(s) skipped: ${deadPathMessages.join('; ')}`
     : '';
+  const perTarget = summary.targets.map((target) => (target.status === 'aborted'
+    ? `${target.id} (${target.backend}): aborted — ${target.error ?? 'unknown error'}`
+    : `${target.id} (${target.backend}): ${target.listsProcessed}/${totalLists} lists, ${target.moviesAdded} movies / ${target.showsAdded} shows ${movedVerb}`));
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
-    body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}${deadPathsSuffix}`,
+    body: `${dryRunTag}Processed in ${Math.round(summary.durationMs / 1000)}s — ${perTarget.join('; ')}${deadPathsSuffix}`,
     timestamp: new Date().toISOString(),
     summary,
   });

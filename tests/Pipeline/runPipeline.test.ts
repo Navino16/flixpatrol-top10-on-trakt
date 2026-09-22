@@ -8,8 +8,9 @@ const h = vi.hoisted(() => {
   const connectFn = vi.fn();
   const resolveManyFn = vi.fn();
   const targetMock = {
-    backend: 'floppy' as string,
-    requiresInteractiveAuth: true,
+    id: 'main',
+    backend: 'mdblist' as string,
+    requiresInteractiveAuth: false,
     isAuthenticated: vi.fn().mockReturnValue(true),
     connect: connectFn,
     resolveMany: resolveManyFn,
@@ -115,7 +116,7 @@ const top10Config = [{
 function baseDeps(overrides: Partial<RunPipelineDeps> = {}): RunPipelineDeps {
   return {
     cacheOptions: { enabled: false, savePath: '/tmp', ttl: 1 },
-    target: target as unknown as RunPipelineDeps['target'],
+    targets: [target] as unknown as RunPipelineDeps['targets'],
     flixPatrolTop10: [],
     flixPatrolPopulars: [],
     flixPatrolMostWatched: [],
@@ -139,6 +140,20 @@ function resolveAll(): void {
 }
 
 const oneItem: MediaItem[] = [{ title: 'Inception', year: 2010 }];
+
+function fakeTarget(id: string, backend: 'floppy' | 'mdblist') {
+  return {
+    id,
+    backend,
+    requiresInteractiveAuth: false,
+    isAuthenticated: vi.fn().mockReturnValue(true),
+    connect: vi.fn().mockResolvedValue(undefined),
+    resolveMany: vi.fn().mockImplementation(
+      (items: MediaItem[]) => Promise.resolve(items.map((_, i) => `id-${i}`)),
+    ),
+    pushToList: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 function popularConfig(
   overrides: Record<string, unknown> = {},
@@ -253,7 +268,7 @@ describe('runPipeline target wiring', () => {
   it('counts resolved items, not scraped ones, in the summary', async () => {
     resolveMany.mockResolvedValueOnce(['1']);
     const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
-    expect(summary.moviesAdded).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(1);
   });
 
   it('does not warn about resolution when every scraped item resolves', async () => {
@@ -283,7 +298,7 @@ describe('runPipeline target wiring', () => {
     resolveMany.mockResolvedValueOnce([]);
     const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
     expect(pushToList).not.toHaveBeenCalled();
-    expect(summary.moviesAdded).toBe(0);
+    expect(summary.targets[0].moviesAdded).toBe(0);
     const messages = warnSpy.mock.calls.map((c) => String(c[0]));
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain('mdblist');
@@ -303,9 +318,9 @@ describe('runPipeline target wiring', () => {
     expect(pushToList).toHaveBeenCalledOnce();
     expect(pushToList).toHaveBeenCalledWith({ show: ['id-0'] }, expect.any(String), expect.any(String));
     expect(kindsOfWrite(0)).toEqual(['show']);
-    expect(summary.moviesAdded).toBe(0);
-    expect(summary.showsAdded).toBe(1);
-    expect(summary.listsProcessed).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(0);
+    expect(summary.targets[0].showsAdded).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
   });
 
   // A genuinely empty scrape is NOT a resolution failure: the Top10 block skips it
@@ -376,8 +391,8 @@ describe('runPipeline Popular section', () => {
     expect(getPopular).toHaveBeenCalledWith('Movies', expect.objectContaining({ platform: 'wikipedia' }));
     expect(pushToList).toHaveBeenCalledOnce();
     expect(kindsOfWrite(0)).toEqual(['movie']);
-    expect(summary.moviesAdded).toBe(1);
-    expect(summary.showsAdded).toBe(0);
+    expect(summary.targets[0].moviesAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(0);
   });
 
   it('scrapes and writes shows only when type is "shows"', async () => {
@@ -387,8 +402,8 @@ describe('runPipeline Popular section', () => {
     expect(getPopular).toHaveBeenCalledOnce();
     expect(getPopular).toHaveBeenCalledWith('TV Shows', expect.objectContaining({ platform: 'wikipedia' }));
     expect(kindsOfWrite(0)).toEqual(['show']);
-    expect(summary.moviesAdded).toBe(0);
-    expect(summary.showsAdded).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(0);
+    expect(summary.targets[0].showsAdded).toBe(1);
   });
 
   it('writes both media kinds of a list in a single push', async () => {
@@ -397,9 +412,9 @@ describe('runPipeline Popular section', () => {
 
     expect(pushToList).toHaveBeenCalledOnce();
     expect(contentOfWrite(0)).toEqual({ movie: ['id-0'], show: ['id-0'] });
-    expect(summary.listsProcessed).toBe(1);
-    expect(summary.moviesAdded).toBe(1);
-    expect(summary.showsAdded).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(1);
   });
 
   it('still writes once per list, never merging two lists into one call', async () => {
@@ -425,7 +440,7 @@ describe('runPipeline Popular section', () => {
     expect(pushToList).toHaveBeenCalledOnce();
     expect(contentOfWrite(0)).toEqual({ movie: ['m-1'] });
     expect('show' in contentOfWrite(0)).toBe(false);
-    expect(summary.showsAdded).toBe(0);
+    expect(summary.targets[0].showsAdded).toBe(0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('left unchanged'));
   });
 
@@ -472,7 +487,7 @@ describe('runPipeline MostWatched section', () => {
 
     expect(getMostWatched).not.toHaveBeenCalled();
     expect(pushToList).not.toHaveBeenCalled();
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
     expect(lastPayload(deps.dispatch, 'run_start').body).toContain('0 lists');
   });
 
@@ -483,8 +498,8 @@ describe('runPipeline MostWatched section', () => {
 
     expect(getMostWatched).toHaveBeenCalledOnce();
     expect(getMostWatched).toHaveBeenCalledWith('Movies', expect.objectContaining({ year: 2024 }));
-    expect(summary.moviesAdded).toBe(1);
-    expect(summary.showsAdded).toBe(0);
+    expect(summary.targets[0].moviesAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(0);
   });
 
   it('scrapes shows only when type is "shows"', async () => {
@@ -494,7 +509,7 @@ describe('runPipeline MostWatched section', () => {
 
     expect(getMostWatched).toHaveBeenCalledOnce();
     expect(getMostWatched).toHaveBeenCalledWith('TV Shows', expect.anything());
-    expect(summary.showsAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(1);
   });
 
   it('names the list from the year alone when no optional filter is set', async () => {
@@ -543,7 +558,7 @@ describe('runPipeline MostHours section', () => {
     }));
 
     expect(getMostHours).not.toHaveBeenCalled();
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
   });
 
   it('scrapes movies only when type is "movies"', async () => {
@@ -553,7 +568,7 @@ describe('runPipeline MostHours section', () => {
 
     expect(getMostHours).toHaveBeenCalledOnce();
     expect(getMostHours).toHaveBeenCalledWith('Movies', expect.objectContaining({ period: 'total' }));
-    expect(summary.moviesAdded).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(1);
   });
 
   it('scrapes shows only when type is "shows"', async () => {
@@ -563,7 +578,7 @@ describe('runPipeline MostHours section', () => {
 
     expect(getMostHours).toHaveBeenCalledOnce();
     expect(getMostHours).toHaveBeenCalledWith('TV Shows', expect.anything());
-    expect(summary.showsAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(1);
   });
 
   it('omits the language suffix when the language is "all"', async () => {
@@ -632,7 +647,7 @@ describe('runPipeline Weekly section', () => {
 
     const summary = await runPipeline(deps);
 
-    expect(summary.listsProcessed).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
     expect(lastPayload(deps.dispatch, 'run_start').body).toContain('1 lists');
     expect(lastPayload(deps.dispatch, 'run_end').body).toContain('1/1 lists');
   });
@@ -643,7 +658,7 @@ describe('runPipeline Weekly section', () => {
     }));
     expect(getWeekly).toHaveBeenCalledOnce();
     expect(getWeekly).toHaveBeenCalledWith('Movies', expect.objectContaining({ platform: 'netflix' }));
-    expect(summary.moviesAdded).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(1);
   });
 
   it('scrapes shows only when type is "shows"', async () => {
@@ -652,7 +667,7 @@ describe('runPipeline Weekly section', () => {
     }));
     expect(getWeekly).toHaveBeenCalledOnce();
     expect(getWeekly).toHaveBeenCalledWith('TV Shows', expect.anything());
-    expect(summary.showsAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(1);
   });
 });
 
@@ -675,7 +690,7 @@ describe('runPipeline run accounting', () => {
 
     // 1 Top10 + 1 Popular + 1 enabled MostWatched; the two disabled entries do not count.
     expect(lastPayload(deps.dispatch, 'run_start').body).toContain('3 lists');
-    expect(summary.listsProcessed).toBe(3);
+    expect(summary.targets[0].listsProcessed).toBe(3);
   });
 
   it('runs every section in order and totals their writes', async () => {
@@ -691,9 +706,9 @@ describe('runPipeline run accounting', () => {
 
     const summary = await runPipeline(deps);
 
-    expect(summary.listsProcessed).toBe(4);
-    expect(summary.moviesAdded).toBe(2);
-    expect(summary.showsAdded).toBe(2);
+    expect(summary.targets[0].listsProcessed).toBe(4);
+    expect(summary.targets[0].moviesAdded).toBe(2);
+    expect(summary.targets[0].showsAdded).toBe(2);
     expect(lastPayload(deps.dispatch, 'run_end').body).toContain('4/4 lists');
   });
 
@@ -818,9 +833,9 @@ describe('runPipeline abort between lists', () => {
     expect(pushToList).toHaveBeenCalledOnce();
     expect(listNameOfWrite(0)).toBe('first');
     expect(contentOfWrite(0)).toEqual({ movie: ['id-0'], show: ['id-0'] });
-    expect(summary.moviesAdded).toBe(1);
-    expect(summary.showsAdded).toBe(1);
-    expect(summary.listsProcessed).toBe(1);
+    expect(summary.targets[0].moviesAdded).toBe(1);
+    expect(summary.targets[0].showsAdded).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
   });
 
   it('does not dispatch run_end when the run was interrupted', async () => {
@@ -850,7 +865,7 @@ describe('runPipeline abort between lists', () => {
 
     expect(getMostHours).toHaveBeenCalledOnce();
     expect(pushToList).not.toHaveBeenCalled();
-    expect(summary.showsAdded).toBe(0);
+    expect(summary.targets[0].showsAdded).toBe(0);
   });
 });
 
@@ -956,7 +971,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     expect(pushToList).toHaveBeenCalledTimes(1);
     expect(listNameOfWrite(0)).toBe('ok-popular');
-    expect(summary.listsProcessed).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
   });
 
   // Movies scraped fine, but the shows half of this `both` entry is dead: the movies half
@@ -981,7 +996,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
     expect(content.movie).toBeDefined();
     expect('show' in content).toBe(false);
     expect(summary.deadPaths).toEqual([path]);
-    expect(summary.listsProcessed).toBe(1);
+    expect(summary.targets[0].listsProcessed).toBe(1);
   });
 
   it('skips a `both` entry entirely when both of its kinds hit a dead path', async () => {
@@ -999,7 +1014,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     expect(pushToList).not.toHaveBeenCalled();
     expect(summary.deadPaths.sort()).toEqual([moviePath, showPath].sort());
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
   });
 
   it('skips a single-kind entry (type: "movies") whose page is dead', async () => {
@@ -1015,7 +1030,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     expect(pushToList).not.toHaveBeenCalled();
     expect(summary.deadPaths).toEqual([path]);
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
   });
 
   // Change A: a non-'world' Weekly entry whose platform has no listed week is a dead
@@ -1032,7 +1047,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     expect(pushToList).not.toHaveBeenCalled();
     expect(summary.deadPaths).toEqual([deadPath]);
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
   });
 
   it('collapses two entries that hit the same dead path into a single deadPaths entry', async () => {
@@ -1049,7 +1064,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
     }));
 
     expect(summary.deadPaths).toEqual([deadPath]);
-    expect(summary.listsProcessed).toBe(0);
+    expect(summary.targets[0].listsProcessed).toBe(0);
   });
 
   it('records the dead path in the summary and excludes the entry from listsProcessed', async () => {
@@ -1061,7 +1076,7 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     expect(summary.deadPaths).toHaveLength(1);
     expect(summary.deadPaths[0]).toContain('/top10/netflix/world');
-    expect(summary.listsProcessed).toBe(2);
+    expect(summary.targets[0].listsProcessed).toBe(2);
   });
 
   it('logs an error naming the dead path', async () => {
@@ -1080,5 +1095,150 @@ describe('runPipeline dead FlixPatrol paths', () => {
 
     await expect(runPipeline(baseDeps({ flixPatrolTop10: top10Config })))
       .rejects.toThrow('Unable to get FlixPatrol top10 page');
+  });
+});
+
+describe('runPipeline with several targets', () => {
+  const bothSections = { movies: oneItem, shows: oneItem, rawCounts: { movies: 1, shows: 1 } };
+
+  function threePopulars(): RunPipelineDeps['flixPatrolPopulars'] {
+    return [
+      ...popularConfig({ name: 'one' }),
+      ...popularConfig({ name: 'two' }),
+      ...popularConfig({ name: 'three' }),
+    ] as RunPipelineDeps['flixPatrolPopulars'];
+  }
+
+  it('scrapes once and writes the same list on every target', async () => {
+    const floppy = fakeTarget('disk', 'floppy');
+    const mdblist = fakeTarget('cloud', 'mdblist');
+    getTop10Sections.mockResolvedValue(bothSections);
+
+    await runPipeline(baseDeps({ targets: [floppy, mdblist], flixPatrolTop10: top10Config }));
+
+    expect(getTop10Sections).toHaveBeenCalledTimes(1);
+    expect(floppy.pushToList).toHaveBeenCalledTimes(1);
+    expect(mdblist.pushToList).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a failing target and keeps writing the others', async () => {
+    const broken = fakeTarget('cloud', 'mdblist');
+    broken.pushToList = vi.fn().mockRejectedValue(new Error('mdblist is down'));
+    const healthy = fakeTarget('disk', 'floppy');
+    getPopular.mockResolvedValue(oneItem);
+
+    const summary = await runPipeline(baseDeps({ targets: [broken, healthy], flixPatrolPopulars: threePopulars() }));
+
+    // Dropped on its first failure, so it is never retried on the two remaining lists.
+    expect(broken.pushToList).toHaveBeenCalledTimes(1);
+    expect(healthy.pushToList).toHaveBeenCalledTimes(3);
+    expect(summary.targets).toEqual([
+      expect.objectContaining({ id: 'cloud', status: 'aborted', error: expect.stringContaining('down') }),
+      expect.objectContaining({ id: 'disk', status: 'ok', listsProcessed: 3 }),
+    ]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/"cloud" \(mdblist\).*down/));
+  });
+
+  it('reports every target as aborted when they all fail', async () => {
+    const first = fakeTarget('a', 'mdblist');
+    const second = fakeTarget('b', 'floppy');
+    first.pushToList = vi.fn().mockRejectedValue(new Error('boom'));
+    second.pushToList = vi.fn().mockRejectedValue(new Error('boom'));
+    getTop10Sections.mockResolvedValue(bothSections);
+
+    const summary = await runPipeline(baseDeps({ targets: [first, second], flixPatrolTop10: top10Config }));
+
+    expect(summary.targets.every((target) => target.status === 'aborted')).toBe(true);
+  });
+
+  it('drops a target whose connect() throws and still processes every list on the others', async () => {
+    const unreachable = fakeTarget('cloud', 'mdblist');
+    unreachable.connect = vi.fn().mockRejectedValue(new Error('handshake refused'));
+    const healthy = fakeTarget('disk', 'floppy');
+
+    const summary = await runPipeline(baseDeps({
+      targets: [unreachable, healthy], flixPatrolPopulars: threePopulars(),
+    }));
+
+    expect(unreachable.resolveMany).not.toHaveBeenCalled();
+    expect(unreachable.pushToList).not.toHaveBeenCalled();
+    expect(healthy.pushToList).toHaveBeenCalledTimes(3);
+    expect(summary.targets).toEqual([
+      expect.objectContaining({ id: 'cloud', status: 'aborted', error: expect.stringContaining('handshake') }),
+      expect.objectContaining({ id: 'disk', status: 'ok', listsProcessed: 3 }),
+    ]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/"cloud" \(mdblist\).*handshake/));
+  });
+
+  it('stops scraping once every target has been dropped', async () => {
+    const first = fakeTarget('a', 'mdblist');
+    const second = fakeTarget('b', 'floppy');
+    first.pushToList = vi.fn().mockRejectedValue(new Error('boom'));
+    second.pushToList = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const summary = await runPipeline(baseDeps({
+      targets: [first, second],
+      flixPatrolPopulars: threePopulars(),
+      flixPatrolMostWatched: mostWatchedConfig(),
+    }));
+
+    // One call per kind of the first list; nothing after it.
+    expect(getPopular).toHaveBeenCalledTimes(2);
+    expect(getMostWatched).not.toHaveBeenCalled();
+    expect(summary.targets.map((target) => target.status)).toEqual(['aborted', 'aborted']);
+  });
+
+  it('does not scrape at all when every target failed to connect', async () => {
+    const only = fakeTarget('a', 'mdblist');
+    only.connect = vi.fn().mockRejectedValue(new Error('nope'));
+
+    const summary = await runPipeline(baseDeps({ targets: [only], flixPatrolPopulars: threePopulars() }));
+
+    expect(getPopular).not.toHaveBeenCalled();
+    expect(summary.targets[0].status).toBe('aborted');
+  });
+
+  it('leaves a kind untouched on one target only when that target resolves none of it', async () => {
+    const failing = fakeTarget('cloud', 'mdblist');
+    failing.resolveMany = vi.fn().mockImplementation(
+      (items: MediaItem[], kind: string) => Promise.resolve(kind === 'movie' ? [] : items.map(() => 's')),
+    );
+    const healthy = fakeTarget('disk', 'floppy');
+
+    const summary = await runPipeline(baseDeps({
+      targets: [failing, healthy], flixPatrolPopulars: popularConfig(),
+    }));
+
+    expect(failing.pushToList).toHaveBeenCalledWith({ show: ['s'] }, 'wikipedia-popular', 'private');
+    expect(healthy.pushToList).toHaveBeenCalledWith({ movie: ['id-0'], show: ['id-0'] }, 'wikipedia-popular', 'private');
+    expect(summary.targets.map((target) => target.status)).toEqual(['ok', 'ok']);
+  });
+
+  it('keeps a FlixPatrol fetch failure fatal instead of blaming a target', async () => {
+    const floppy = fakeTarget('disk', 'floppy');
+    getTop10Sections.mockRejectedValueOnce(new FlixPatrolError('Unable to get FlixPatrol top10 page'));
+
+    await expect(runPipeline(baseDeps({ targets: [floppy], flixPatrolTop10: top10Config })))
+      .rejects.toThrow('Unable to get FlixPatrol top10 page');
+    expect(floppy.pushToList).not.toHaveBeenCalled();
+  });
+
+  it('checks for a shutdown between two targets of the same list, never mid-write', async () => {
+    const controller = new AbortController();
+    const first = fakeTarget('a', 'mdblist');
+    first.pushToList = vi.fn().mockImplementation(() => {
+      controller.abort();
+      return Promise.resolve();
+    });
+    const second = fakeTarget('b', 'floppy');
+    getTop10Sections.mockResolvedValue(bothSections);
+
+    const summary = await runPipeline(baseDeps({
+      targets: [first, second], flixPatrolTop10: top10Config, signal: controller.signal,
+    }));
+
+    expect(first.pushToList).toHaveBeenCalledOnce();
+    expect(second.pushToList).not.toHaveBeenCalled();
+    expect(summary.targets[0].listsProcessed).toBe(1);
   });
 });
