@@ -10,7 +10,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET, MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
 
 vi.mock('config', () => ({
   default: {
@@ -701,14 +701,27 @@ describe('GetAndValidateConfigs', () => {
           });
         });
 
-        // Neither backend ships template credentials, so nothing can be left
-        // unreplaced for them and the guard must stay out of the way.
-        it('leaves backends without shipped templates alone', () => {
-          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
-          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
-
+        // Floppy ships no template credential, so nothing can be left unreplaced
+        // for it and the guard must stay out of the way.
+        it('leaves floppy alone, since it ships no template credential', () => {
           useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
           expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+        });
+
+        it('accepts a real mdblist api key', () => {
+          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
+          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+        });
+
+        it('rejects an untouched mdblist template configuration', () => {
+          useConfig({ Target: { type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY } });
+
+          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+
+          const message = messageOf();
+          expect(message).toContain('`Target.apiKey` still holds the placeholder value');
+          expect(message).toContain(`"apiKey": ${JSON.stringify(MDBLIST_TEMPLATE_API_KEY)}`);
+          expect(message).toContain('https://mdblist.com/preferences');
         });
       });
 
@@ -805,8 +818,13 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('accepts the very same lists on trakt', () => {
+        // A trakt target always warns about its own deprecation; muted here, not under test.
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
           .not.toThrow();
+
+        warn.mockRestore();
       });
 
       it('rejects "friends" on floppy', () => {
@@ -842,6 +860,12 @@ describe('GetAndValidateConfigs', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
         GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
+
+        // A trakt target always warns about its own deprecation; that is the only warning expected here.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).not.toMatch(/cannot set list visibility/);
+        warn.mockClear();
+
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
         expect(warn).not.toHaveBeenCalled();
@@ -876,7 +900,8 @@ describe('GetAndValidateConfigs', () => {
         it('accepts a world entry with a language', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+          // mdblist here, not trakt: a trakt target always warns about its own deprecation.
+          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
           });
@@ -890,6 +915,40 @@ describe('GetAndValidateConfigs', () => {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
           })).toThrow(ConfigurationError);
+        });
+      });
+
+      describe('Trakt deprecation', () => {
+        it('warns that Trakt is removed in 4.0.0', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, emptyLists);
+
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('4.0.0'));
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('Trakt'));
+          warn.mockRestore();
+        });
+
+        it('warns instead of throwing on link/friends when the backend is Trakt', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            trakt,
+            listsWith(['link', 'friends']),
+          )).not.toThrow();
+
+          const message = warn.mock.calls.map(([text]) => String(text)).join('\n');
+          expect(message).toContain('FlixPatrolTop10[0].privacy = "link"');
+          expect(message).toContain('FlixPatrolTop10[1].privacy = "friends"');
+          warn.mockRestore();
+        });
+
+        it('still throws on link/friends when the backend is not Trakt', () => {
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            mdblist,
+            listsWith(['friends']),
+          )).toThrow(ConfigurationError);
         });
       });
     });

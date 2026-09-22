@@ -118,7 +118,7 @@ else in the configuration stays the same.
 > [Migrating from 2.x](#migrating-from-2x) — the app detects the old format at startup and
 > prints the exact block to write.
 
-|                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
+|                    | Trakt free (deprecated)        | Trakt VIP (deprecated) | mdblist free  | mdblist 1–3 €/month | Floppy                                      |
 |--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
 | Lists              | 5                              | 100               | 4 static           | 20 to 80            | unlimited                                   |
 | Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
@@ -127,7 +127,19 @@ else in the configuration stays the same.
 | `privacy` honoured | 4 levels                       | 4 levels          | public/private only | public/private only | ignored, set it by hand in the web UI       |
 | Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
 
-### Trakt (default)
+### Trakt (deprecated)
+
+> **Warning**
+> **Trakt support is deprecated and will be removed in 4.0.0.** Trakt has closed its API to
+> third-party services — MDBList, SIMKL and WeTrakr were all blocked without notice — and has
+> repeatedly broken authentication for integrations like this one. Rather than wait to be cut
+> off, this project is moving away from it.
+>
+> Use [Floppy](#floppy-setup) or [mdblist](#mdblist-setup) instead. Both are supported today and
+> your existing lists can be rebuilt on either in a single run.
+>
+> The `link` and `friends` privacy levels go away at the same time: no other backend can express
+> them. Replace them with `private` or `public`.
 
 ```json
 {
@@ -170,6 +182,9 @@ Trakt concepts with no equivalent elsewhere, so **the app refuses to start** whe
 `friends` is used with `Target.type` set to `floppy` or `mdblist` — the error names each
 offending block and index. On Floppy, visibility cannot be set through the API at all: every
 list is created private and a warning says so once at startup.
+
+`link` and `friends` are deprecated and removed in 4.0.0 on every backend — see
+[Trakt (deprecated)](#trakt-deprecated).
 
 ## Migrating from 2.x
 
@@ -467,7 +482,7 @@ credentials that backend needs. The block is mandatory.
 | Name                | Description                                                                            | Mandatory             | Values                 | Default         |
 |---------------------|----------------------------------------------------------------------------------------|-----------------------|------------------------|-----------------|
 | type                | Which backend receives the generated lists                                             | Yes                   | trakt, floppy, mdblist |                 |
-| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | ./config/.trakt |
+| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | None — no shipped template supplies one; `./config/.trakt` is the conventional value |
 | clientId            | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))     | If `type: "trakt"`    | A valid string         |                 |
 | clientSecret        | Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new)) | If `type: "trakt"`    | A valid string         |                 |
 | url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
@@ -565,6 +580,11 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
 
 <details>
 <summary><strong>Example configuration</strong></summary>
+
+> **Note**
+> This example defines 11 lists — more than a free mdblist account (4 static lists) or a free Trakt
+> account (5 lists) allows. It exists to show the available options, not as a ready-to-use file:
+> trim it to your backend's capacity. See [Choosing Your Platform](#choosing-your-platform).
 
 ```json
 {
@@ -666,10 +686,8 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
     }
   ],
   "Target": {
-    "type": "trakt",
-    "saveFile": "./config/.trakt",
-    "clientId": "You need to replace this client ID",
-    "clientSecret": "You need to replace this client secret"
+    "type": "mdblist",
+    "apiKey": "your-mdblist-api-key"
   },
   "Cache": {
     "enabled": true,
@@ -705,6 +723,9 @@ The `FlareSolverr` block is fully optional and disabled by default — omit it (
 
 ### Trakt Setup
 
+> **Warning**
+> Deprecated — removed in 4.0.0. See [Choosing Your Platform](#choosing-your-platform).
+
 To run this application you need a Trakt account and a Client ID / Client Secret.
 
 > **Warning**
@@ -714,7 +735,19 @@ To run this application you need a Trakt account and a Client ID / Client Secret
 2. [Create a new application](https://trakt.tv/oauth/applications/new) with:
    - **Redirect uri:** `urn:ietf:wg:oauth:2.0:oob`
    - Other fields are optional
-3. Set the Client ID / Client Secret in `./config/default.json`
+3. Replace the `Target` block in `./config/default.json` with the Trakt shape:
+
+```json
+{
+  "Target": {
+    "type": "trakt",
+    "saveFile": "./config/.trakt",
+    "clientId": "your-trakt-client-id",
+    "clientSecret": "your-trakt-client-secret"
+  }
+}
+```
+
 4. Run the app and follow the on-screen instructions
 
 ### Floppy Setup
@@ -919,11 +952,12 @@ copy it into `config/default.json` in place of the old block. Your file is never
 the config directory is frequently a read-only mount and usually version-controlled. See
 [Migrating from 2.x](#migrating-from-2x).
 
-**Startup fails saying `Target.clientId` / `Target.clientSecret` still hold the placeholder values.**
-The `config/default.json` the app generated on first run was never edited. Replace the placeholders
-with real credentials — [create a Trakt API application](https://trakt.tv/oauth/applications/new)
-and copy its client id and secret into the `Target` block. The check runs field by field, so
-replacing only one of the two is still caught and the message names the one left over.
+**Startup fails saying a `Target` field still holds a placeholder value.**
+The `config/default.json` the app generated on first run was never edited. A fresh install ships
+`Target.apiKey` for mdblist — replace it with your real key from your
+[preferences page](https://mdblist.com/preferences/). The same check catches unreplaced Trakt
+`clientId`/`clientSecret` if you configured that backend by hand instead. It runs field by field,
+so replacing only some of the fields is still caught and the message names the ones left over.
 
 **Warning about an obsolete root-level `Trakt` block.**
 Nothing is broken: the run proceeds normally. Credentials now live inside `Target`, so the
