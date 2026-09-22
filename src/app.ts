@@ -107,6 +107,7 @@ async function bootstrapConfigs(): Promise<{
       FlixPatrolPopular: GetAndValidateConfigs.getFlixPatrolPopular(),
       FlixPatrolMostWatched: GetAndValidateConfigs.getFlixPatrolMostWatched(),
       FlixPatrolMostHours: GetAndValidateConfigs.getFlixPatrolMostHours(),
+      FlixPatrolWeekly: GetAndValidateConfigs.getFlixPatrolWeekly(),
     };
     // Cross-check and backend-wide warnings need both halves loaded, hence here
     // and not inside any single schema.
@@ -122,6 +123,7 @@ async function bootstrapConfigs(): Promise<{
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,
       flixPatrolMostHours: lists.FlixPatrolMostHours,
+      flixPatrolWeekly: lists.FlixPatrolWeekly,
       flareSolverrOptions: GetAndValidateConfigs.getFlareSolverrOptions(),
       dispatch,
       dryRun,
@@ -176,8 +178,13 @@ async function main(): Promise<void> {
     });
 
     try {
-      await runPipeline(deps);
+      const summary = await runPipeline(deps);
       await flushPendingDispatches();
+      // run_end already carries the dead paths, so no separate error notification is
+      // dispatched here — but the process must still fail so cron/systemd sees it.
+      if (summary.deadPaths.length > 0) {
+        process.exit(1);
+      }
     } catch (err) {
       await dispatchErrorAndExit(err);
     }

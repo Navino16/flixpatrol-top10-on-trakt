@@ -1,6 +1,6 @@
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
-import { logger, FlixPatrolError } from '../Utils';
+import { logger, FlixPatrolError, FlixPatrolPageNotFoundError } from '../Utils';
 import type { MediaItem } from '../Targets';
 import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
@@ -8,6 +8,7 @@ import type {
   FlixPatrolMostHours,
   FlixPatrolPopular,
   FlixPatrolTop10,
+  FlixPatrolWeekly,
   CacheOptions,
   FlixPatrolOptions,
   FlixPatrolTop10Location,
@@ -26,12 +27,17 @@ import type { FlixPatrolMatchResult } from './parse';
 import {
   parseDetailPage,
   parseMostHoursPage,
+  isNotFoundPage,
   parseMostWatchedPage,
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  parseWeeklySection,
+  hasWeeklySection,
+  parseWeeklyWeekIndex,
   toCanonicalTitlePath,
 } from './parse';
+import { buildMostWatchedPath, buildWeeklyCountryPath, weeklyHeadings, WEEKLY_INDEX_PATH } from './url';
 
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
@@ -44,6 +50,9 @@ export class FlixPatrol {
   private readonly impit: Impit;
 
   private readonly flareSolverr?: FlareSolverrClient;
+
+  /** Scoped to the instance, which lives exactly one run (runPipeline.ts builds it). */
+  private weeklyIndexHtml: string | null = null;
 
   constructor(
     cacheOptions: CacheOptions,
@@ -128,6 +137,18 @@ export class FlixPatrol {
     return null;
   }
 
+  /**
+   * A path FlixPatrol no longer serves answers 200 with its "Page Not Found" page, so an
+   * unguarded caller reads it as an empty chart — and the pipeline clears the list rather
+   * than reporting a dead URL. Detail pages are deliberately exempt: one delisted title
+   * must not cost the whole run.
+   */
+  private static assertPageExists(html: string, path: string): void {
+    if (isNotFoundPage(html)) {
+      throw new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+    }
+  }
+
   public async getTop10Sections(
     config: FlixPatrolTop10,
   ): Promise<{
@@ -147,10 +168,12 @@ export class FlixPatrol {
       }
     }
 
-    const html = await this.getFlixPatrolHTMLPage(`/top10/${config.platform}/${config.location}`);
+    const path = `/top10/${config.platform}/${config.location}`;
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol top10 page');
     }
+    FlixPatrol.assertPageExists(html, path);
 
     let movies: MediaItem[] = [];
     let moviesRaw: FlixPatrolMatchResult[] = [];
@@ -255,10 +278,12 @@ export class FlixPatrol {
     config: FlixPatrolPopular,
   ): Promise<MediaItem[]> {
     const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    const html = await this.getFlixPatrolHTMLPage(`/popular/${urlType}/${config.platform}`);
+    const path = `/popular/${urlType}/${config.platform}`;
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol popular page');
     }
+    FlixPatrol.assertPageExists(html, path);
     let results = parsePopularPage(html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
@@ -268,25 +293,12 @@ export class FlixPatrol {
     type: FlixPatrolType,
     config: FlixPatrolMostWatched,
   ): Promise<MediaItem[]> {
-    const urlType = type === 'Movies' ? 'movies' : 'tv-shows';
-    let url = `/most-watched/${config.year}/${urlType}`;
-    if (config.country !== undefined) {
-      url += `-from-${config.country}`;
-    }
-    if (config.premiere !== undefined && config.premiere) {
-      url += `-${config.premiere}`;
-    }
-    if (type !== 'Movies') {
-      url += '-grouped';
-    }
-    if (config.orderByViews !== undefined && config.orderByViews) {
-      url += '/by-views';
-    }
-
-    const html = await this.getFlixPatrolHTMLPage(url);
+    const path = buildMostWatchedPath(config, type);
+    const html = await this.getFlixPatrolHTMLPage(path);
     if (html === null) {
       throw new FlixPatrolError('Unable to get FlixPatrol most-watched page');
     }
+    FlixPatrol.assertPageExists(html, path);
     let results = parseMostWatchedPage(html, config.original !== undefined && config.original);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
@@ -307,8 +319,65 @@ export class FlixPatrol {
     if (html === null) {
       throw new FlixPatrolError(`Unable to get FlixPatrol most-hours-${config.period} page`);
     }
+    FlixPatrol.assertPageExists(html, url);
     let results = parseMostHoursPage(type, config.language, html);
     results = results.slice(0, config.limit);
     return this.convertResultsToItems(results);
+  }
+
+  private async getWeeklyIndexPage(): Promise<string> {
+    if (this.weeklyIndexHtml !== null) {
+      return this.weeklyIndexHtml;
+    }
+    const html = await this.getFlixPatrolHTMLPage(WEEKLY_INDEX_PATH);
+    if (html === null) {
+      throw new FlixPatrolError('Unable to get FlixPatrol weekly hours page');
+    }
+    FlixPatrol.assertPageExists(html, WEEKLY_INDEX_PATH);
+    this.weeklyIndexHtml = html;
+    return html;
+  }
+
+  public async getWeekly(
+    type: FlixPatrolType,
+    config: FlixPatrolWeekly,
+  ): Promise<MediaItem[]> {
+    const indexHtml = await this.getWeeklyIndexPage();
+    let html = indexHtml;
+    let path = WEEKLY_INDEX_PATH;
+
+    if (config.location !== 'world') {
+      const week = parseWeeklyWeekIndex(config.platform, indexHtml);
+      if (week === null) {
+        // Not a fetch failure: the platform is simply absent from the /hours/ index this
+        // week, so it is a dead-path skip like any other rather than a fatal error.
+        const deadPath = `/hours/${config.platform}/`;
+        throw new FlixPatrolPageNotFoundError(
+          deadPath,
+          `FlixPatrol lists no weekly page for ${config.platform} — treating ${deadPath} as dead`,
+        );
+      }
+      path = buildWeeklyCountryPath(config.platform, week, config.location);
+      const countryHtml = await this.getFlixPatrolHTMLPage(path);
+      if (countryHtml === null) {
+        throw new FlixPatrolError(`Unable to get FlixPatrol weekly page ${path}`);
+      }
+      FlixPatrol.assertPageExists(countryHtml, path);
+      html = countryHtml;
+    }
+
+    const results: FlixPatrolMatchResult[] = [];
+    for (const heading of weeklyHeadings(config, type)) {
+      const section = parseWeeklySection(heading, html);
+      // A non-empty section already proves the heading exists; only check on an
+      // empty one, since that is the only case where the two differ (drift vs. an
+      // empty week) and hasWeeklySection re-parses the whole page.
+      if (section.length === 0 && !hasWeeklySection(heading, html)) {
+        logger.warn(`FlixPatrol served ${path} without a "${heading}" section`);
+      }
+      results.push(...section);
+    }
+
+    return this.convertResultsToItems(results.slice(0, config.limit));
   }
 }

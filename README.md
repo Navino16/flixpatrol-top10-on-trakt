@@ -118,7 +118,7 @@ else in the configuration stays the same.
 > [Migrating from 2.x](#migrating-from-2x) — the app detects the old format at startup and
 > prints the exact block to write.
 
-|                    | Trakt free                     | Trakt VIP         | mdblist free       | mdblist 1–3 €/month | Floppy                                      |
+|                    | Trakt free (deprecated)        | Trakt VIP (deprecated) | mdblist free  | mdblist 1–3 €/month | Floppy                                      |
 |--------------------|--------------------------------|-------------------|--------------------|---------------------|---------------------------------------------|
 | Lists              | 5                              | 100               | 4 static           | 20 to 80            | unlimited                                   |
 | Items per list     | 250                            | 5 000             | 10 000             | 30 000+             | unlimited                                   |
@@ -127,7 +127,19 @@ else in the configuration stays the same.
 | `privacy` honoured | 4 levels                       | 4 levels          | public/private only | public/private only | ignored, set it by hand in the web UI       |
 | Update date        | "Last Updated" in description  | same              | native `last_updated_at` | same          | native `latest_update`                      |
 
-### Trakt (default)
+### Trakt (deprecated)
+
+> **Warning**
+> **Trakt support is deprecated and will be removed in 4.0.0.** Trakt has closed its API to
+> third-party services — MDBList, SIMKL and WeTrakr were all blocked without notice — and has
+> repeatedly broken authentication for integrations like this one. Rather than wait to be cut
+> off, this project is moving away from it.
+>
+> Use [Floppy](#floppy-setup) or [mdblist](#mdblist-setup) instead. Both are supported today and
+> your existing lists can be rebuilt on either in a single run.
+>
+> The `link` and `friends` privacy levels go away at the same time: no other backend can express
+> them. Replace them with `private` or `public`.
 
 ```json
 {
@@ -170,6 +182,9 @@ Trakt concepts with no equivalent elsewhere, so **the app refuses to start** whe
 `friends` is used with `Target.type` set to `floppy` or `mdblist` — the error names each
 offending block and index. On Floppy, visibility cannot be set through the API at all: every
 list is created private and a warning says so once at startup.
+
+`link` and `friends` are deprecated and removed in 4.0.0 on every backend — see
+[Trakt (deprecated)](#trakt-deprecated).
 
 ## Migrating from 2.x
 
@@ -346,6 +361,8 @@ If there is any configuration error, the tool will exit with information about t
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                                     | true                                       |
 | kids            | Get Kids Top 10 (Netflix only, requires specific country)                                  | No        | true, false                                                                                                                                     | false                                      |
 
+**Note on `fallback`:** The fallback is tried only when the configured location exists but has no rankings (empty chart). If the location does not exist for that platform (e.g. Hulu for Russia), the entry is skipped, the list stays unchanged, and the run reports a dead path — `fallback` cannot fix that, as it would silently fill the list with the wrong location's content.
+
 </details>
 
 <details>
@@ -375,9 +392,38 @@ If there is any configuration error, the tool will exit with information about t
 | name            | Optional custom list name                                                                  | No        | Any valid string                                                                                                                       | most-watched |
 | normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                                                                            | true         |
 | premiere        | Filter by premiere year                                                                    | No        | Year between 1980 and current year                                                                                                     | All          |
-| country         | Filter by release country                                                                  | No        | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | All          |
+| country         | Filter by release country                                                                  | No        | 93 values, see below                                                                                                                   | All          |
 | original        | Netflix originals only?                                                                    | No        | true, false                                                                                                                            | false        |
-| orderByViews    | Order by views instead of hours?                                                           | No        | true, false                                                                                                                            | false        |
+| genre           | Filter by genre. 30 values, see below. Must exist for every requested type.                | No        | See below                                                                                                                              | All          |
+
+**`genre`** — common to both types: `action`, `adventure`, `animation`, `biography`,
+`comedy`, `crime`, `documentary`, `drama`, `family`, `fantasy`, `history`, `horror`,
+`romance`, `science-fiction`, `superhero`, `thriller`, `war`, `western`.
+Movies only: `concerts`, `fairy-tale`, `musical`, `record`, `sports`.
+Shows only: `broadcast`, `game-show`, `music`, `news`, `reality-show`, `sport`,
+`talk-show`.
+With `type: "both"`, only the 18 common genres are accepted. Note `sports` for movies
+and `sport` for shows: this is FlixPatrol's own spelling.
+
+**`country`** — 93 values, copied from `flixpatrolMostWatchedCountry`. This is **not**
+the same list as `FlixPatrolTop10` locations: `china`, `russia` and `monaco` for
+example are not in it.
+
+`argentina`, `australia`, `austria`, `bahamas`, `bahrain`, `bangladesh`, `belgium`, `bolivia`,
+`brazil`, `bulgaria`, `canada`, `chile`, `colombia`, `costa-rica`, `croatia`, `cyprus`,
+`czech-republic`, `denmark`, `dominican-republic`, `ecuador`, `egypt`, `estonia`, `finland`,
+`france`, `germany`, `greece`, `guadeloupe`, `guatemala`, `honduras`, `hong-kong`, `hungary`,
+`iceland`, `india`, `indonesia`, `ireland`, `israel`, `italy`, `jamaica`, `japan`, `jordan`,
+`kenya`, `kuwait`, `latvia`, `lebanon`, `lithuania`, `luxembourg`, `malaysia`, `maldives`,
+`malta`, `martinique`, `mauritius`, `mexico`, `morocco`, `netherlands`, `new-caledonia`,
+`new-zealand`, `nicaragua`, `nigeria`, `norway`, `oman`, `pakistan`, `panama`, `paraguay`,
+`peru`, `philippines`, `poland`, `portugal`, `qatar`, `reunion`, `romania`, `salvador`,
+`saudi-arabia`, `serbia`, `singapore`, `slovakia`, `slovenia`, `south-africa`, `south-korea`,
+`spain`, `sri-lanka`, `sweden`, `switzerland`, `taiwan`, `thailand`, `trinidad-and-tobago`,
+`turkey`, `ukraine`, `united-arab-emirates`, `united-kingdom`, `united-states`, `uruguay`,
+`venezuela`, `vietnam`.
+
+Shows are always grouped by title, never listed season by season.
 
 </details>
 
@@ -398,6 +444,38 @@ If there is any configuration error, the tool will exit with information about t
 </details>
 
 <details>
+<summary><strong>FlixPatrolWeekly</strong> — weekly /hours/ rankings (Netflix, Amazon Prime)</summary>
+
+| Name            | Description                                                                                | Mandatory | Values                                                                     | Default   |
+|-----------------|--------------------------------------------------------------------------------------------|-----------|----------------------------------------------------------------------------|-----------|
+| enabled         | Enable this weekly list?                                                                   | Yes       | true, false                                                                | true      |
+| privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                             | private   |
+| type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                        | both      |
+| limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 20                                                    |           |
+| platform        | Which platform's weekly chart                                                              | Yes       | netflix, amazon-prime                                                      |           |
+| location        | Worldwide chart, or a per-country chart (Netflix only)                                     | No        | world, or one of the 93 countries listed under FlixPatrolMostWatched above | world     |
+| language        | Filter the worldwide chart by language                                                     | No        | all, english, non-english                                                  | all       |
+| name            | Optional custom list name                                                                  | No        | Any valid string                                                           | see below |
+| normalizeName   | Normalize the list name to kebab-case?                                                     | No        | true, false                                                                | true      |
+
+`limit` only reaches 20 with `language: "all"`: the worldwide chart then concatenates two
+sections of 10 (English first). Every other combination — a specific language, or any
+per-country `location` — tops out at 10, because that is all FlixPatrol publishes for a single
+section.
+
+A `location` other than `world` is **Netflix-only**: Amazon Prime publishes no per-country
+weekly page. That pairing (`platform: "amazon-prime"` with a country) only warns at config
+validation — the entry is skipped, never a hard error. Netflix's per-country page carries the
+platform's own official ranking, which carries no language split: a `language` set there also
+only warns, but the entry is **not** skipped — `language` is ignored and the list is still
+produced.
+
+Default list name: `{platform}-weekly-{language}` worldwide (the `-{language}` suffix is
+dropped for `all`), `{platform}-weekly-{location}` for a country entry.
+
+</details>
+
+<details>
 <summary><strong>Target</strong> — Which backend the lists are written to, and its credentials</summary>
 
 `Target` is a discriminated union on `type`: it carries the backend name **and** exactly the
@@ -406,7 +484,7 @@ credentials that backend needs. The block is mandatory.
 | Name                | Description                                                                            | Mandatory             | Values                 | Default         |
 |---------------------|----------------------------------------------------------------------------------------|-----------------------|------------------------|-----------------|
 | type                | Which backend receives the generated lists                                             | Yes                   | trakt, floppy, mdblist |                 |
-| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | ./config/.trakt |
+| saveFile            | Where to save the Trakt session file                                                   | If `type: "trakt"`    | Any valid path         | None — no shipped template supplies one; `./config/.trakt` is the conventional value |
 | clientId            | Your clientId from Trakt ([get one here](https://trakt.tv/oauth/applications/new))     | If `type: "trakt"`    | A valid string         |                 |
 | clientSecret        | Your clientSecret from Trakt ([get one here](https://trakt.tv/oauth/applications/new)) | If `type: "trakt"`    | A valid string         |                 |
 | url                 | Base URL of your Floppy instance                                                       | If `type: "floppy"`   | Any valid URL          |                 |
@@ -505,6 +583,11 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
 <details>
 <summary><strong>Example configuration</strong></summary>
 
+> **Note**
+> This example defines 11 lists — more than a free mdblist account (4 static lists) or a free Trakt
+> account (5 lists) allows. It exists to show the available options, not as a ready-to-use file:
+> trim it to your backend's capacity. See [Choosing Your Platform](#choosing-your-platform).
+
 ```json
 {
   "FlixPatrolTop10": [
@@ -587,11 +670,26 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
       "language": "english"
     }
   ],
+  "FlixPatrolWeekly": [
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 20,
+      "type": "both",
+      "platform": "netflix"
+    },
+    {
+      "enabled": true,
+      "privacy": "public",
+      "limit": 10,
+      "type": "both",
+      "platform": "netflix",
+      "location": "france"
+    }
+  ],
   "Target": {
-    "type": "trakt",
-    "saveFile": "./config/.trakt",
-    "clientId": "You need to replace this client ID",
-    "clientSecret": "You need to replace this client secret"
+    "type": "mdblist",
+    "apiKey": "your-mdblist-api-key"
   },
   "Cache": {
     "enabled": true,
@@ -627,6 +725,9 @@ The `FlareSolverr` block is fully optional and disabled by default — omit it (
 
 ### Trakt Setup
 
+> **Warning**
+> Deprecated — removed in 4.0.0. See [Choosing Your Platform](#choosing-your-platform).
+
 To run this application you need a Trakt account and a Client ID / Client Secret.
 
 > **Warning**
@@ -636,7 +737,19 @@ To run this application you need a Trakt account and a Client ID / Client Secret
 2. [Create a new application](https://trakt.tv/oauth/applications/new) with:
    - **Redirect uri:** `urn:ietf:wg:oauth:2.0:oob`
    - Other fields are optional
-3. Set the Client ID / Client Secret in `./config/default.json`
+3. Replace the `Target` block in `./config/default.json` with the Trakt shape:
+
+```json
+{
+  "Target": {
+    "type": "trakt",
+    "saveFile": "./config/.trakt",
+    "clientId": "your-trakt-client-id",
+    "clientSecret": "your-trakt-client-secret"
+  }
+}
+```
+
 4. Run the app and follow the on-screen instructions
 
 ### Floppy Setup
@@ -841,11 +954,12 @@ copy it into `config/default.json` in place of the old block. Your file is never
 the config directory is frequently a read-only mount and usually version-controlled. See
 [Migrating from 2.x](#migrating-from-2x).
 
-**Startup fails saying `Target.clientId` / `Target.clientSecret` still hold the placeholder values.**
-The `config/default.json` the app generated on first run was never edited. Replace the placeholders
-with real credentials — [create a Trakt API application](https://trakt.tv/oauth/applications/new)
-and copy its client id and secret into the `Target` block. The check runs field by field, so
-replacing only one of the two is still caught and the message names the one left over.
+**Startup fails saying a `Target` field still holds a placeholder value.**
+The `config/default.json` the app generated on first run was never edited. A fresh install ships
+`Target.apiKey` for mdblist — replace it with your real key from your
+[preferences page](https://mdblist.com/preferences/). The same check catches unreplaced Trakt
+`clientId`/`clientSecret` if you configured that backend by hand instead. It runs field by field,
+so replacing only some of the fields is still caught and the message names the ones left over.
 
 **Warning about an obsolete root-level `Trakt` block.**
 Nothing is broken: the run proceeds normally. Credentials now live inside `Target`, so the

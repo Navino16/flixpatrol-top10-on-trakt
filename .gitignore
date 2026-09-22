@@ -10,3 +10,5 @@ config/local.json
 .vitest/
 docker-compose.yml
 .env.e2e
+.playwright-mcp/
+docs/superpowers/

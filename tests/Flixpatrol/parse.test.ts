@@ -9,6 +9,10 @@ import {
   parsePopularPage,
   parseTop10KidsPage,
   parseTop10Page,
+  parseWeeklySection,
+  parseWeeklyWeekIndex,
+  hasWeeklySection,
+  isNotFoundPage,
   toCanonicalTitlePath,
 } from '../../src/Flixpatrol/parse';
 
@@ -426,5 +430,99 @@ describe('FlixPatrol parsing', () => {
 
       expect(parseDetailYear(dom)).toBe(1977);
     });
+  });
+});
+
+// FlixPatrol answers a missing page with HTTP 200 and this body, never a 404, so the
+// status code cannot be used to tell a dead URL from an empty chart.
+describe('isNotFoundPage', () => {
+  const page = (title: string, body = '') => `<html><head><title>${title}</title></head><body>${body}</body></html>`;
+
+  it('recognises the page FlixPatrol serves for a path that does not exist', () => {
+    expect(isNotFoundPage(page('Page Not Found \u2022 FlixPatrol', '<h1 class="text-h1">Page Not Found</h1>')))
+      .toBe(true);
+  });
+
+  it('leaves a real listing page alone', () => {
+    expect(isNotFoundPage(page('Netflix Most Watched Movies in 2025 \u2022 FlixPatrol'))).toBe(false);
+    expect(isNotFoundPage(page('TOP 10 on Netflix in the World on September 16, 2026 \u2022 FlixPatrol')))
+      .toBe(false);
+  });
+
+  it('keys off the title, not the body, so a page merely mentioning the phrase is not flagged', () => {
+    expect(isNotFoundPage(page('Netflix Most Watched Movies in 2025 \u2022 FlixPatrol', '<p>Page Not Found</p>')))
+      .toBe(false);
+  });
+
+  it('treats markup it cannot read as a normal page, so a detection failure never escalates', () => {
+    expect(isNotFoundPage('<html><body>no title here</body></html>')).toBe(false);
+    expect(isNotFoundPage('')).toBe(false);
+  });
+});
+
+const weeklyHtml = `
+<h2 class="text-h2">Netflix TOP 10 Movies (in English) Viewing Hours</h2>
+<table class="card-table">
+  <tr><td><a class="flex gap-2 items-center group" href="/title/first-movie/hours/">First</a></td></tr>
+  <tr><td><a class="flex gap-2 items-center group" href="/title/second-movie/hours/">Second</a></td></tr>
+</table>
+<h2 class="text-h2">Netflix TOP 10 Movies (in Not English) Viewing Hours</h2>
+<table class="card-table">
+  <tr><td><a class="flex gap-2 items-center group" href="/title/tercero/hours/">Tercero</a></td></tr>
+</table>
+<div>
+  <a href="/hours/netflix/2026-035/">35</a>
+  <a href="/hours/netflix/2026-037/">37</a>
+  <a href="/hours/netflix/2026-036/">36</a>
+  <a href="/hours/amazon-prime/2026-035/">az</a>
+</div>`;
+
+describe('parseWeeklySection', () => {
+  it('returns the hrefs of the table following the heading', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in English)', weeklyHtml))
+      .toEqual(['/title/first-movie/hours/', '/title/second-movie/hours/']);
+  });
+
+  it('does not bleed into the next section', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in Not English)', weeklyHtml))
+      .toEqual(['/title/tercero/hours/']);
+  });
+
+  it('returns [] for an unknown heading', () => {
+    expect(parseWeeklySection('Netflix TOP 10 Documentaries', weeklyHtml)).toEqual([]);
+  });
+
+  it('does not adopt the next section\'s table when its own heading has none', () => {
+    const bleedHtml = `
+<h2>Netflix TOP 10 Movies (in Not English)</h2>
+<h2>Amazon Prime TOP 10 Movies (in English)</h2>
+<table><tr><td><a href="/title/amazon-one/">Amazon One</a></td></tr></table>`;
+    expect(parseWeeklySection('Netflix TOP 10 Movies (in Not English)', bleedHtml)).toEqual([]);
+  });
+});
+
+describe('hasWeeklySection', () => {
+  it('is true for a heading that exists, even with an empty table', () => {
+    expect(hasWeeklySection('Netflix TOP 10 Movies (in English)', weeklyHtml)).toBe(true);
+    expect(hasWeeklySection('Netflix TOP 10 Movies (in English)',
+      '<h2>Netflix TOP 10 Movies (in English) Viewing Hours</h2><table></table>')).toBe(true);
+  });
+
+  it('is false for an unknown heading', () => {
+    expect(hasWeeklySection('Netflix TOP 10 Documentaries', weeklyHtml)).toBe(false);
+  });
+});
+
+describe('parseWeeklyWeekIndex', () => {
+  it('returns the highest week of that platform', () => {
+    expect(parseWeeklyWeekIndex('netflix', weeklyHtml)).toBe('2026-037');
+  });
+
+  it('does not mix platforms', () => {
+    expect(parseWeeklyWeekIndex('amazon-prime', weeklyHtml)).toBe('2026-035');
+  });
+
+  it('returns null when the platform has no week link', () => {
+    expect(parseWeeklyWeekIndex('netflix', '<div></div>')).toBeNull();
   });
 });

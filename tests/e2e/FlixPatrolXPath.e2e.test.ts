@@ -12,10 +12,13 @@ import {
   mostWatchedExpression,
   parseDetailPage,
   parseTop10Page,
+  parseWeeklySection,
+  parseWeeklyWeekIndex,
   toCanonicalTitlePath,
   top10Expressions,
   top10KidsExpressions,
 } from '../../src/Flixpatrol/parse';
+import { buildWeeklyCountryPath, WEEKLY_INDEX_PATH } from '../../src/Flixpatrol/url';
 import type {
   FlixPatrolMostHoursLanguage,
   FlixPatrolMostHoursPeriod,
@@ -61,11 +64,13 @@ const REQUEST_DELAY_MS = 1500;
 
 /**
  * Hard ceiling on live page loads, asserted at the end. It sits two slots above
- * what the tables below plan and no more, that margin being what lets the
- * assertion tell "someone added a page" from "something is re-fetching". Raising
- * it must stay a deliberate act visible in a diff.
+ * what the tables below plan plus the two pages the "Weekly" bootstrap step
+ * fetches (`/hours/` and one country page derived from it) and no more, that
+ * margin being what lets the assertion tell "someone added a page" from
+ * "something is re-fetching". Raising it must stay a deliberate act visible in
+ * a diff.
  */
-const REQUEST_BUDGET = 32;
+const REQUEST_BUDGET = 35;
 
 /** Whole-suite budget: every page load, the first of which solves a challenge. */
 const BOOTSTRAP_TIMEOUT_MS = 600_000;
@@ -192,14 +197,28 @@ const POPULAR_PAGES: readonly PopularPage[] = [
 /**
  * Most watched — two derived years, so no path rots, and both media shapes. The
  * `original: true` variant is a second expression over the SAME page, so it costs no
- * extra request. YEAR is the only granularity this route has: a day appended to it
- * returns "Page Not Found". Same for Most hours below, a lifetime total.
+ * extra request. Year, genre, country and premiere year are the granularity this
+ * route has; a week appended to it belongs to a different config block entirely.
  */
-const MOST_WATCHED_PAGES: readonly { path: string }[] = [
-  { path: `/most-watched/${currentYear - 1}/movies` },
-  { path: `/most-watched/${currentYear - 2}/movies` },
-  { path: `/most-watched/${currentYear - 1}/tv-shows-grouped` },
+interface MostWatchedPage {
+  path: string;
+  /**
+   * Whether the `original: true` variant is guaranteed to be a strict, non-empty subset
+   * on this page. The genre page was added to lock the URL segment order, not the
+   * `[.//svg]` predicate, and a narrow genre gives no guarantee both sides are non-empty.
+   */
+  checkOriginalsSubset: boolean;
+}
+
+const MOST_WATCHED_PAGES: readonly MostWatchedPage[] = [
+  { path: `/hours/netflix/${currentYear - 1}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 2}/world/movies/`, checkOriginalsSubset: true },
+  { path: `/hours/netflix/${currentYear - 1}/world/tv-shows-grouped/`, checkOriginalsSubset: true },
+  // The genre PREFIXES the type: `movies-comedy/` answers "Page Not Found" with a 200.
+  { path: `/hours/netflix/${currentYear - 1}/world/comedy-movies/`, checkOriginalsSubset: false },
 ];
+
+const MOST_WATCHED_ORIGINALS_PAGES = MOST_WATCHED_PAGES.filter((entry) => entry.checkOriginalsSubset);
 
 interface MostHoursPage {
   path: string;
@@ -270,7 +289,7 @@ const DETAIL_SPECS: readonly DetailSpec[] = [
   },
   {
     family: 'most-watched-movie',
-    listingPath: `/most-watched/${currentYear - 1}/movies`,
+    listingPath: `/hours/netflix/${currentYear - 1}/world/movies/`,
     expression: mostWatchedExpression(false),
   },
   {
@@ -446,6 +465,8 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
   const pages = new Map<string, string>();
   const details = new Map<string, DerivedDetail>();
   let requestCount = 0;
+  /** The one weekly country page fetched, resolved at bootstrap from the live week index. */
+  let weeklyCountryPath: string;
 
   const page = (path: string): string => {
     const html = pages.get(path);
@@ -516,6 +537,16 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
     for (const spec of DETAIL_SPECS) {
       await deriveDetail(spec);
     }
+
+    // The country path depends on the week read off the index page, so it cannot be a
+    // static entry in LISTING_PATHS: it is resolved here, sequentially, like DETAIL_SPECS.
+    const weeklyIndexHtml = await fetchPage(WEEKLY_INDEX_PATH);
+    const week = parseWeeklyWeekIndex('netflix', weeklyIndexHtml);
+    if (week === null) {
+      throw new Error(`${WEEKLY_INDEX_PATH} carries no netflix week index to build a country path from`);
+    }
+    weeklyCountryPath = buildWeeklyCountryPath('netflix', week, 'france');
+    await fetchPage(weeklyCountryPath);
   }, BOOTSTRAP_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -694,7 +725,7 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
       },
     );
 
-    it.for(MOST_WATCHED_PAGES)(
+    it.for(MOST_WATCHED_ORIGINALS_PAGES)(
       '$path — the originals variant is still a strict, non-empty subset',
       ({ path }) => {
         const html = page(path);
@@ -766,6 +797,33 @@ describe.skipIf(!process.env.E2E_FLARESOLVERR_URL)('FlixPatrol XPath drift (E2E)
         }
       },
     );
+  });
+
+  describe('Weekly', () => {
+    it('/hours/ still serves the eight world sections', () => {
+      const html = page(WEEKLY_INDEX_PATH);
+      for (const platform of ['Netflix', 'Amazon Prime']) {
+        for (const type of ['Movies', 'TV Shows']) {
+          for (const lang of ['English', 'Not English']) {
+            const heading = `${platform} TOP 10 ${type} (in ${lang})`;
+            expect(parseWeeklySection(heading, html).length, heading).toBeGreaterThanOrEqual(10);
+          }
+        }
+      }
+    });
+
+    it('/hours/ still carries the netflix week index', () => {
+      const html = page(WEEKLY_INDEX_PATH);
+      expect(parseWeeklyWeekIndex('netflix', html)).toMatch(/^\d{4}-\d{3}$/);
+    });
+
+    it('a country page still serves both official-ranking sections', () => {
+      const html = page(weeklyCountryPath);
+      for (const type of ['Movies', 'TV Shows']) {
+        const heading = `TOP 10 ${type} Official Rankings`;
+        expect(parseWeeklySection(heading, html).length, heading).toBeGreaterThanOrEqual(10);
+      }
+    });
   });
 
   describe('Detail pages', () => {

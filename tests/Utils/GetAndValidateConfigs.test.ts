@@ -3,11 +3,14 @@ import {
   flixpatrolTop10Location,
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
   GetAndValidateConfigs,
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
+import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET, MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
 
 vi.mock('config', () => ({
   default: {
@@ -249,7 +252,6 @@ describe('GetAndValidateConfigs', () => {
             premiere: 2020,
             country: 'france',
             original: true,
-            orderByViews: true,
           },
         ];
         vi.mocked(config.get).mockReturnValue(validConfig);
@@ -287,6 +289,44 @@ describe('GetAndValidateConfigs', () => {
         vi.mocked(config.get).mockReturnValue(invalidConfig);
 
         expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+      });
+    });
+
+    describe('getFlixPatrolWeekly', () => {
+      it('returns [] when the block is absent', () => {
+        vi.mocked(config.has).mockReturnValue(false);
+
+        expect(GetAndValidateConfigs.getFlixPatrolWeekly()).toEqual([]);
+      });
+
+      it('applies the defaults for location and language', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        const [entry] = GetAndValidateConfigs.getFlixPatrolWeekly();
+
+        expect(entry.location).toBe('world');
+        expect(entry.language).toBe('all');
+      });
+
+      it('should throw ConfigurationError for limit > 20', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'netflix', type: 'both', limit: 21, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
+      });
+
+      it('should throw ConfigurationError for an unknown platform', () => {
+        vi.mocked(config.has).mockReturnValue(true);
+        vi.mocked(config.get).mockReturnValue([{
+          enabled: true, platform: 'disney', type: 'both', limit: 10, privacy: 'private',
+        }]);
+
+        expect(() => GetAndValidateConfigs.getFlixPatrolWeekly()).toThrow(ConfigurationError);
       });
     });
 
@@ -661,14 +701,27 @@ describe('GetAndValidateConfigs', () => {
           });
         });
 
-        // Neither backend ships template credentials, so nothing can be left
-        // unreplaced for them and the guard must stay out of the way.
-        it('leaves backends without shipped templates alone', () => {
-          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
-          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
-
+        // Floppy ships no template credential, so nothing can be left unreplaced
+        // for it and the guard must stay out of the way.
+        it('leaves floppy alone, since it ships no template credential', () => {
           useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
           expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+        });
+
+        it('accepts a real mdblist api key', () => {
+          useConfig({ Target: { type: 'mdblist', apiKey: 'key' } });
+          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+        });
+
+        it('rejects an untouched mdblist template configuration', () => {
+          useConfig({ Target: { type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY } });
+
+          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+
+          const message = messageOf();
+          expect(message).toContain('`Target.apiKey` still holds the placeholder value');
+          expect(message).toContain(`"apiKey": ${JSON.stringify(MDBLIST_TEMPLATE_API_KEY)}`);
+          expect(message).toContain('https://mdblist.com/preferences');
         });
       });
 
@@ -728,19 +781,30 @@ describe('GetAndValidateConfigs', () => {
         type: 'both',
       });
 
-      /** Builds the four list blocks, only FlixPatrolTop10 being populated by default. */
-      const listsWith = (privacies: string[], block = 'FlixPatrolTop10') => {
-        const empty = {
-          FlixPatrolTop10: [],
-          FlixPatrolPopular: [],
-          FlixPatrolMostWatched: [],
-          FlixPatrolMostHours: [],
-        } as unknown as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
-        return {
-          ...empty,
-          [block]: privacies.map(listEntry),
-        } as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
-      };
+      /** All five list blocks empty, as `checkTargetCompatibility` needs every one at once. */
+      const emptyLists = {
+        FlixPatrolTop10: [],
+        FlixPatrolPopular: [],
+        FlixPatrolMostWatched: [],
+        FlixPatrolMostHours: [],
+        FlixPatrolWeekly: [],
+      } as unknown as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1];
+
+      const weeklyEntry = {
+        enabled: true,
+        privacy: 'private',
+        limit: 10,
+        type: 'both',
+        platform: 'netflix',
+        location: 'world',
+        language: 'all',
+      } as const;
+
+      /** Builds all five list blocks, only FlixPatrolTop10 being populated by default. */
+      const listsWith = (privacies: string[], block = 'FlixPatrolTop10') => ({
+        ...emptyLists,
+        [block]: privacies.map(listEntry),
+      } as Parameters<typeof GetAndValidateConfigs.checkTargetCompatibility>[1]);
 
       const mdblist = { type: 'mdblist', apiKey: 'key' } as const;
       const floppy = { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
@@ -754,8 +818,13 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('accepts the very same lists on trakt', () => {
+        // A trakt target always warns about its own deprecation; muted here, not under test.
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
           .not.toThrow();
+
+        warn.mockRestore();
       });
 
       it('rejects "friends" on floppy', () => {
@@ -763,7 +832,7 @@ describe('GetAndValidateConfigs', () => {
           .toThrow(ConfigurationError);
       });
 
-      it.each(['FlixPatrolPopular', 'FlixPatrolMostWatched', 'FlixPatrolMostHours'])(
+      it.each(['FlixPatrolPopular', 'FlixPatrolMostWatched', 'FlixPatrolMostHours', 'FlixPatrolWeekly'])(
         'covers the %s block too',
         (block) => {
           expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['link'], block)))
@@ -791,11 +860,223 @@ describe('GetAndValidateConfigs', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
         GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
+
+        // A trakt target always warns about its own deprecation; that is the only warning expected here.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).not.toMatch(/cannot set list visibility/);
+        warn.mockClear();
+
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
       });
+
+      describe('FlixPatrolWeekly', () => {
+        it('warns when a country is set on amazon-prime', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, platform: 'amazon-prime', location: 'france' }],
+          });
+
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('FlixPatrolWeekly[0]'));
+          warn.mockRestore();
+        });
+
+        it('warns when language is set on a country entry', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, location: 'france', language: 'english' }],
+          });
+
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('language'));
+          warn.mockRestore();
+        });
+
+        it('accepts a world entry with a language', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          // mdblist here, not trakt: a trakt target always warns about its own deprecation.
+          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
+          });
+
+          expect(warn).not.toHaveBeenCalled();
+          warn.mockRestore();
+        });
+
+        it('rejects link privacy on a non-trakt backend for the weekly block', () => {
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(floppy, {
+            ...emptyLists,
+            FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
+          })).toThrow(ConfigurationError);
+        });
+      });
+
+      describe('Trakt deprecation', () => {
+        it('warns that Trakt is removed in 4.0.0', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          GetAndValidateConfigs.checkTargetCompatibility(trakt, emptyLists);
+
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('4.0.0'));
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('Trakt'));
+          warn.mockRestore();
+        });
+
+        it('warns instead of throwing on link/friends when the backend is Trakt', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            trakt,
+            listsWith(['link', 'friends']),
+          )).not.toThrow();
+
+          const message = warn.mock.calls.map(([text]) => String(text)).join('\n');
+          expect(message).toContain('FlixPatrolTop10[0].privacy = "link"');
+          expect(message).toContain('FlixPatrolTop10[1].privacy = "friends"');
+          warn.mockRestore();
+        });
+
+        it('still throws on link/friends when the backend is not Trakt', () => {
+          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
+            mdblist,
+            listsWith(['friends']),
+          )).toThrow(ConfigurationError);
+        });
+      });
+    });
+  });
+
+  describe('MostWatched unions', () => {
+    it('restricts countries to the 93 FlixPatrol accepts, not the 199 Top10 locations', () => {
+      expect(flixpatrolMostWatchedCountry).toHaveLength(93);
+      expect(flixpatrolMostWatchedCountry).toContain('argentina');
+      expect(flixpatrolMostWatchedCountry).toContain('south-korea');
+      expect(flixpatrolMostWatchedCountry).toContain('united-states');
+      // Present in flixpatrolTop10Location, absent from FlixPatrol's `from` select.
+      expect(flixpatrolMostWatchedCountry).not.toContain('monaco');
+      expect(flixpatrolMostWatchedCountry).not.toContain('china');
+      expect(flixpatrolMostWatchedCountry).not.toContain('russia');
+    });
+
+    it('keeps the movie/show genre split, singular and plural included', () => {
+      expect(flixpatrolMostWatchedMovieGenre).toHaveLength(23);
+      expect(flixpatrolMostWatchedShowGenre).toHaveLength(25);
+      // FlixPatrol writes `sports` for movies and `sport` for shows.
+      expect(flixpatrolMostWatchedMovieGenre).toContain('sports');
+      expect(flixpatrolMostWatchedMovieGenre).not.toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).toContain('sport');
+      expect(flixpatrolMostWatchedShowGenre).not.toContain('sports');
+    });
+
+    it('exposes the union of both genre lists without duplicates', () => {
+      const union = [...new Set([...flixpatrolMostWatchedMovieGenre, ...flixpatrolMostWatchedShowGenre])];
+      expect(union).toHaveLength(30);
+      expect(union).toContain('game-show');
+      expect(union).toContain('musical');
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — schema', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('accepts a genre valid for the requested type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'comedy' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('comedy');
+    });
+
+    it('rejects a country FlixPatrol does not serve, naming it without dumping the 93', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, country: 'monaco' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/"monaco"/);
+      // The message points to the README instead of dumping the whole list.
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow(/argentina/);
+    });
+
+    it('rejects an unknown genre', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, genre: 'documentaries' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(ConfigurationError);
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — genre/type coherence', () => {
+    const base = { enabled: true, privacy: 'private', limit: 50, year: 2024 };
+
+    it('rejects a shows-only genre on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'game-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/game-show/);
+    });
+
+    it('rejects a movies-only genre on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'musical' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/musical/);
+    });
+
+    it('rejects a single-type genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'talk-show' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/talk-show/);
+    });
+
+    it('accepts a shared genre on a both block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'both', genre: 'thriller' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('thriller');
+    });
+
+    it('accepts the singular/plural variant matching the type', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sports' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sports');
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sport' }]);
+      expect(GetAndValidateConfigs.getFlixPatrolMostWatched()[0].genre).toBe('sport');
+    });
+
+    // Pins the data, not the code path: `sports` (movies) and `sport` (shows) must stay
+    // rejected on the other type, or a well-meaning rename would break the show pages silently.
+    it('rejects the movies spelling on a shows block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'shows', genre: 'sports' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sports/);
+    });
+
+    it('rejects the shows spelling on a movies block', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, type: 'movies', genre: 'sport' }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).toThrow(/sport/);
+    });
+  });
+
+  describe('getFlixPatrolMostWatched — migration', () => {
+    const base = {
+      enabled: true, privacy: 'private', limit: 50, type: 'movies', year: 2024,
+    };
+
+    it('refuses to start when orderByViews is still present', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/orderByViews/);
+    });
+
+    it('refuses it even when set to false, since the key is what is obsolete', () => {
+      vi.mocked(config.get).mockReturnValue([{ ...base, orderByViews: false }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(ConfigurationError);
+    });
+
+    it('names the offending entry by index', () => {
+      vi.mocked(config.get).mockReturnValue([base, { ...base, orderByViews: true }]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched())
+        .toThrow(/FlixPatrolMostWatched\[1\]/);
+    });
+
+    it('stays silent on a clean config', () => {
+      vi.mocked(config.get).mockReturnValue([base]);
+      expect(() => GetAndValidateConfigs.getFlixPatrolMostWatched()).not.toThrow();
     });
   });
 });

@@ -21,32 +21,6 @@
       "normalizeName": false
     },
     {
-      "platform": "amazon-prime",
-      "location": "world",
-      "fallback": false,
-      "privacy": "private",
-      "limit": 10,
-      "name": "Amazon Prime Top 10",
-      "type": "both",
-      "normalizeName": false
-    },
-    {
-      "platform": "apple-tv",
-      "location": "world",
-      "fallback": false,
-      "privacy": "private",
-      "limit": 10,
-      "type": "both"
-    },
-    {
-      "platform": "paramount-plus",
-      "location": "world",
-      "fallback": false,
-      "privacy": "private",
-      "limit": 10,
-      "type": "both"
-    },
-    {
       "platform": "netflix",
       "location": "united-states",
       "fallback": false,
@@ -69,7 +43,7 @@
   ],
   "FlixPatrolMostWatched": [
     {
-      "enabled": true,
+      "enabled": false,
       "privacy": "public",
       "limit": 50,
       "type": "both",
@@ -78,21 +52,21 @@
   ],
   "FlixPatrolMostHours": [
     {
-      "enabled": true,
+      "enabled": false,
       "privacy": "public",
       "limit": 50,
       "type": "both",
       "period": "total"
     },
     {
-      "enabled": true,
+      "enabled": false,
       "privacy": "public",
       "limit": 50,
       "type": "both",
       "period": "first-week"
     },
     {
-      "enabled": true,
+      "enabled": false,
       "privacy": "public",
       "limit": 50,
       "type": "both",
@@ -100,11 +74,10 @@
       "language": "english"
     }
   ],
+  "FlixPatrolWeekly": [],
   "Target": {
-    "type": "trakt",
-    "saveFile": "./config/.trakt",
-    "clientId": "You need to replace this client ID",
-    "clientSecret": "You need to replace this client secret"
+    "type": "mdblist",
+    "apiKey": "You need to replace this API key"
   },
   "Cache": {
     "enabled": true,

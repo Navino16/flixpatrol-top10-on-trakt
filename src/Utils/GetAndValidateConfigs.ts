@@ -8,6 +8,7 @@ import {
   FlixPatrolPopularSchema,
   FlixPatrolMostWatchedSchema,
   FlixPatrolMostHoursSchema,
+  FlixPatrolWeeklySchema,
   TargetSchema,
   CacheOptionsSchema,
   NotificationsSchema,
@@ -21,6 +22,7 @@ import type {
   FlixPatrolPopular,
   FlixPatrolMostWatched,
   FlixPatrolMostHours,
+  FlixPatrolWeekly,
   TargetOptions,
   TargetBackendName,
   TraktPrivacy,
@@ -36,6 +38,9 @@ export {
   flixpatrolTop10Platform,
   flixpatrolPopularPlatform,
   flixpatrolConfigType,
+  flixpatrolMostWatchedCountry,
+  flixpatrolMostWatchedMovieGenre,
+  flixpatrolMostWatchedShowGenre,
 } from '../types';
 
 // Helper function to format Zod errors
@@ -55,12 +60,13 @@ function validateConfig<T>(schema: z.ZodSchema<T>, data: unknown, context: strin
   return result.data;
 }
 
-/** Every list block, as `checkTargetCompatibility` needs all four at once. */
+/** Every list block, as `checkTargetCompatibility` needs all five at once. */
 export interface ListConfigs {
   FlixPatrolTop10: FlixPatrolTop10[];
   FlixPatrolPopular: FlixPatrolPopular[];
   FlixPatrolMostWatched: FlixPatrolMostWatched[];
   FlixPatrolMostHours: FlixPatrolMostHours[];
+  FlixPatrolWeekly: FlixPatrolWeekly[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object'
@@ -166,6 +172,7 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
   trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
     + 'client id and client secret into the `Target` block.',
+  mdblist: 'Copy your API key from https://mdblist.com/preferences/ into the `Target` block.',
 };
 
 /** "a", "a and b", "a, b and c". */
@@ -205,6 +212,49 @@ function checkForTemplateCredentials(target: TargetOptions): void {
   ].join('\n'));
 }
 
+/**
+ * FlixPatrol still serves `/by-views/` but returns an identical order, so the option was
+ * inert. Zod ignores unknown keys, so without this check it would survive silently.
+ */
+function checkMostWatchedMigration(data: unknown): void {
+  if (!Array.isArray(data)) return;
+
+  const offenders = data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => typeof entry === 'object' && entry !== null && 'orderByViews' in entry);
+  if (offenders.length === 0) return;
+
+  throw new ConfigurationError([
+    `\`orderByViews\` is no longer supported and must be removed from `
+    + `${offenders.map(({ index }) => `FlixPatrolMostWatched[${index}]`).join(', ')}.`,
+    '',
+    'FlixPatrol still answers the `/by-views/` page, but it returns exactly the same order as',
+    'the default one, so the option had no effect. It is removed rather than ignored, because a',
+    'silently inoperative option is worse than an explicit failure.',
+    '',
+    'Delete the `orderByViews` line from each entry listed above. Nothing else changes.',
+  ].join('\n'));
+}
+
+/**
+ * Every list entry using a privacy level only Trakt can express, rendered as
+ * `block[index].privacy = "value"`. Shared by the fatal path (non-Trakt backends) and
+ * the deprecation warning (Trakt), so the two cannot drift apart.
+ */
+function collectPrivacyOffenders(lists: ListConfigs): string[] {
+  const blocks: [string, { privacy: TraktPrivacy }[]][] = [
+    ['FlixPatrolTop10', lists.FlixPatrolTop10],
+    ['FlixPatrolPopular', lists.FlixPatrolPopular],
+    ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
+    ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
+    ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
+  ];
+  return blocks.flatMap(([block, entries]) => entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
+    .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
+}
+
 export class GetAndValidateConfigs {
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
     try {
@@ -229,6 +279,7 @@ export class GetAndValidateConfigs {
   public static getFlixPatrolMostWatched(): FlixPatrolMostWatched[] {
     try {
       const data = config.get('FlixPatrolMostWatched');
+      checkMostWatchedMigration(data);
       return validateConfig(z.array(FlixPatrolMostWatchedSchema), data, 'FlixPatrolMostWatched');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
@@ -243,6 +294,19 @@ export class GetAndValidateConfigs {
       }
       const data = config.get('FlixPatrolMostHours');
       return validateConfig(z.array(FlixPatrolMostHoursSchema), data, 'FlixPatrolMostHours');
+    } catch (err) {
+      if (err instanceof ConfigurationError) throw err;
+      throw new ConfigurationError(`${err}`);
+    }
+  }
+
+  public static getFlixPatrolWeekly(): FlixPatrolWeekly[] {
+    try {
+      if (!config.has('FlixPatrolWeekly')) {
+        return [];
+      }
+      const data = config.get('FlixPatrolWeekly');
+      return validateConfig(z.array(FlixPatrolWeeklySchema), data, 'FlixPatrolWeekly');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
@@ -326,25 +390,23 @@ export class GetAndValidateConfigs {
    * are emitted, so they appear once per run rather than once per list entry.
    */
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
-    if (target.type !== 'trakt') {
-      const blocks: [string, { privacy: TraktPrivacy }[]][] = [
-        ['FlixPatrolTop10', lists.FlixPatrolTop10],
-        ['FlixPatrolPopular', lists.FlixPatrolPopular],
-        ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
-        ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
-      ];
-      const offenders = blocks.flatMap(([block, entries]) => entries
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
-        .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
+    const offenders = collectPrivacyOffenders(lists);
 
+    if (target.type === 'trakt') {
+      logger.warn('Trakt support is deprecated and will be removed in 4.0.0. Move `Target` to '
+        + '"floppy" or "mdblist" — see the "Choosing Your Platform" section of the README. '
+        + 'Your current configuration keeps working until then.');
       if (offenders.length > 0) {
-        throw new ConfigurationError([
-          `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
-          + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
-          ...offenders,
-        ].join('\n'));
+        logger.warn(['The "link" and "friends" privacy levels are removed in 4.0.0 alongside Trakt, '
+          + 'as no other backend can express them. Use "private" or "public" instead for:',
+        ...offenders].join('\n'));
       }
+    } else if (offenders.length > 0) {
+      throw new ConfigurationError([
+        `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
+        + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
+        ...offenders,
+      ].join('\n'));
     }
 
     if (target.type === 'floppy') {
@@ -352,6 +414,20 @@ export class GetAndValidateConfigs {
         + 'entry is ignored: lists are always created private. Flip the ones you want to share by '
         + 'hand in the Floppy web UI.');
     }
+
+    // Neither fails the run, and they differ in what follows: the amazon-prime pairing is skipped
+    // by the pipeline, the way an unusable `kids` combination is on Top10, while a country entry
+    // with a language is still processed — `language` is simply ignored.
+    lists.FlixPatrolWeekly.forEach((entry, index) => {
+      if (entry.location !== 'world' && entry.platform === 'amazon-prime') {
+        logger.warn(`FlixPatrolWeekly[${index}]: amazon-prime publishes no per-country weekly page, `
+          + 'entry skipped');
+      }
+      if (entry.location !== 'world' && entry.language !== 'all') {
+        logger.warn(`FlixPatrolWeekly[${index}]: language is ignored on a country entry, which `
+          + 'carries no language split');
+      }
+    });
   }
 
   public static getCacheOptions(): CacheOptions {

@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import fs, { readFileSync } from 'fs';
 import { Utils } from '../../src/Utils/Utils';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
+import { MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
 import { mockProcessExit } from '../helpers/mockProcessExit';
 
 // Partial mock: only the three calls ensureConfigExist() makes are stubbed, so it
@@ -73,7 +73,6 @@ describe('default configuration consistency', () => {
       Target: Record<string, unknown>;
     };
 
-    expect(tracked.Target.clientId).toBe(TRAKT_TEMPLATE_CLIENT_ID);
-    expect(tracked.Target.clientSecret).toBe(TRAKT_TEMPLATE_CLIENT_SECRET);
+    expect(tracked.Target.apiKey).toBe(MDBLIST_TEMPLATE_API_KEY);
   });
 });

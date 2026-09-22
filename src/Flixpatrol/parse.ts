@@ -4,6 +4,7 @@ import type {
   FlixPatrolMostHoursLanguage,
   FlixPatrolTop10Location,
   FlixPatrolType,
+  FlixPatrolWeeklyPlatform,
 } from '../types';
 
 /**
@@ -68,6 +69,18 @@ function parsePage(expression: string, html: string): FlixPatrolMatchResult[] {
     return [];
   }
   return results;
+}
+
+/** The title FlixPatrol gives the page it serves for a path that does not exist. */
+const NOT_FOUND_TITLE = 'Page Not Found';
+
+/**
+ * FlixPatrol answers a missing path with HTTP 200 and its "Page Not Found" page, never a
+ * 404, so no caller can tell a dead URL from an empty chart by status code alone. Keyed on
+ * the title only: matching the body would flag any page that quotes the phrase.
+ */
+export function isNotFoundPage(html: string): boolean {
+  return parsePage('//title', html).some((title) => title.trim().startsWith(NOT_FOUND_TITLE));
 }
 
 /**
@@ -285,4 +298,49 @@ export function parseDetailPage(html: string): FlixPatrolDetail {
     title: parseDetailTitle(dom),
     year: parseDetailYear(dom),
   };
+}
+
+/** Shared by weeklySectionExpression and hasWeeklySection so they never drift apart. */
+export function weeklyHeadingExpression(heading: string): string {
+  return `//h2[contains(., "${heading}")]`;
+}
+
+/**
+ * Anchors on the heading text rather than the anchor class: these pages serve
+ * `flex gap-2 items-center group`, the reverse of the order the other expressions
+ * require, and the class order has already drifted once. See spec §5.
+ *
+ * `following::*[self::h2 or self::table][1]` stops at the next heading before
+ * requiring a table, so a heading rendered without one no longer adopts the
+ * following section's table instead of returning empty.
+ */
+export function weeklySectionExpression(heading: string): string {
+  return `${weeklyHeadingExpression(heading)}/following::*[self::h2 or self::table][1]`
+    + '/self::table//a[starts-with(@href,"/title/")]/@href';
+}
+
+export function parseWeeklySection(heading: string, html: string): FlixPatrolMatchResult[] {
+  return parsePage(weeklySectionExpression(heading), html);
+}
+
+/**
+ * Separates a heading FlixPatrol reworded from a week it genuinely published empty:
+ * only the first is a drift worth warning about. See spec §6.
+ */
+export function hasWeeklySection(heading: string, html: string): boolean {
+  return parsePage(weeklyHeadingExpression(heading), html).length > 0;
+}
+
+/** Weeks are `YYYY-WWW`, zero-padded, so the lexicographic max is the latest one. */
+export function parseWeeklyWeekIndex(
+  platform: FlixPatrolWeeklyPlatform,
+  html: string,
+): string | null {
+  const pattern = new RegExp(`/hours/${platform}/(\\d{4}-\\d{3})/`, 'g');
+  const weeks = [...html.matchAll(pattern)].map((m) => m[1]);
+  if (weeks.length === 0) {
+    return null;
+  }
+  weeks.sort();
+  return weeks[weeks.length - 1];
 }

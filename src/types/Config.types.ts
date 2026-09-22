@@ -38,6 +38,32 @@ export const flixpatrolTop10Platform = ['9now', 'abema', 'amazon', 'amazon-chann
 export const flixpatrolPopularPlatform = ['wikipedia', 'youtube'] as const;
 
 export const flixpatrolConfigType = ['movies', 'shows', 'both'] as const;
+
+// Strict subset of flixpatrolTop10Location: the /hours/ page's `from` select only offers
+// these 93 countries. A country outside this list returns a "Page Not Found" page as
+// HTTP 200 — an empty scrape rather than an error.
+export const flixpatrolMostWatchedCountry = ['argentina', 'australia', 'austria', 'bahamas', 'bahrain',
+  'bangladesh', 'belgium', 'bolivia', 'brazil', 'bulgaria', 'canada', 'chile', 'colombia', 'costa-rica', 'croatia',
+  'cyprus', 'czech-republic', 'denmark', 'dominican-republic', 'ecuador', 'egypt', 'estonia', 'finland', 'france',
+  'germany', 'greece', 'guadeloupe', 'guatemala', 'honduras', 'hong-kong', 'hungary', 'iceland', 'india', 'indonesia',
+  'ireland', 'israel', 'italy', 'jamaica', 'japan', 'jordan', 'kenya', 'kuwait', 'latvia', 'lebanon', 'lithuania',
+  'luxembourg', 'malaysia', 'maldives', 'malta', 'martinique', 'mauritius', 'mexico', 'morocco', 'netherlands',
+  'new-caledonia', 'new-zealand', 'nicaragua', 'nigeria', 'norway', 'oman', 'pakistan', 'panama', 'paraguay', 'peru',
+  'philippines', 'poland', 'portugal', 'qatar', 'reunion', 'romania', 'salvador', 'saudi-arabia', 'serbia',
+  'singapore', 'slovakia', 'slovenia', 'south-africa', 'south-korea', 'spain', 'sri-lanka', 'sweden', 'switzerland',
+  'taiwan', 'thailand', 'trinidad-and-tobago', 'turkey', 'ukraine', 'united-arab-emirates', 'united-kingdom',
+  'united-states', 'uruguay', 'venezuela', 'vietnam'] as const;
+
+// `sports` for movies, `sport` for shows: that is FlixPatrol's own spelling, do not harmonize it.
+export const flixpatrolMostWatchedMovieGenre = ['action', 'adventure', 'animation', 'biography', 'comedy',
+  'concerts', 'crime', 'documentary', 'drama', 'fairy-tale', 'family', 'fantasy', 'history', 'horror', 'musical',
+  'record', 'romance', 'science-fiction', 'sports', 'superhero', 'thriller', 'war', 'western'] as const;
+
+export const flixpatrolMostWatchedShowGenre = ['action', 'adventure', 'animation', 'biography', 'broadcast',
+  'comedy', 'crime', 'documentary', 'drama', 'family', 'fantasy', 'game-show', 'history', 'horror', 'music', 'news',
+  'reality-show', 'romance', 'science-fiction', 'sport', 'superhero', 'talk-show', 'thriller', 'war',
+  'western'] as const;
+
 const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
 
 // Zod schemas
@@ -70,6 +96,21 @@ export const FlixPatrolPopularSchema = z.object({
 
 const currentYear = new Date().getFullYear();
 
+// Union of the two z.enum rather than a z.enum over a merged array: it preserves the
+// literal type of `genre`, which a cast to [string, ...string[]] would destroy.
+const FlixPatrolMostWatchedGenreSchema = z.union([
+  z.enum(flixpatrolMostWatchedMovieGenre),
+  z.enum(flixpatrolMostWatchedShowGenre),
+]);
+
+// Zod's default message would enumerate all 93 values; this one names the rejected value
+// and points to the README instead. See spec §5.
+const FlixPatrolMostWatchedCountrySchema = z.enum(flixpatrolMostWatchedCountry, {
+  error: (issue) => `country "${String(issue.input)}" is not one of the 93 countries FlixPatrol `
+    + 'serves on the Most-watched pages — see the README for the full list. Note it is NOT the '
+    + 'same set as the Top10 locations.',
+});
+
 export const FlixPatrolMostWatchedSchema = z.object({
   enabled: z.boolean(),
   privacy: TraktPrivacySchema,
@@ -79,9 +120,33 @@ export const FlixPatrolMostWatchedSchema = z.object({
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
   premiere: z.number().min(1980).max(currentYear, `premiere must be between 1980 and ${currentYear}`).optional(),
-  country: FlixPatrolTop10LocationSchema.optional(),
+  country: FlixPatrolMostWatchedCountrySchema.optional(),
+  genre: FlixPatrolMostWatchedGenreSchema.optional(),
   original: z.boolean().optional(),
-  orderByViews: z.boolean().optional(),
+}).superRefine((block, ctx) => {
+  if (block.genre === undefined) return;
+
+  const needsMovie = block.type === 'movies' || block.type === 'both';
+  const needsShow = block.type === 'shows' || block.type === 'both';
+  const missing: string[] = [];
+
+  if (needsMovie && !(flixpatrolMostWatchedMovieGenre as readonly string[]).includes(block.genre)) {
+    missing.push('movies');
+  }
+  if (needsShow && !(flixpatrolMostWatchedShowGenre as readonly string[]).includes(block.genre)) {
+    missing.push('shows');
+  }
+  if (missing.length === 0) return;
+
+  // A missing genre page answers 200 "Page Not Found", so an empty scrape, so a kind
+  // wiped without error: rejecting here is the only guard. See spec §1.
+  ctx.addIssue({
+    code: 'custom',
+    path: ['genre'],
+    message: `genre "${block.genre}" does not exist for ${missing.join(' and ')} on FlixPatrol, `
+      + `and type is "${block.type}". FlixPatrol would answer an empty page, which would ERASE `
+      + 'that part of the list. Pick a genre valid for every type this block requests.',
+  });
 });
 
 export const flixpatrolMostHoursPeriod = ['total', 'first-week', 'first-month'] as const;
@@ -96,6 +161,31 @@ export const FlixPatrolMostHoursSchema = z.object({
   type: FlixPatrolConfigTypeSchema,
   period: FlixPatrolMostHoursPeriodSchema,
   language: FlixPatrolMostHoursLanguageSchema.optional().default('all'),
+  name: z.string().optional(),
+  normalizeName: z.boolean().optional(),
+});
+
+export const flixpatrolWeeklyPlatform = ['netflix', 'amazon-prime'] as const;
+// Deliberately not shared with flixpatrolMostHoursLanguage: sharing would make a future
+// MostHours-only value silently appear here too.
+export const flixpatrolWeeklyLanguage = ['all', 'english', 'non-english'] as const;
+const FlixPatrolWeeklyPlatformSchema = z.enum(flixpatrolWeeklyPlatform);
+const FlixPatrolWeeklyLanguageSchema = z.enum(flixpatrolWeeklyLanguage);
+// Reuses flixpatrolMostWatchedCountry: the weekly /hours/ page's `from` select offers the
+// same 93 countries, verified against the live site in both directions. See spec §4.
+const FlixPatrolWeeklyLocationSchema = z.union([
+  z.literal('world'),
+  z.enum(flixpatrolMostWatchedCountry),
+]);
+
+export const FlixPatrolWeeklySchema = z.object({
+  enabled: z.boolean(),
+  privacy: TraktPrivacySchema,
+  limit: z.number().min(1).max(20, 'limit must be between 1 and 20'),
+  type: FlixPatrolConfigTypeSchema,
+  platform: FlixPatrolWeeklyPlatformSchema,
+  location: FlixPatrolWeeklyLocationSchema.optional().default('world'),
+  language: FlixPatrolWeeklyLanguageSchema.optional().default('all'),
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
 });
@@ -124,18 +214,23 @@ export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
  */
 export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
 export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
+export const MDBLIST_TEMPLATE_API_KEY = 'You need to replace this API key';
 
 /**
  * Template credentials per backend, keyed by the field they occupy in the `Target` block.
- * Only `trakt` is listed, being the only backend the template carries credentials for.
+ * Floppy is absent because it ships no template: it needs a self-hosted `url` the app
+ * cannot guess a placeholder for.
  *
- * `saveFile` is deliberately absent: `./config/.trakt` is a sensible default users are
- * expected to keep, not a placeholder to replace.
+ * `saveFile` is deliberately absent from the `trakt` entry: `./config/.trakt` is a
+ * sensible default users are expected to keep, not a placeholder to replace.
  */
 export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
   trakt: {
     clientId: TRAKT_TEMPLATE_CLIENT_ID,
     clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+  },
+  mdblist: {
+    apiKey: MDBLIST_TEMPLATE_API_KEY,
   },
 };
 
@@ -221,9 +316,17 @@ export const FlareSolverrOptionsSchema = z.object({
 export type FlixPatrolTop10 = z.infer<typeof FlixPatrolTop10Schema>;
 export type FlixPatrolPopular = z.infer<typeof FlixPatrolPopularSchema>;
 export type FlixPatrolMostWatched = z.infer<typeof FlixPatrolMostWatchedSchema>;
+export type FlixPatrolMostWatchedCountry = (typeof flixpatrolMostWatchedCountry)[number];
+export type FlixPatrolMostWatchedGenre =
+  | (typeof flixpatrolMostWatchedMovieGenre)[number]
+  | (typeof flixpatrolMostWatchedShowGenre)[number];
 export type FlixPatrolMostHours = z.infer<typeof FlixPatrolMostHoursSchema>;
 export type FlixPatrolMostHoursPeriod = z.infer<typeof FlixPatrolMostHoursPeriodSchema>;
 export type FlixPatrolMostHoursLanguage = z.infer<typeof FlixPatrolMostHoursLanguageSchema>;
+export type FlixPatrolWeekly = z.infer<typeof FlixPatrolWeeklySchema>;
+export type FlixPatrolWeeklyPlatform = z.infer<typeof FlixPatrolWeeklyPlatformSchema>;
+export type FlixPatrolWeeklyLanguage = z.infer<typeof FlixPatrolWeeklyLanguageSchema>;
+export type FlixPatrolWeeklyLocation = z.infer<typeof FlixPatrolWeeklyLocationSchema>;
 export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;

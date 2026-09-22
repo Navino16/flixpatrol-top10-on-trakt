@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Utils } from '../../src/Utils/Utils';
 import { logger } from '../../src/Utils/Logger';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET } from '../../src/types';
+import { MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
 import fs from 'fs';
 import path from 'path';
 import { mockProcessExit } from '../helpers/mockProcessExit';
@@ -194,10 +194,8 @@ describe('Utils', () => {
       // The credentials live inside Target: no root-level Trakt block is generated.
       expect(parsed).not.toHaveProperty('Trakt');
       expect(parsed.Target).toEqual({
-        type: 'trakt',
-        saveFile: './config/.trakt',
-        clientId: TRAKT_TEMPLATE_CLIENT_ID,
-        clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
+        type: 'mdblist',
+        apiKey: MDBLIST_TEMPLATE_API_KEY,
       });
     });
 

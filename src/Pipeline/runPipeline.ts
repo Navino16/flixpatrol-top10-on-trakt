@@ -4,14 +4,31 @@ import type {
 } from '../Targets';
 import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
-import { logger, Utils } from '../Utils';
+import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
 import type {
   NotificationEvent, NotificationPayload, RunSummary,
 } from '../Notifications';
 import type {
   CacheOptions, FlareSolverrOptions, FlixPatrolConfigType, FlixPatrolMostWatched, FlixPatrolMostHours,
-  FlixPatrolPopular, FlixPatrolTop10,
+  FlixPatrolPopular, FlixPatrolTop10, FlixPatrolType, FlixPatrolWeekly,
 } from '../types';
+
+/** What every entry of the four twin blocks carries, whatever extra options it also has. */
+interface ListBlockEntry {
+  type: FlixPatrolConfigType;
+  privacy: ListPrivacy;
+  name?: string;
+  normalizeName?: boolean;
+}
+
+/** One list block, reduced to the three things that actually differ between the four. */
+interface ListBlock<T extends ListBlockEntry> {
+  entries: T[];
+  /** Absent means every entry is processed. */
+  skip?: (entry: T) => boolean;
+  defaultName: (entry: T) => string;
+  scrape: (kind: FlixPatrolType, entry: T) => Promise<MediaItem[]>;
+}
 
 export interface RunPipelineDeps {
   cacheOptions: CacheOptions;
@@ -24,6 +41,7 @@ export interface RunPipelineDeps {
   flixPatrolPopulars: FlixPatrolPopular[];
   flixPatrolMostWatched: FlixPatrolMostWatched[];
   flixPatrolMostHours: FlixPatrolMostHours[];
+  flixPatrolWeekly: FlixPatrolWeekly[];
   flareSolverrOptions?: FlareSolverrOptions;
   dispatch: (event: NotificationEvent, payload: NotificationPayload) => Promise<void>;
   dryRun: boolean;
@@ -77,6 +95,14 @@ function kindsLabel(type: FlixPatrolConfigType): string {
   return 'movies and shows';
 }
 
+/**
+ * Amazon publishes no per-country weekly page. Shared by the counter and the loop so
+ * `totalLists` and the loop's skip can never drift apart.
+ */
+function isAmazonCountryWeekly(weekly: FlixPatrolWeekly): boolean {
+  return weekly.location !== 'world' && weekly.platform === 'amazon-prime';
+}
+
 async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClient): Promise<RunSummary> {
   const dryRunTag = deps.dryRun ? '[DRY-RUN] ' : '';
 
@@ -95,8 +121,9 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   const enabledMostWatched = deps.flixPatrolMostWatched.filter((m) => m.enabled).length;
   const enabledMostHours = deps.flixPatrolMostHours.filter((m) => m.enabled).length;
+  const enabledWeekly = deps.flixPatrolWeekly.filter((w) => w.enabled && !isAmazonCountryWeekly(w)).length;
 
-  logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
+  logger.debug(`Config loaded: ${deps.flixPatrolTop10.length} Top10, ${deps.flixPatrolPopulars.length} Popular, ${enabledMostWatched} MostWatched, ${enabledMostHours} MostHours, ${enabledWeekly} Weekly, cache ${deps.cacheOptions.enabled ? 'enabled' : 'disabled'}`);
 
   logger.silly(`cacheOptions: ${JSON.stringify(deps.cacheOptions)}`);
   // Only the backend name is logged: every other field of the target config is a
@@ -106,6 +133,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   logger.silly(`flixPatrolPopulars: ${JSON.stringify(deps.flixPatrolPopulars)}`);
   logger.silly(`flixPatrolMostWatched: ${JSON.stringify(deps.flixPatrolMostWatched)}`);
   logger.silly(`flixPatrolMostHours: ${JSON.stringify(deps.flixPatrolMostHours)}`);
+  logger.silly(`flixPatrolWeekly: ${JSON.stringify(deps.flixPatrolWeekly)}`);
 
   const flixpatrol = new FlixPatrol(deps.cacheOptions, {}, flareSolverr);
   const { target } = deps;
@@ -113,7 +141,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   const totalLists = deps.flixPatrolTop10.length
     + deps.flixPatrolPopulars.length
     + enabledMostWatched
-    + enabledMostHours;
+    + enabledMostHours
+    + enabledWeekly;
   let currentList = 0;
   const runStartAt = Date.now();
   const summary: RunSummary = {
@@ -121,6 +150,34 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     moviesAdded: 0,
     showsAdded: 0,
     durationMs: 0,
+    deadPaths: [],
+  };
+  // Kept alongside summary.deadPaths (bare paths, the machine-readable field consumers
+  // parse) so the run_end notification body can explain itself in prose.
+  const deadPathMessages: string[] = [];
+
+  /**
+   * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead — reported
+   * and skipped, entry left untouched, rather than aborting the other lists still queued.
+   * Any other `FlixPatrolError` stays fatal, since it would hit every list alike.
+   */
+  const skipIfDeadPath = async (listName: string, run: () => Promise<void>): Promise<boolean> => {
+    try {
+      await run();
+      return false;
+    } catch (err) {
+      if (err instanceof FlixPatrolPageNotFoundError) {
+        logger.error(`Skipping "${listName}": ${err.message}`);
+        // Several entries can hit the same dead page — a dead /hours/ index fails every
+        // weekly entry — so the same path must not be reported N times.
+        if (!summary.deadPaths.includes(err.path)) {
+          summary.deadPaths.push(err.path);
+          deadPathMessages.push(err.message);
+        }
+        return true;
+      }
+      throw err;
+    }
   };
 
   /**
@@ -137,6 +194,15 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     kind: MediaKind,
     listName: string,
   ): Promise<string[] | null> => {
+    // An empty scrape is never an instruction to empty the list. A dead FlixPatrol URL
+    // answers 200 with a "Page Not Found" body, so nothing downstream can tell a chart
+    // that is empty today from one whose page no longer exists. Omitting the key leaves
+    // the kind untouched; only `getFlixPatrolHTMLPage`'s callers report a dead path.
+    if (items.length === 0) {
+      logger.warn(`FlixPatrol returned no ${kind} for "${listName}" — list left unchanged`);
+      return null;
+    }
+
     const ids = await target.resolveMany(items, kind);
     // Items scraped but nothing resolved means the backend is failing, not that the list
     // should be emptied — so return null and let the key be omitted, which spares this
@@ -193,6 +259,51 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     return false;
   };
 
+  /**
+   * Runs one of the four blocks that share this exact shape. Top10 is deliberately not one
+   * of them: its getter returns both kinds in a single call and reports scraping loss.
+   *
+   * Returns true when a shutdown signal stopped the run, so the caller returns the summary.
+   */
+  const processBlock = async <T extends ListBlockEntry>(block: ListBlock<T>): Promise<boolean> => {
+    for (const entry of block.entries) {
+      if (block.skip?.(entry) === true) continue;
+
+      currentList++;
+      const listName = Utils.getListName(entry, block.defaultName(entry), deps.listNamePrefix);
+      logger.info('==============================');
+      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
+      logger.info(`Scraping FlixPatrol ${kindsLabel(entry.type)} for "${listName}"`);
+
+      // Popular and MostWatched build a distinct URL per kind, so a dead page on one kind
+      // must not discard the other: each kind gets its own skipIfDeadPath, and the entry
+      // itself is skipped only once every requested kind died.
+      const content: ListContent = {};
+      const kindSucceeded: boolean[] = [];
+
+      if (entry.type === 'movies' || entry.type === 'both') {
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
+          const items = await block.scrape('Movies', entry);
+          const ids = await resolveSection(items, 'movie', listName);
+          if (ids !== null) content.movie = ids;
+        })));
+      }
+
+      if (entry.type === 'shows' || entry.type === 'both') {
+        kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
+          const items = await block.scrape('TV Shows', entry);
+          const ids = await resolveSection(items, 'show', listName);
+          if (ids !== null) content.show = ids;
+        })));
+      }
+
+      if (!kindSucceeded.some(Boolean)) continue;
+      if (await writeList(content, listName, entry.privacy)) return true;
+      summary.listsProcessed++;
+    }
+    return false;
+  };
+
   await target.connect();
 
   // Fire-and-forget so the pipeline never waits on a notification round-trip. The caller
@@ -203,6 +314,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     timestamp: new Date().toISOString(),
   });
 
+  // Not a processBlock call: getTop10Sections returns both kinds in one call and reports
+  // how many scraped items were dropped, which no other block does.
   for (const top10 of deps.flixPatrolTop10) {
     currentList++;
     const defaultName = `${top10.platform}-${top10.location}-top10-${top10.fallback === false ? 'without-fallback' : `with-${top10.fallback}-fallback`}`;
@@ -211,114 +324,80 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
     logger.info(`Scraping FlixPatrol ${kindsLabel(top10.type)} for "${baseListName}"`);
 
-    const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
-
     const content: ListContent = {};
-    if (movies.length > 0) {
-      if (rawCounts.movies > movies.length) {
-        logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
+    const skipped = await skipIfDeadPath(baseListName, async () => {
+      const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
+
+      if (movies.length > 0) {
+        if (rawCounts.movies > movies.length) {
+          logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
+        }
+        const ids = await resolveSection(movies, 'movie', baseListName);
+        if (ids !== null) content.movie = ids;
       }
-      const ids = await resolveSection(movies, 'movie', baseListName);
-      if (ids !== null) content.movie = ids;
-    }
-    if (shows.length > 0) {
-      if (rawCounts.shows > shows.length) {
-        logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
+      if (shows.length > 0) {
+        if (rawCounts.shows > shows.length) {
+          logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
+        }
+        const ids = await resolveSection(shows, 'show', baseListName);
+        if (ids !== null) content.show = ids;
       }
-      const ids = await resolveSection(shows, 'show', baseListName);
-      if (ids !== null) content.show = ids;
-    }
+    });
+    if (skipped) continue;
     if (await writeList(content, baseListName, top10.privacy)) return summary;
     summary.listsProcessed++;
   }
 
 
-  for (const popular of deps.flixPatrolPopulars) {
-    currentList++;
-    const listName = Utils.getListName(popular, `${popular.platform}-popular`, deps.listNamePrefix);
-    logger.info('==============================');
-    logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-    logger.info(`Scraping FlixPatrol ${kindsLabel(popular.type)} for "${listName}"`);
+  if (await processBlock({
+    entries: deps.flixPatrolPopulars,
+    defaultName: (popular) => `${popular.platform}-popular`,
+    scrape: (kind, popular) => flixpatrol.getPopular(kind, popular),
+  })) return summary;
 
-    const content: ListContent = {};
-    if (popular.type === 'movies' || popular.type === 'both') {
-      const popularMovies = await flixpatrol.getPopular('Movies', popular);
-      const ids = await resolveSection(popularMovies, 'movie', listName);
-      if (ids !== null) content.movie = ids;
-    }
+  if (await processBlock({
+    entries: deps.flixPatrolMostWatched,
+    skip: (mostWatched) => !mostWatched.enabled,
+    defaultName: (mostWatched) => {
+      let name = `most-watched-${mostWatched.year}-netflix`;
+      name = mostWatched.genre !== undefined ? `${name}-${mostWatched.genre}` : name;
+      name = mostWatched.original !== undefined ? `${name}-original` : name;
+      name = mostWatched.premiere !== undefined ? `${name}-${mostWatched.premiere}-premiere` : name;
+      name = mostWatched.country !== undefined ? `${name}-from-${mostWatched.country}` : name;
+      return name;
+    },
+    scrape: (kind, mostWatched) => flixpatrol.getMostWatched(kind, mostWatched),
+  })) return summary;
 
-    if (popular.type === 'shows' || popular.type === 'both') {
-      const popularShows = await flixpatrol.getPopular('TV Shows', popular);
-      const ids = await resolveSection(popularShows, 'show', listName);
-      if (ids !== null) content.show = ids;
-    }
-    if (await writeList(content, listName, popular.privacy)) return summary;
-    summary.listsProcessed++;
-  }
+  if (await processBlock({
+    entries: deps.flixPatrolMostHours,
+    skip: (mostHours) => !mostHours.enabled,
+    defaultName: (mostHours) => {
+      const name = `netflix-most-hours-${mostHours.period}`;
+      return mostHours.language === 'all' ? name : `${name}-${mostHours.language}`;
+    },
+    scrape: (kind, mostHours) => flixpatrol.getMostHours(kind, mostHours),
+  })) return summary;
 
-  for (const mostWatched of deps.flixPatrolMostWatched) {
-    if (mostWatched.enabled) {
-      currentList++;
-      let defaultName = `most-watched-${mostWatched.year}-netflix`;
-      defaultName = mostWatched.original !== undefined ? `${defaultName}-original` : defaultName;
-      defaultName = mostWatched.premiere !== undefined ? `${defaultName}-${mostWatched.premiere}-premiere` : defaultName;
-      defaultName = mostWatched.country !== undefined ? `${defaultName}-from-${mostWatched.country}` : defaultName;
-      const listName = Utils.getListName(mostWatched, defaultName, deps.listNamePrefix);
-      logger.info('==============================');
-      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-      logger.info(`Scraping FlixPatrol ${kindsLabel(mostWatched.type)} for "${listName}"`);
-
-      const content: ListContent = {};
-      if (mostWatched.type === 'movies' || mostWatched.type === 'both') {
-        const mostWatchedMovies = await flixpatrol.getMostWatched('Movies', mostWatched);
-        const ids = await resolveSection(mostWatchedMovies, 'movie', listName);
-        if (ids !== null) content.movie = ids;
-      }
-
-      if (mostWatched.type === 'shows' || mostWatched.type === 'both') {
-        const mostWatchedShows = await flixpatrol.getMostWatched('TV Shows', mostWatched);
-        const ids = await resolveSection(mostWatchedShows, 'show', listName);
-        if (ids !== null) content.show = ids;
-      }
-      if (await writeList(content, listName, mostWatched.privacy)) return summary;
-      summary.listsProcessed++;
-    }
-  }
-
-  for (const mostHours of deps.flixPatrolMostHours) {
-    if (mostHours.enabled) {
-      currentList++;
-      let defaultName = `netflix-most-hours-${mostHours.period}`;
-      if (mostHours.language !== 'all') {
-        defaultName += `-${mostHours.language}`;
-      }
-      const listName = Utils.getListName(mostHours, defaultName, deps.listNamePrefix);
-      logger.info('==============================');
-      logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
-      logger.info(`Scraping FlixPatrol ${kindsLabel(mostHours.type)} for "${listName}"`);
-
-      const content: ListContent = {};
-      if (mostHours.type === 'movies' || mostHours.type === 'both') {
-        const mostHoursMovies = await flixpatrol.getMostHours('Movies', mostHours);
-        const ids = await resolveSection(mostHoursMovies, 'movie', listName);
-        if (ids !== null) content.movie = ids;
-      }
-
-      if (mostHours.type === 'shows' || mostHours.type === 'both') {
-        const mostHoursShows = await flixpatrol.getMostHours('TV Shows', mostHours);
-        const ids = await resolveSection(mostHoursShows, 'show', listName);
-        if (ids !== null) content.show = ids;
-      }
-      if (await writeList(content, listName, mostHours.privacy)) return summary;
-      summary.listsProcessed++;
-    }
-  }
+  if (await processBlock({
+    entries: deps.flixPatrolWeekly,
+    // checkTargetCompatibility already warned about the amazon-prime + country combination
+    // at config-validation time, so it is skipped silently here.
+    skip: (weekly) => !weekly.enabled || isAmazonCountryWeekly(weekly),
+    defaultName: (weekly) => (weekly.location !== 'world'
+      ? `${weekly.platform}-weekly-${weekly.location}`
+      : `${weekly.platform}-weekly${weekly.language === 'all' ? '' : `-${weekly.language}`}`),
+    scrape: (kind, weekly) => flixpatrol.getWeekly(kind, weekly),
+  })) return summary;
 
   summary.durationMs = Date.now() - runStartAt;
   const movedVerb = deps.dryRun ? 'would be added' : 'added';
+  const deadPathsSuffix = deadPathMessages.length > 0
+    ? ` — ${deadPathMessages.length} dead path(s) skipped: ${deadPathMessages.join('; ')}`
+    : '';
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
-    body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}`,
+    body: `${dryRunTag}Processed ${summary.listsProcessed}/${totalLists} lists in ${Math.round(summary.durationMs / 1000)}s — ${summary.moviesAdded} movies / ${summary.showsAdded} shows ${movedVerb}${deadPathsSuffix}`,
     timestamp: new Date().toISOString(),
     summary,
   });
