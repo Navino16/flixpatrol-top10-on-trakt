@@ -211,7 +211,8 @@ export class FloppyTarget implements ListTarget {
   }
 
   /**
-   * `requestOnce` with a retry on transient 5xx.
+   * `requestOnce` with a retry on transient 5xx and on a transport failure (no status
+   * at all — DNS, ECONNRESET, timeout).
    *
    * A 5xx is retried because Floppy on SQLite — the self-hosted default — answers 500
    * when a write loses the race for the single writer lock, and every verb routed here is
@@ -230,7 +231,8 @@ export class FloppyTarget implements ListTarget {
         return await this.requestOnce(method, path, body, expected);
       } catch (error) {
         const status = error instanceof FloppyError ? error.status : undefined;
-        if (status === undefined || !RETRY_STATUS_CODES.has(status)) throw error;
+        const retryable = status === undefined || RETRY_STATUS_CODES.has(status);
+        if (!retryable) throw error;
 
         const reason = (error as Error).message;
         if (attempt === MAX_RETRIES) {
@@ -369,9 +371,17 @@ export class FloppyTarget implements ListTarget {
       // committed, so replaying it creates a duplicate list.
       created = await this.requestOnce('POST', '/api/v1/lists/', { name: listName }, [200, 201]);
     } catch (error) {
-      const committed = await this.findListByName(listName);
+      const reason = (error as Error).message;
+      let committed: number | null;
+      try {
+        committed = await this.findListByName(listName);
+      } catch (rereadError) {
+        // The re-read failing too must not bury the creation attempt that triggered it.
+        throw new FloppyError(`List creation "${listName}" failed (${reason}), and the recovery `
+          + `re-read failed too: ${(rereadError as Error).message}`);
+      }
       if (committed === null) throw error;
-      logger.warn(`Creating "${listName}" reported ${(error as Error).message}, but the list exists: reusing it`);
+      logger.warn(`Creating "${listName}" reported ${reason}, but the list exists: reusing it`);
       return committed;
     }
 
