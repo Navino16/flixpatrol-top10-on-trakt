@@ -111,13 +111,13 @@ describe('MdblistTarget', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ name: 'my-list', private: true });
   });
 
-  it.each(['link', 'friends', 'public'] as const)('creates a public list for %s', async (privacy) => {
+  it('creates a public list when privacy is public', async () => {
     fetchMock
       .mockResolvedValueOnce(json([]))
       .mockResolvedValueOnce(json({ id: 42, slug: 'my-list' }, 201))
       .mockResolvedValueOnce(json({ movies: [], shows: [] }))
       .mockResolvedValueOnce(json({ added: { movies: 1, shows: 0 } }));
-    await target.pushToList({ movie: ['27205'] }, 'my-list', privacy);
+    await target.pushToList({ movie: ['27205'] }, 'my-list', 'public');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ name: 'my-list', private: false });
   });
 

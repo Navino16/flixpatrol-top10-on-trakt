@@ -7,8 +7,8 @@ export type MediaKind = 'movie' | 'show';
  */
 export const MEDIA_KINDS: readonly MediaKind[] = ['movie', 'show'];
 
-/** Privacy vocabulary of the configuration, inherited from Trakt. */
-export type ListPrivacy = 'private' | 'link' | 'friends' | 'public';
+/** Privacy vocabulary of the configuration. */
+export type ListPrivacy = 'private' | 'public';
 
 export type TargetBackend = 'floppy' | 'mdblist';
 

@@ -25,7 +25,6 @@ import type {
   FlixPatrolWeekly,
   TargetOptions,
   TargetBackendName,
-  TraktPrivacy,
   CacheOptions,
   ScheduleOptions,
   FlareSolverrOptions,
@@ -228,24 +227,6 @@ function checkMostWatchedMigration(data: unknown): void {
   ].join('\n'));
 }
 
-/**
- * Every list entry using a privacy level only Trakt could express, rendered as
- * `block[index].privacy = "value"`, for the fatal-path error message below.
- */
-function collectPrivacyOffenders(lists: ListConfigs): string[] {
-  const blocks: [string, { privacy: TraktPrivacy }[]][] = [
-    ['FlixPatrolTop10', lists.FlixPatrolTop10],
-    ['FlixPatrolPopular', lists.FlixPatrolPopular],
-    ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
-    ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
-    ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
-  ];
-  return blocks.flatMap(([block, entries]) => entries
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
-    .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
-}
-
 export class GetAndValidateConfigs {
   public static getFlixPatrolTop10(): FlixPatrolTop10[] {
     try {
@@ -382,16 +363,6 @@ export class GetAndValidateConfigs {
    * are emitted, so they appear once per run rather than once per list entry.
    */
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
-    const offenders = collectPrivacyOffenders(lists);
-
-    if (offenders.length > 0) {
-      throw new ConfigurationError([
-        `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
-        + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
-        ...offenders,
-      ].join('\n'));
-    }
-
     if (target.type === 'floppy') {
       logger.warn('The Floppy API cannot set list visibility, so the `privacy` field of every list '
         + 'entry is ignored: lists are always created private. Flip the ones you want to share by '

@@ -64,20 +64,20 @@ export const flixpatrolMostWatchedShowGenre = ['action', 'adventure', 'animation
   'reality-show', 'romance', 'science-fiction', 'sport', 'superhero', 'talk-show', 'thriller', 'war',
   'western'] as const;
 
-const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
+const listPrivacy = ['private', 'public'] as const;
 
 // Zod schemas
 const FlixPatrolTop10LocationSchema = z.enum(flixpatrolTop10Location);
 const FlixPatrolTop10PlatformSchema = z.enum(flixpatrolTop10Platform);
 const FlixPatrolPopularPlatformSchema = z.enum(flixpatrolPopularPlatform);
 const FlixPatrolConfigTypeSchema = z.enum(flixpatrolConfigType);
-const TraktPrivacySchema = z.enum(traktPrivacy);
+export const ListPrivacySchema = z.enum(listPrivacy);
 
 export const FlixPatrolTop10Schema = z.object({
   platform: FlixPatrolTop10PlatformSchema,
   location: FlixPatrolTop10LocationSchema,
   fallback: z.union([FlixPatrolTop10LocationSchema, z.literal(false)]),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1, 'limit must be >= 1'),
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
@@ -87,7 +87,7 @@ export const FlixPatrolTop10Schema = z.object({
 
 export const FlixPatrolPopularSchema = z.object({
   platform: FlixPatrolPopularPlatformSchema,
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
@@ -113,7 +113,7 @@ const FlixPatrolMostWatchedCountrySchema = z.enum(flixpatrolMostWatchedCountry, 
 
 export const FlixPatrolMostWatchedSchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(50, 'limit must be between 1 and 50'),
   type: FlixPatrolConfigTypeSchema,
   year: z.number().min(2023).max(currentYear, `year must be between 2023 and ${currentYear}`),
@@ -156,7 +156,7 @@ const FlixPatrolMostHoursLanguageSchema = z.enum(flixpatrolMostHoursLanguage);
 
 export const FlixPatrolMostHoursSchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
   type: FlixPatrolConfigTypeSchema,
   period: FlixPatrolMostHoursPeriodSchema,
@@ -180,7 +180,7 @@ const FlixPatrolWeeklyLocationSchema = z.union([
 
 export const FlixPatrolWeeklySchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(20, 'limit must be between 1 and 20'),
   type: FlixPatrolConfigTypeSchema,
   platform: FlixPatrolWeeklyPlatformSchema,
@@ -316,7 +316,7 @@ export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
 
 /** A discriminated union on `type`, which is what `createTarget` narrows on. */
 export type TargetOptions = z.infer<typeof TargetSchema>;
-export type TraktPrivacy = z.infer<typeof TraktPrivacySchema>;
+export type ListPrivacy = z.infer<typeof ListPrivacySchema>;
 
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;

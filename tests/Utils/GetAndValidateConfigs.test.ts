@@ -10,7 +10,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
-import { MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
+import { MDBLIST_TEMPLATE_API_KEY, ListPrivacySchema } from '../../src/types';
 
 vi.mock('config', () => ({
   default: {
@@ -705,6 +705,15 @@ describe('GetAndValidateConfigs', () => {
       });
     });
 
+    describe('ListPrivacySchema', () => {
+      it('rejects the Trakt-only privacy levels at schema level', () => {
+        expect(ListPrivacySchema.safeParse('link').success).toBe(false);
+        expect(ListPrivacySchema.safeParse('friends').success).toBe(false);
+        expect(ListPrivacySchema.safeParse('private').success).toBe(true);
+        expect(ListPrivacySchema.safeParse('public').success).toBe(true);
+      });
+    });
+
     describe('checkTargetCompatibility', () => {
       const listEntry = (privacy: string) => ({
         platform: 'netflix',
@@ -742,24 +751,6 @@ describe('GetAndValidateConfigs', () => {
 
       const mdblist = { type: 'mdblist', apiKey: 'key' } as const;
       const floppy = { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
-
-      it('rejects "link" on mdblist, naming the block, the index and the value', () => {
-        expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private', 'link'])))
-          .toThrow(/FlixPatrolTop10\[1\]\.privacy = "link"/);
-      });
-
-      it('rejects "friends" on floppy', () => {
-        expect(() => GetAndValidateConfigs.checkTargetCompatibility(floppy, listsWith(['friends'])))
-          .toThrow(ConfigurationError);
-      });
-
-      it.each(['FlixPatrolPopular', 'FlixPatrolMostWatched', 'FlixPatrolMostHours', 'FlixPatrolWeekly'])(
-        'covers the %s block too',
-        (block) => {
-          expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['link'], block)))
-            .toThrow(new RegExp(`${block}\\[0\\]\\.privacy = "link"`));
-        },
-      );
 
       it('accepts private and public on every backend', () => {
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private', 'public'])))
@@ -821,13 +812,6 @@ describe('GetAndValidateConfigs', () => {
 
           expect(warn).not.toHaveBeenCalled();
           warn.mockRestore();
-        });
-
-        it('rejects link privacy on the weekly block', () => {
-          expect(() => GetAndValidateConfigs.checkTargetCompatibility(floppy, {
-            ...emptyLists,
-            FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
-          })).toThrow(ConfigurationError);
         });
       });
     });
