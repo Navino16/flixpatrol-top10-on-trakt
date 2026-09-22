@@ -581,6 +581,11 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
 <details>
 <summary><strong>Example configuration</strong></summary>
 
+> **Note**
+> This example defines 11 lists — more than a free mdblist account (4 static lists) or a free Trakt
+> account (5 lists) allows. It exists to show the available options, not as a ready-to-use file:
+> trim it to your backend's capacity. See [Choosing Your Platform](#choosing-your-platform).
+
 ```json
 {
   "FlixPatrolTop10": [
@@ -682,7 +687,7 @@ instead of localhost: `"url": "http://flaresolverr:8191/v1"`.
   ],
   "Target": {
     "type": "mdblist",
-    "apiKey": "You need to replace this API key"
+    "apiKey": "your-mdblist-api-key"
   },
   "Cache": {
     "enabled": true,
