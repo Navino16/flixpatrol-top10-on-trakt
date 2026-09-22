@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import {
   flixpatrolTop10Location,
   flixpatrolTop10Platform,
@@ -511,7 +511,38 @@ describe('GetAndValidateConfigs', () => {
       });
     });
 
-    describe('getTargetOptions', () => {
+    describe('getTargetsOptions — migration from the singular Target', () => {
+      /** Drives the mocked `config` module: only the listed blocks exist. */
+      function givenConfig(blocks: Record<string, unknown>): void {
+        (config.has as unknown as Mock).mockImplementation((key: string) => key in blocks);
+        (config.get as unknown as Mock).mockImplementation((key: string) => blocks[key]);
+      }
+
+      it('carries a floppy Target across verbatim and only asks for an id', () => {
+        givenConfig({ Target: { type: 'floppy', url: 'http://host:8000', apiKey: 'token' } });
+
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"url": "http:\/\/host:8000"/);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"apiKey": "token"/);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"Targets"/);
+      });
+
+      it('explains the removal when the old Target selected trakt', () => {
+        givenConfig({ Target: { type: 'trakt', clientId: 'id', clientSecret: 'secret' } });
+
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/Trakt support was removed in 4\.0\.0/);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/\.trakt/);
+      });
+
+      it('accepts a valid Targets array', () => {
+        givenConfig({ Targets: [{ id: 'main', type: 'mdblist', apiKey: 'key' }] });
+
+        expect(GetAndValidateConfigs.getTargetsOptions()).toEqual([
+          { id: 'main', type: 'mdblist', apiKey: 'key' },
+        ]);
+      });
+    });
+
+    describe('getTargetsOptions', () => {
       /** Wires config.has/config.get on a single in-memory configuration object. */
       const useConfig = (blocks: Record<string, unknown>) => {
         vi.mocked(config.has).mockImplementation((key: string) => key in blocks);
@@ -522,50 +553,65 @@ describe('GetAndValidateConfigs', () => {
       };
 
       it('returns the inlined floppy credentials', () => {
-        useConfig({ Target: { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
+        useConfig({ Targets: [{ id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' }] });
 
-        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
-          id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token',
-        });
+        expect(GetAndValidateConfigs.getTargetsOptions()).toEqual([
+          { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' },
+        ]);
       });
 
       it('returns the inlined mdblist credentials', () => {
-        useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: 'key' } });
+        useConfig({ Targets: [{ id: 'main', type: 'mdblist', apiKey: 'key' }] });
 
-        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({ id: 'main', type: 'mdblist', apiKey: 'key' });
+        expect(GetAndValidateConfigs.getTargetsOptions()).toEqual([{ id: 'main', type: 'mdblist', apiKey: 'key' }]);
       });
 
+      it('accepts several entries with distinct ids', () => {
+        useConfig({
+          Targets: [
+            { id: 'main', type: 'mdblist', apiKey: 'key' },
+            { id: 'backup', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' },
+          ],
+        });
+
+        expect(GetAndValidateConfigs.getTargetsOptions()).toHaveLength(2);
+      });
+
+      // Task 3 made `id` mandatory on every Targets entry, so an invalid entry can now fail
+      // for more than one reason. Isolating the URL as the cause keeps this test meaningful.
       it('throws when url is not a valid URL', () => {
-        useConfig({ Target: { type: 'floppy', url: 'not-a-url', apiKey: 'token' } });
+        useConfig({ Targets: [{ id: 'main', type: 'floppy', url: 'not-a-url', apiKey: 'token' }] });
 
-        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/url/i);
       });
 
-      it('throws when a credential is missing from the Target block', () => {
-        useConfig({ Target: { type: 'mdblist' } });
+      it('throws when a credential is missing from a Targets entry', () => {
+        useConfig({ Targets: [{ id: 'main', type: 'mdblist' }] });
 
-        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(ConfigurationError);
       });
 
       it('rejects an unknown backend', () => {
-        useConfig({ Target: { type: 'plex', apiKey: 'key' } });
+        useConfig({ Targets: [{ id: 'main', type: 'plex', apiKey: 'key' }] });
 
-        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(ConfigurationError);
       });
 
-      it('rejects a Target that is not an object', () => {
-        useConfig({ Target: 'nope' });
+      it('rejects a Targets value that is not an array', () => {
+        useConfig({ Targets: 'nope' });
 
-        expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(ConfigurationError);
       });
 
       // A raw Zod dump on an unmigrated file reads "invalid discriminator value" and
       // tells the user nothing. These lock the actionable message instead.
       describe('unmigrated configurations', () => {
         // Trakt is no longer a selectable backend at all (removed, not renamed), so a
-        // root-level `Trakt` block with no `Target` yet offers BOTH surviving backends,
-        // names the root `Trakt` block it must replace, and points at 4.0.0 rather than
-        // the unrelated 3.0.0 incident.
+        // root-level `Trakt` block with no `Target`/`Targets` yet offers BOTH surviving
+        // backends, names the root `Trakt` block it must replace, and points at 4.0.0
+        // rather than the unrelated 3.0.0 incident. This is the path a 2.17.0-and-earlier
+        // file takes straight through to 4.0.0, since Trakt is the only shape that ever
+        // shipped without a `Target`/`Targets` block at all.
         it('names the root Trakt block and offers both surviving backends when only a root Trakt block is present', () => {
           useConfig({
             Trakt: { saveFile: './config/.trakt', clientId: 'my-id', clientSecret: 'my-secret' },
@@ -573,7 +619,7 @@ describe('GetAndValidateConfigs', () => {
 
           let message = '';
           try {
-            GetAndValidateConfigs.getTargetOptions();
+            GetAndValidateConfigs.getTargetsOptions();
           } catch (err) {
             message = (err as Error).message;
           }
@@ -588,6 +634,7 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toContain('my-id');
           expect(message).not.toContain('my-secret');
           expect(message).toContain('Then remove the old `Trakt` block.');
+          expect(message).toContain('./config/.trakt');
           // Not a schema dump.
           expect(message).not.toMatch(/invalid|expected|Target\.type:/i);
         });
@@ -604,7 +651,7 @@ describe('GetAndValidateConfigs', () => {
 
           let message = '';
           try {
-            GetAndValidateConfigs.getTargetOptions();
+            GetAndValidateConfigs.getTargetsOptions();
           } catch (err) {
             message = (err as Error).message;
           }
@@ -616,30 +663,17 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toContain('my-id');
           expect(message).not.toContain('my-secret');
           expect(message).toContain('Credentials live in the `Target` block itself');
+          expect(message).toContain('./config/.trakt');
           // Not a schema dump.
           expect(message).not.toMatch(/invalid discriminator/i);
         });
 
-        // A selector-only `Target` was only ever produced by a pre-release build,
-        // and is detected all the same for anyone who ran it.
-        it('carries the root Floppy values across when Target only selects the backend', () => {
-          useConfig({
-            Target: { type: 'floppy' },
-            Floppy: { url: 'http://floppy:8000', apiKey: 'floppy-token' },
-          });
-
-          expect(() => GetAndValidateConfigs.getTargetOptions())
-            .toThrow(/"url": "http:\/\/floppy:8000"/);
-          expect(() => GetAndValidateConfigs.getTargetOptions())
-            .toThrow(/"apiKey": "floppy-token"/);
-        });
-
-        it('uses placeholders, never invented secrets, when nothing can be carried across', () => {
+        it('uses placeholders, never invented secrets, from an unrelated obsolete block', () => {
           useConfig({ Target: { type: 'mdblist' }, Trakt: { clientId: 'unrelated' } });
 
           let message = '';
           try {
-            GetAndValidateConfigs.getTargetOptions();
+            GetAndValidateConfigs.getTargetsOptions();
           } catch (err) {
             message = (err as Error).message;
           }
@@ -647,14 +681,6 @@ describe('GetAndValidateConfigs', () => {
           expect(message).toContain('"type": "mdblist"');
           expect(message).toContain('"apiKey": "<your mdblist API key>"');
           expect(message).not.toContain('unrelated');
-          expect(message).toContain('Then remove the old `Trakt` block.');
-        });
-
-        it('reports the migration when no Target and no root credential block exist at all', () => {
-          useConfig({});
-
-          expect(() => GetAndValidateConfigs.getTargetOptions())
-            .toThrow(/Configuration format changed in 3\.0\.0\./);
         });
       });
 
@@ -663,7 +689,7 @@ describe('GetAndValidateConfigs', () => {
       describe('unreplaced template credentials', () => {
         const messageOf = (): string => {
           try {
-            GetAndValidateConfigs.getTargetOptions();
+            GetAndValidateConfigs.getTargetsOptions();
           } catch (err) {
             return (err as Error).message;
           }
@@ -673,22 +699,22 @@ describe('GetAndValidateConfigs', () => {
         // Floppy ships no template credential, so nothing can be left unreplaced
         // for it and the guard must stay out of the way.
         it('leaves floppy alone, since it ships no template credential', () => {
-          useConfig({ Target: { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
-          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+          useConfig({ Targets: [{ id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' }] });
+          expect(() => GetAndValidateConfigs.getTargetsOptions()).not.toThrow();
         });
 
         it('accepts a real mdblist api key', () => {
-          useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: 'key' } });
-          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+          useConfig({ Targets: [{ id: 'main', type: 'mdblist', apiKey: 'key' }] });
+          expect(() => GetAndValidateConfigs.getTargetsOptions()).not.toThrow();
         });
 
         it('rejects an untouched mdblist template configuration', () => {
-          useConfig({ Target: { id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY } });
+          useConfig({ Targets: [{ id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY }] });
 
-          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
+          expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(ConfigurationError);
 
           const message = messageOf();
-          expect(message).toContain('`Target.apiKey` still holds the placeholder value');
+          expect(message).toContain('`Targets["main"].apiKey` still holds the placeholder value');
           expect(message).toContain(`"apiKey": ${JSON.stringify(MDBLIST_TEMPLATE_API_KEY)}`);
           expect(message).toContain('https://mdblist.com/preferences');
         });
@@ -696,17 +722,17 @@ describe('GetAndValidateConfigs', () => {
 
       // Dead config is not a reason to refuse to start: a correct migration that
       // left the old block behind must boot, with a warning and nothing more.
-      describe('obsolete root-level blocks alongside a valid Target', () => {
-        const validTarget = { id: 'main', type: 'mdblist', apiKey: 'key' };
+      describe('obsolete root-level blocks alongside a valid Targets array', () => {
+        const validTargets = [{ id: 'main', type: 'mdblist', apiKey: 'key' }];
 
         it('starts normally and warns once when a root Trakt block is left over', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
           useConfig({
-            Target: validTarget,
+            Targets: validTargets,
             Trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
           });
 
-          expect(GetAndValidateConfigs.getTargetOptions()).toEqual(validTarget);
+          expect(GetAndValidateConfigs.getTargetsOptions()).toEqual(validTargets);
           expect(warn).toHaveBeenCalledTimes(1);
           expect(warn.mock.calls[0][0]).toContain('`Trakt`');
           expect(warn.mock.calls[0][0]).toMatch(/no longer\s+read and can be deleted/);
@@ -716,12 +742,12 @@ describe('GetAndValidateConfigs', () => {
         it('names every obsolete block in the single warning', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
           useConfig({
-            Target: validTarget,
+            Targets: validTargets,
             Trakt: { saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret' },
             Mdblist: { apiKey: 'key' },
           });
 
-          expect(() => GetAndValidateConfigs.getTargetOptions()).not.toThrow();
+          expect(() => GetAndValidateConfigs.getTargetsOptions()).not.toThrow();
           expect(warn).toHaveBeenCalledTimes(1);
           expect(warn.mock.calls[0][0]).toContain('`Trakt`, `Mdblist`');
           warn.mockRestore();
@@ -729,9 +755,9 @@ describe('GetAndValidateConfigs', () => {
 
         it('stays silent on a clean migrated configuration', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-          useConfig({ Target: validTarget });
+          useConfig({ Targets: validTargets });
 
-          expect(GetAndValidateConfigs.getTargetOptions()).toEqual(validTarget);
+          expect(GetAndValidateConfigs.getTargetsOptions()).toEqual(validTargets);
           expect(warn).not.toHaveBeenCalled();
           warn.mockRestore();
         });
@@ -784,9 +810,10 @@ describe('GetAndValidateConfigs', () => {
 
       const mdblist = { id: 'main', type: 'mdblist', apiKey: 'key' } as const;
       const floppy = { id: 'main', type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
+      const floppyBackup = { id: 'backup', type: 'floppy', url: 'http://floppy2:8000', apiKey: 'token2' } as const;
 
       it('accepts private and public on every backend', () => {
-        expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private', 'public'])))
+        expect(() => GetAndValidateConfigs.checkTargetCompatibility([mdblist], listsWith(['private', 'public'])))
           .not.toThrow();
       });
 
@@ -794,17 +821,28 @@ describe('GetAndValidateConfigs', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
         const twenty = Array.from({ length: 20 }, () => 'private');
 
-        GetAndValidateConfigs.checkTargetCompatibility(floppy, listsWith(twenty));
+        GetAndValidateConfigs.checkTargetCompatibility([floppy], listsWith(twenty));
 
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.mock.calls[0][0]).toMatch(/cannot set list visibility/);
         warn.mockRestore();
       });
 
+      it('warns once per floppy target when several are configured', () => {
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+        GetAndValidateConfigs.checkTargetCompatibility([floppy, mdblist, floppyBackup], listsWith(['private']));
+
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(warn.mock.calls[0][0]).toContain('"main"');
+        expect(warn.mock.calls[1][0]).toContain('"backup"');
+        warn.mockRestore();
+      });
+
       it('does not warn about visibility on mdblist', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-        GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
+        GetAndValidateConfigs.checkTargetCompatibility([mdblist], listsWith(['private']));
 
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
@@ -814,7 +852,7 @@ describe('GetAndValidateConfigs', () => {
         it('warns when a country is set on amazon-prime', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
+          GetAndValidateConfigs.checkTargetCompatibility([mdblist], {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, platform: 'amazon-prime', location: 'france' }],
           });
@@ -826,7 +864,7 @@ describe('GetAndValidateConfigs', () => {
         it('warns when language is set on a country entry', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
+          GetAndValidateConfigs.checkTargetCompatibility([mdblist], {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'france', language: 'english' }],
           });
@@ -838,7 +876,7 @@ describe('GetAndValidateConfigs', () => {
         it('accepts a world entry with a language', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
+          GetAndValidateConfigs.checkTargetCompatibility([mdblist], {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
           });

@@ -101,7 +101,7 @@ async function bootstrapConfigs(): Promise<{
     const cacheOptions = GetAndValidateConfigs.getCacheOptions();
     Utils.warnAboutOrphanedCaches(cacheOptions.savePath);
 
-    const targetOptions = GetAndValidateConfigs.getTargetOptions();
+    const targetsOptions = GetAndValidateConfigs.getTargetsOptions();
     const lists = {
       FlixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
       FlixPatrolPopular: GetAndValidateConfigs.getFlixPatrolPopular(),
@@ -111,11 +111,12 @@ async function bootstrapConfigs(): Promise<{
     };
     // Cross-check and backend-wide warnings need both halves loaded, hence here
     // and not inside any single schema.
-    GetAndValidateConfigs.checkTargetCompatibility(targetOptions, lists);
+    GetAndValidateConfigs.checkTargetCompatibility(targetsOptions, lists);
 
     // Built exactly once per process: the daemon auth gate below and every
-    // scheduled run then share one adapter, and one resolution cache.
-    const target = createTarget(targetOptions, cacheOptions, dryRun);
+    // scheduled run then share one adapter, and one resolution cache. Only the first
+    // configured target is wired up for now; running every entry is Task 6's job.
+    const target = createTarget(targetsOptions[0], cacheOptions, dryRun);
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,
       target,

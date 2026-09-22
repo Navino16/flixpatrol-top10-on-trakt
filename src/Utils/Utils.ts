@@ -127,10 +127,13 @@ export class Utils {
           },
         ],
         FlixPatrolWeekly: [],
-        Target: {
-          type: 'mdblist',
-          apiKey: MDBLIST_TEMPLATE_API_KEY,
-        },
+        Targets: [
+          {
+            id: 'main',
+            type: 'mdblist',
+            apiKey: MDBLIST_TEMPLATE_API_KEY,
+          },
+        ],
         Cache: {
           enabled: true,
           savePath: './config/.cache',

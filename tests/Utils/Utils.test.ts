@@ -191,12 +191,11 @@ describe('Utils', () => {
       expect(parsed).toHaveProperty('FlixPatrolMostWatched');
       expect(parsed).toHaveProperty('Cache');
       expect(parsed).toHaveProperty('Schedule');
-      // The credentials live inside Target: no root-level credential block is generated.
+      // The credentials live inside Targets: no root-level credential block is generated.
       expect(parsed).not.toHaveProperty('Trakt');
-      expect(parsed.Target).toEqual({
-        type: 'mdblist',
-        apiKey: MDBLIST_TEMPLATE_API_KEY,
-      });
+      expect(parsed.Targets).toEqual([
+        { id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY },
+      ]);
     });
 
     it('should include a disabled FlareSolverr block in the generated config', () => {
