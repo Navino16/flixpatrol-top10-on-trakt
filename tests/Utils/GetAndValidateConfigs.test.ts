@@ -10,7 +10,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
-import { TRAKT_TEMPLATE_CLIENT_ID, TRAKT_TEMPLATE_CLIENT_SECRET, MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
+import { MDBLIST_TEMPLATE_API_KEY } from '../../src/types';
 
 vi.mock('config', () => ({
   default: {
@@ -194,7 +194,7 @@ describe('GetAndValidateConfigs', () => {
       it('should throw ConfigurationError for limit > 100', () => {
         const invalidConfig = [
           {
-            platform: 'trakt',
+            platform: 'wikipedia',
             privacy: 'private',
             limit: 101,
             type: 'movies',
@@ -521,18 +521,6 @@ describe('GetAndValidateConfigs', () => {
         });
       };
 
-      it('returns the inlined trakt credentials', () => {
-        useConfig({
-          Target: {
-            type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
-          },
-        });
-
-        expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
-          type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
-        });
-      });
-
       it('returns the inlined floppy credentials', () => {
         useConfig({ Target: { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } });
 
@@ -566,7 +554,7 @@ describe('GetAndValidateConfigs', () => {
       });
 
       it('rejects a Target that is not an object', () => {
-        useConfig({ Target: 'trakt' });
+        useConfig({ Target: 'nope' });
 
         expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
       });
@@ -574,7 +562,10 @@ describe('GetAndValidateConfigs', () => {
       // A raw Zod dump on an unmigrated file reads "invalid discriminator value" and
       // tells the user nothing. These lock the actionable message instead.
       describe('unmigrated configurations', () => {
-        it('shows the Target block to write, carrying the root Trakt values across', () => {
+        // Trakt is no longer a selectable backend, so a root-level `Trakt` block can no
+        // longer be carried into a `Target` of that type: the message falls back to the
+        // mdblist placeholder template instead.
+        it('falls back to the mdblist placeholder template when only a root Trakt block is present', () => {
           useConfig({
             Trakt: { saveFile: './config/.trakt', clientId: 'my-id', clientSecret: 'my-secret' },
           });
@@ -587,11 +578,10 @@ describe('GetAndValidateConfigs', () => {
           }
 
           expect(message).toContain('Configuration format changed in 3.0.0.');
-          expect(message).toContain('Replace your root-level `Trakt` block with:');
-          expect(message).toContain('"type": "trakt"');
-          expect(message).toContain('"saveFile": "./config/.trakt"');
-          expect(message).toContain('"clientId": "my-id"');
-          expect(message).toContain('"clientSecret": "my-secret"');
+          expect(message).toContain('"type": "mdblist"');
+          expect(message).toContain('"apiKey": "<your mdblist API key>"');
+          expect(message).not.toContain('my-id');
+          expect(message).not.toContain('my-secret');
           expect(message).toContain('Then remove the old `Trakt` block.');
           // Not a schema dump.
           expect(message).not.toMatch(/invalid|expected|Target\.type:/i);
@@ -638,13 +628,6 @@ describe('GetAndValidateConfigs', () => {
       // Left in place, the shipped credentials pass every schema and only surface
       // twenty seconds later as a wall of 403s. These lock the startup guard.
       describe('unreplaced template credentials', () => {
-        const templateTarget = {
-          type: 'trakt',
-          saveFile: './config/.trakt',
-          clientId: TRAKT_TEMPLATE_CLIENT_ID,
-          clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
-        };
-
         const messageOf = (): string => {
           try {
             GetAndValidateConfigs.getTargetOptions();
@@ -653,53 +636,6 @@ describe('GetAndValidateConfigs', () => {
           }
           return '';
         };
-
-        it('rejects an untouched template configuration and names both credentials', () => {
-          useConfig({ Target: templateTarget });
-
-          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
-
-          const message = messageOf();
-          expect(message).toContain('`Target.clientId` and `Target.clientSecret`');
-          expect(message).toContain('placeholder values shipped in the configuration template');
-          expect(message).toContain(`"clientId": ${JSON.stringify(TRAKT_TEMPLATE_CLIENT_ID)}`);
-          expect(message).toContain(`"clientSecret": ${JSON.stringify(TRAKT_TEMPLATE_CLIENT_SECRET)}`);
-          expect(message).toContain('https://trakt.tv/oauth/applications');
-        });
-
-        it('still rejects when only clientId was replaced, naming clientSecret alone', () => {
-          useConfig({ Target: { ...templateTarget, clientId: 'my-real-id' } });
-
-          expect(() => GetAndValidateConfigs.getTargetOptions()).toThrow(ConfigurationError);
-
-          const message = messageOf();
-          expect(message).toContain('`Target.clientSecret` still holds the placeholder value ');
-          expect(message).not.toContain('Target.clientId');
-          expect(message).not.toContain('my-real-id');
-        });
-
-        it('still rejects when only clientSecret was replaced, naming clientId alone', () => {
-          useConfig({ Target: { ...templateTarget, clientSecret: 'my-real-secret' } });
-
-          const message = messageOf();
-          expect(message).toContain('`Target.clientId` still holds the placeholder value ');
-          expect(message).not.toContain('Target.clientSecret');
-        });
-
-        // `./config/.trakt` is the intended default, not a placeholder: keeping it
-        // must never be an error.
-        it('accepts real credentials that keep the default saveFile', () => {
-          useConfig({
-            Target: { ...templateTarget, clientId: 'my-real-id', clientSecret: 'my-real-secret' },
-          });
-
-          expect(GetAndValidateConfigs.getTargetOptions()).toEqual({
-            type: 'trakt',
-            saveFile: './config/.trakt',
-            clientId: 'my-real-id',
-            clientSecret: 'my-real-secret',
-          });
-        });
 
         // Floppy ships no template credential, so nothing can be left unreplaced
         // for it and the guard must stay out of the way.
@@ -728,9 +664,7 @@ describe('GetAndValidateConfigs', () => {
       // Dead config is not a reason to refuse to start: a correct migration that
       // left the old block behind must boot, with a warning and nothing more.
       describe('obsolete root-level blocks alongside a valid Target', () => {
-        const validTarget = {
-          type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
-        };
+        const validTarget = { type: 'mdblist', apiKey: 'key' };
 
         it('starts normally and warns once when a root Trakt block is left over', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
@@ -808,23 +742,10 @@ describe('GetAndValidateConfigs', () => {
 
       const mdblist = { type: 'mdblist', apiKey: 'key' } as const;
       const floppy = { type: 'floppy', url: 'http://floppy:8000', apiKey: 'token' } as const;
-      const trakt = {
-        type: 'trakt', saveFile: './config/.trakt', clientId: 'id', clientSecret: 'secret',
-      } as const;
 
       it('rejects "link" on mdblist, naming the block, the index and the value', () => {
         expect(() => GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private', 'link'])))
           .toThrow(/FlixPatrolTop10\[1\]\.privacy = "link"/);
-      });
-
-      it('accepts the very same lists on trakt', () => {
-        // A trakt target always warns about its own deprecation; muted here, not under test.
-        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-
-        expect(() => GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private', 'link'])))
-          .not.toThrow();
-
-        warn.mockRestore();
       });
 
       it('rejects "friends" on floppy', () => {
@@ -856,15 +777,8 @@ describe('GetAndValidateConfigs', () => {
         warn.mockRestore();
       });
 
-      it('does not warn about visibility on trakt or mdblist', () => {
+      it('does not warn about visibility on mdblist', () => {
         const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-
-        GetAndValidateConfigs.checkTargetCompatibility(trakt, listsWith(['private']));
-
-        // A trakt target always warns about its own deprecation; that is the only warning expected here.
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0][0]).not.toMatch(/cannot set list visibility/);
-        warn.mockClear();
 
         GetAndValidateConfigs.checkTargetCompatibility(mdblist, listsWith(['private']));
 
@@ -876,7 +790,7 @@ describe('GetAndValidateConfigs', () => {
         it('warns when a country is set on amazon-prime', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, platform: 'amazon-prime', location: 'france' }],
           });
@@ -888,7 +802,7 @@ describe('GetAndValidateConfigs', () => {
         it('warns when language is set on a country entry', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          GetAndValidateConfigs.checkTargetCompatibility(trakt, {
+          GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'france', language: 'english' }],
           });
@@ -900,7 +814,6 @@ describe('GetAndValidateConfigs', () => {
         it('accepts a world entry with a language', () => {
           const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
 
-          // mdblist here, not trakt: a trakt target always warns about its own deprecation.
           GetAndValidateConfigs.checkTargetCompatibility(mdblist, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, location: 'world', language: 'english' }],
@@ -910,45 +823,11 @@ describe('GetAndValidateConfigs', () => {
           warn.mockRestore();
         });
 
-        it('rejects link privacy on a non-trakt backend for the weekly block', () => {
+        it('rejects link privacy on the weekly block', () => {
           expect(() => GetAndValidateConfigs.checkTargetCompatibility(floppy, {
             ...emptyLists,
             FlixPatrolWeekly: [{ ...weeklyEntry, privacy: 'link' }],
           })).toThrow(ConfigurationError);
-        });
-      });
-
-      describe('Trakt deprecation', () => {
-        it('warns that Trakt is removed in 4.0.0', () => {
-          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-
-          GetAndValidateConfigs.checkTargetCompatibility(trakt, emptyLists);
-
-          expect(warn).toHaveBeenCalledTimes(1);
-          expect(warn).toHaveBeenCalledWith(expect.stringContaining('4.0.0'));
-          expect(warn).toHaveBeenCalledWith(expect.stringContaining('Trakt'));
-          warn.mockRestore();
-        });
-
-        it('warns instead of throwing on link/friends when the backend is Trakt', () => {
-          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-
-          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
-            trakt,
-            listsWith(['link', 'friends']),
-          )).not.toThrow();
-
-          const message = warn.mock.calls.map(([text]) => String(text)).join('\n');
-          expect(message).toContain('FlixPatrolTop10[0].privacy = "link"');
-          expect(message).toContain('FlixPatrolTop10[1].privacy = "friends"');
-          warn.mockRestore();
-        });
-
-        it('still throws on link/friends when the backend is not Trakt', () => {
-          expect(() => GetAndValidateConfigs.checkTargetCompatibility(
-            mdblist,
-            listsWith(['friends']),
-          )).toThrow(ConfigurationError);
         });
       });
     });

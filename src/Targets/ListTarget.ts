@@ -10,7 +10,7 @@ export const MEDIA_KINDS: readonly MediaKind[] = ['movie', 'show'];
 /** Privacy vocabulary of the configuration, inherited from Trakt. */
 export type ListPrivacy = 'private' | 'link' | 'friends' | 'public';
 
-export type TargetBackend = 'trakt' | 'floppy' | 'mdblist';
+export type TargetBackend = 'floppy' | 'mdblist';
 
 /**
  * A media as FlixPatrol describes it, before any resolution towards a backend.
@@ -36,7 +36,7 @@ export type ListContent = Partial<Record<MediaKind, string[]>>;
 export interface ListTarget {
   readonly backend: TargetBackend;
 
-  /** True when the first setup requires a human interaction (Trakt device flow). */
+  /** True when the first setup requires a human interaction (e.g. an OAuth device flow). */
   readonly requiresInteractiveAuth: boolean;
 
   /** True when the credentials at hand allow working without any interaction. */

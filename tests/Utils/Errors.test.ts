@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  AppError, ConfigurationError, FlixPatrolError, TraktError, TargetError, FloppyError, MdblistError,
+  AppError, ConfigurationError, FlixPatrolError, TargetError, FloppyError, MdblistError,
 } from '../../src/Utils/Errors';
 
 describe('Error classes', () => {
@@ -36,16 +36,6 @@ describe('Error classes', () => {
     });
   });
 
-  describe('TraktError', () => {
-    it('should create a TraktError with correct name and message', () => {
-      const error = new TraktError('API call failed');
-      expect(error.name).toBe('TraktError');
-      expect(error.message).toBe('API call failed');
-      expect(error).toBeInstanceOf(Error);
-      expect(error).toBeInstanceOf(AppError);
-      expect(error).toBeInstanceOf(TraktError);
-    });
-  });
 });
 
 describe('target errors', () => {
@@ -55,14 +45,6 @@ describe('target errors', () => {
     expect(err.backend).toBe('floppy');
     expect(err.message).toBe('boom');
     expect(err.name).toBe('TargetError');
-  });
-
-  it('TraktError stays a TargetError so existing catches keep working', () => {
-    const err = new TraktError('boom');
-    expect(err).toBeInstanceOf(TargetError);
-    expect(err).toBeInstanceOf(AppError);
-    expect(err.backend).toBe('trakt');
-    expect(err.name).toBe('TraktError');
   });
 
   it('FloppyError and MdblistError set their own backend', () => {

@@ -65,16 +65,6 @@ export class TargetError extends AppError {
   }
 }
 
-/**
- * Error thrown when Trakt API operations fail: the Trakt case of TargetError.
- */
-export class TraktError extends TargetError {
-  constructor(message: string) {
-    super('trakt', message);
-    this.name = 'TraktError';
-  }
-}
-
 export class FloppyError extends TargetError {
   constructor(message: string, status?: number) {
     super('floppy', message, status);

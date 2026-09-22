@@ -8,7 +8,7 @@ const h = vi.hoisted(() => {
   const connectFn = vi.fn();
   const resolveManyFn = vi.fn();
   const targetMock = {
-    backend: 'trakt' as string,
+    backend: 'floppy' as string,
     requiresInteractiveAuth: true,
     isAuthenticated: vi.fn().mockReturnValue(true),
     connect: connectFn,
@@ -176,7 +176,7 @@ function weeklyConfig(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  target.backend = 'trakt';
+  target.backend = 'floppy';
   resolveAll();
   pushToList.mockResolvedValue(undefined);
   connect.mockResolvedValue(undefined);
@@ -272,7 +272,7 @@ describe('runPipeline target wiring', () => {
     const messages = warnSpy.mock.calls.map((c) => String(c[0]));
     expect(messages).toHaveLength(2);
     expect(messages.some((m) => m.includes('4 found') && m.includes('2 kept'))).toBe(true);
-    expect(messages.some((m) => m.includes('trakt') && m.includes('1 matched'))).toBe(true);
+    expect(messages.some((m) => m.includes('floppy') && m.includes('1 matched'))).toBe(true);
   });
 
   // pushToList REPLACES a list's content, so writing an empty array on a total
@@ -323,7 +323,7 @@ describe('runPipeline target wiring', () => {
   it('never logs target credentials, only the backend type', async () => {
     await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
     const sillyOutput = sillySpy.mock.calls.map((c) => String(c[0])).join('\n');
-    expect(sillyOutput).toContain('trakt');
+    expect(sillyOutput).toContain('floppy');
     for (const secretish of ['secret', 'clientSecret', 'apiKey', 'token', 'saveFile', 'http']) {
       expect(sillyOutput).not.toContain(secretish);
     }
@@ -722,8 +722,8 @@ describe('runPipeline log narrative', () => {
       '==============================',
       '[n/total] Processing "<list>"',
       'Scraping FlixPatrol movies and shows for "<list>"',
-      'Resolved 1/1 movie for "<list>" on trakt',
-      'Resolved 1/1 show for "<list>" on trakt',
+      'Resolved 1/1 movie for "<list>" on floppy',
+      'Resolved 1/1 show for "<list>" on floppy',
       'Updated "<list>" with 1 movie and 1 show',
     ]);
   });

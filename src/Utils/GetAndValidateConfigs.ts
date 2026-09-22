@@ -79,7 +79,6 @@ const OBSOLETE_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
 type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
 
 const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
-  trakt: 'Trakt',
   floppy: 'Floppy',
   mdblist: 'Mdblist',
 };
@@ -90,11 +89,6 @@ const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
  * that file are ever echoed back, so a placeholder is never a secret.
  */
 const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: string }[]> = {
-  trakt: [
-    { key: 'saveFile', placeholder: './config/.trakt' },
-    { key: 'clientId', placeholder: '<your Trakt client id>' },
-    { key: 'clientSecret', placeholder: '<your Trakt client secret>' },
-  ],
   floppy: [
     { key: 'url', placeholder: '<your Floppy instance URL>' },
     { key: 'apiKey', placeholder: '<your Floppy API token>' },
@@ -170,8 +164,6 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
 
 /** Where the real credentials come from. Only backends shipping templates need an entry. */
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
-  trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
-    + 'client id and client secret into the `Target` block.',
   mdblist: 'Copy your API key from https://mdblist.com/preferences/ into the `Target` block.',
 };
 
@@ -237,9 +229,8 @@ function checkMostWatchedMigration(data: unknown): void {
 }
 
 /**
- * Every list entry using a privacy level only Trakt can express, rendered as
- * `block[index].privacy = "value"`. Shared by the fatal path (non-Trakt backends) and
- * the deprecation warning (Trakt), so the two cannot drift apart.
+ * Every list entry using a privacy level only Trakt could express, rendered as
+ * `block[index].privacy = "value"`, for the fatal-path error message below.
  */
 function collectPrivacyOffenders(lists: ListConfigs): string[] {
   const blocks: [string, { privacy: TraktPrivacy }[]][] = [
@@ -330,7 +321,7 @@ export class GetAndValidateConfigs {
     // report it instead of guessing a migration.
     if (rawTarget !== undefined && targetRecord === undefined) {
       if (presentObsoleteBlocks.length === 0) return null;
-      return buildMigrationMessage('trakt', presentObsoleteBlocks, undefined, undefined);
+      return buildMigrationMessage('mdblist', presentObsoleteBlocks, undefined, undefined);
     }
 
     const selectorOnly = targetRecord === undefined
@@ -338,14 +329,15 @@ export class GetAndValidateConfigs {
     if (presentObsoleteBlocks.length === 0 && !selectorOnly) return null;
 
     // Which backend to show: what the user selected, else the single obsolete block they
-    // kept, else the default.
+    // kept, else the default. A root-level `Trakt` block no longer maps to a backend, so
+    // it falls through to the mdblist default rather than carrying its values across.
     const selected = targetRecord?.type;
-    let type: TargetBackendName = 'trakt';
+    let type: TargetBackendName = 'mdblist';
     if (isBackendName(selected)) {
       type = selected;
     } else if (presentObsoleteBlocks.length === 1) {
       type = targetBackend
-        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'trakt';
+        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'mdblist';
     }
 
     const obsoleteBlock = OBSOLETE_BLOCK_OF[type];
@@ -392,16 +384,7 @@ export class GetAndValidateConfigs {
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
     const offenders = collectPrivacyOffenders(lists);
 
-    if (target.type === 'trakt') {
-      logger.warn('Trakt support is deprecated and will be removed in 4.0.0. Move `Target` to '
-        + '"floppy" or "mdblist" — see the "Choosing Your Platform" section of the README. '
-        + 'Your current configuration keeps working until then.');
-      if (offenders.length > 0) {
-        logger.warn(['The "link" and "friends" privacy levels are removed in 4.0.0 alongside Trakt, '
-          + 'as no other backend can express them. Use "private" or "public" instead for:',
-        ...offenders].join('\n'));
-      }
-    } else if (offenders.length > 0) {
+    if (offenders.length > 0) {
       throw new ConfigurationError([
         `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
         + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',

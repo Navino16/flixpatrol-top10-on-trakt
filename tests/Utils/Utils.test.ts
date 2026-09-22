@@ -191,7 +191,7 @@ describe('Utils', () => {
       expect(parsed).toHaveProperty('FlixPatrolMostWatched');
       expect(parsed).toHaveProperty('Cache');
       expect(parsed).toHaveProperty('Schedule');
-      // The credentials live inside Target: no root-level Trakt block is generated.
+      // The credentials live inside Target: no root-level credential block is generated.
       expect(parsed).not.toHaveProperty('Trakt');
       expect(parsed.Target).toEqual({
         type: 'mdblist',
@@ -233,7 +233,7 @@ describe('Utils', () => {
   });
 
   describe('warnAboutOrphanedCaches', () => {
-    it('warns once, naming both leftover directories', () => {
+    it('warns once, naming every leftover directory', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
@@ -243,6 +243,7 @@ describe('Utils', () => {
       const message = warn.mock.calls[0][0] as unknown as string;
       expect(message).toContain(path.join('./config/.cache', 'movies'));
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-trakt'));
       expect(message).toMatch(/no longer read/);
       warn.mockRestore();
     });

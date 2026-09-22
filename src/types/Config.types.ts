@@ -190,12 +190,6 @@ export const FlixPatrolWeeklySchema = z.object({
   normalizeName: z.boolean().optional(),
 });
 
-export const TraktOptionsSchema = z.object({
-  saveFile: z.string(),
-  clientId: z.string(),
-  clientSecret: z.string(),
-});
-
 export const FloppyOptionsSchema = z.object({
   url: z.url(),
   apiKey: z.string().min(1, 'apiKey must not be empty'),
@@ -205,30 +199,21 @@ export const MdblistOptionsSchema = z.object({
   apiKey: z.string().min(1, 'apiKey must not be empty'),
 });
 
-export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
+export const targetBackend = ['floppy', 'mdblist'] as const;
 
 /**
  * Credential values shipped in the configuration template. Both template sites and the
  * startup guard that rejects them read from here, so rewording the template cannot
  * silently leave the guard behind.
  */
-export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
-export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
 export const MDBLIST_TEMPLATE_API_KEY = 'You need to replace this API key';
 
 /**
  * Template credentials per backend, keyed by the field they occupy in the `Target` block.
  * Floppy is absent because it ships no template: it needs a self-hosted `url` the app
  * cannot guess a placeholder for.
- *
- * `saveFile` is deliberately absent from the `trakt` entry: `./config/.trakt` is a
- * sensible default users are expected to keep, not a placeholder to replace.
  */
 export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
-  trakt: {
-    clientId: TRAKT_TEMPLATE_CLIENT_ID,
-    clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
-  },
   mdblist: {
     apiKey: MDBLIST_TEMPLATE_API_KEY,
   },
@@ -237,14 +222,12 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
 /**
  * The backend selector and its credentials form one discriminated union rather than a
  * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
- * backend needs and "type: floppy with only Trakt credentials" is not representable.
+ * backend needs and "type: floppy with only mdblist credentials" is not representable.
  */
-export const TraktTargetSchema = TraktOptionsSchema.extend({ type: z.literal('trakt') });
 export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
 export const MdblistTargetSchema = MdblistOptionsSchema.extend({ type: z.literal('mdblist') });
 
 export const TargetSchema = z.discriminatedUnion('type', [
-  TraktTargetSchema,
   FloppyTargetSchema,
   MdblistTargetSchema,
 ]);
@@ -327,7 +310,6 @@ export type FlixPatrolWeekly = z.infer<typeof FlixPatrolWeeklySchema>;
 export type FlixPatrolWeeklyPlatform = z.infer<typeof FlixPatrolWeeklyPlatformSchema>;
 export type FlixPatrolWeeklyLanguage = z.infer<typeof FlixPatrolWeeklyLanguageSchema>;
 export type FlixPatrolWeeklyLocation = z.infer<typeof FlixPatrolWeeklyLocationSchema>;
-export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
 export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;

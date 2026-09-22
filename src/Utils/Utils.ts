@@ -4,10 +4,10 @@ import { logger } from './Logger';
 import { MDBLIST_TEMPLATE_API_KEY } from '../types';
 
 /**
- * Scraping cache directories of 2.x, left unread by the move to a two-level cache
- * (`details` plus `resolution-<backend>`).
+ * Cache directories no longer read: the 2.x scraping layout, plus the resolution
+ * namespace of the Trakt backend removed in 4.0.0.
  */
-const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows'] as const;
+const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows', 'resolution-trakt'] as const;
 
 export class Utils {
   public static sleep(time: number) {

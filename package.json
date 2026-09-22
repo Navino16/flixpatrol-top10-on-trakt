@@ -1,7 +1,7 @@
 {
   "name": "flixpatrol-top10",
   "version": "3.1.1",
-  "description": "Get top10 list from flixpatrol and upload them to trakt",
+  "description": "Get top10 list from flixpatrol and upload them to Floppy or mdblist",
   "main": "app.js",
   "scripts": {
     "build": "rimraf ./build && tsc",
@@ -18,7 +18,8 @@
   },
   "keywords": [
     "Flixpatrol",
-    "Trakt",
+    "Floppy",
+    "mdblist",
     "Top10"
   ],
   "author": "Navino16",
@@ -44,7 +45,6 @@
     "impit": "^0.14.1",
     "jsdom": "^30.0.0",
     "node-cron": "^4.6.0",
-    "trakt.tv": "^8.2.0",
     "winston": "^3.19.0",
     "zod": "^4.4.3"
   },

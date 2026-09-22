@@ -45,13 +45,13 @@ describe('ResolutionCache', () => {
   });
 
   it('represents a missing year explicitly so it cannot collide with a real one', async () => {
-    const cache = new ResolutionCache(enabled, 'trakt');
+    const cache = new ResolutionCache(enabled, 'mdblist');
     await cache.set({ title: 'Unknown', year: null }, 'movie', '1');
     expect(cacheSet).toHaveBeenCalledWith('movie|Unknown|unknown', '1');
   });
 
   it('returns null and never touches the cache when caching is disabled', async () => {
-    const cache = new ResolutionCache({ ...enabled, enabled: false }, 'trakt');
+    const cache = new ResolutionCache({ ...enabled, enabled: false }, 'mdblist');
     expect(cacheFactory).not.toHaveBeenCalled();
     expect(await cache.get({ title: 'Inception', year: 2010 }, 'movie')).toBeNull();
     await cache.set({ title: 'Inception', year: 2010 }, 'movie', '1');
@@ -60,7 +60,7 @@ describe('ResolutionCache', () => {
 
   it('returns the cached id on a hit', async () => {
     cacheGet.mockResolvedValueOnce('27205');
-    const cache = new ResolutionCache(enabled, 'trakt');
+    const cache = new ResolutionCache(enabled, 'mdblist');
     expect(await cache.get({ title: 'Inception', year: 2010 }, 'movie')).toBe('27205');
   });
 });
