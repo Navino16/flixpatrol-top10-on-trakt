@@ -143,7 +143,7 @@ async function main(): Promise<void> {
 
   // Backends whose credentials come straight from the config (floppy, mdblist)
   // report requiresInteractiveAuth === false, so the daemon starts immediately.
-  // Only Trakt's device flow needs a one-shot run to complete first.
+  // A future backend with an OAuth device flow would need a one-shot run to complete first.
   const { target } = deps;
   const authenticated = !target.requiresInteractiveAuth || target.isAuthenticated();
   if (schedule.enabled && !authenticated) {

@@ -64,20 +64,20 @@ export const flixpatrolMostWatchedShowGenre = ['action', 'adventure', 'animation
   'reality-show', 'romance', 'science-fiction', 'sport', 'superhero', 'talk-show', 'thriller', 'war',
   'western'] as const;
 
-const traktPrivacy = ['private', 'link', 'friends', 'public'] as const;
+const listPrivacy = ['private', 'public'] as const;
 
 // Zod schemas
 const FlixPatrolTop10LocationSchema = z.enum(flixpatrolTop10Location);
 const FlixPatrolTop10PlatformSchema = z.enum(flixpatrolTop10Platform);
 const FlixPatrolPopularPlatformSchema = z.enum(flixpatrolPopularPlatform);
 const FlixPatrolConfigTypeSchema = z.enum(flixpatrolConfigType);
-const TraktPrivacySchema = z.enum(traktPrivacy);
+export const ListPrivacySchema = z.enum(listPrivacy);
 
 export const FlixPatrolTop10Schema = z.object({
   platform: FlixPatrolTop10PlatformSchema,
   location: FlixPatrolTop10LocationSchema,
   fallback: z.union([FlixPatrolTop10LocationSchema, z.literal(false)]),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1, 'limit must be >= 1'),
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
@@ -87,7 +87,7 @@ export const FlixPatrolTop10Schema = z.object({
 
 export const FlixPatrolPopularSchema = z.object({
   platform: FlixPatrolPopularPlatformSchema,
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
   type: FlixPatrolConfigTypeSchema,
   name: z.string().optional(),
@@ -113,7 +113,7 @@ const FlixPatrolMostWatchedCountrySchema = z.enum(flixpatrolMostWatchedCountry, 
 
 export const FlixPatrolMostWatchedSchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(50, 'limit must be between 1 and 50'),
   type: FlixPatrolConfigTypeSchema,
   year: z.number().min(2023).max(currentYear, `year must be between 2023 and ${currentYear}`),
@@ -156,7 +156,7 @@ const FlixPatrolMostHoursLanguageSchema = z.enum(flixpatrolMostHoursLanguage);
 
 export const FlixPatrolMostHoursSchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(100, 'limit must be between 1 and 100'),
   type: FlixPatrolConfigTypeSchema,
   period: FlixPatrolMostHoursPeriodSchema,
@@ -180,7 +180,7 @@ const FlixPatrolWeeklyLocationSchema = z.union([
 
 export const FlixPatrolWeeklySchema = z.object({
   enabled: z.boolean(),
-  privacy: TraktPrivacySchema,
+  privacy: ListPrivacySchema,
   limit: z.number().min(1).max(20, 'limit must be between 1 and 20'),
   type: FlixPatrolConfigTypeSchema,
   platform: FlixPatrolWeeklyPlatformSchema,
@@ -188,12 +188,6 @@ export const FlixPatrolWeeklySchema = z.object({
   language: FlixPatrolWeeklyLanguageSchema.optional().default('all'),
   name: z.string().optional(),
   normalizeName: z.boolean().optional(),
-});
-
-export const TraktOptionsSchema = z.object({
-  saveFile: z.string(),
-  clientId: z.string(),
-  clientSecret: z.string(),
 });
 
 export const FloppyOptionsSchema = z.object({
@@ -205,30 +199,21 @@ export const MdblistOptionsSchema = z.object({
   apiKey: z.string().min(1, 'apiKey must not be empty'),
 });
 
-export const targetBackend = ['trakt', 'floppy', 'mdblist'] as const;
+export const targetBackend = ['floppy', 'mdblist'] as const;
 
 /**
  * Credential values shipped in the configuration template. Both template sites and the
  * startup guard that rejects them read from here, so rewording the template cannot
  * silently leave the guard behind.
  */
-export const TRAKT_TEMPLATE_CLIENT_ID = 'You need to replace this client ID';
-export const TRAKT_TEMPLATE_CLIENT_SECRET = 'You need to replace this client secret';
 export const MDBLIST_TEMPLATE_API_KEY = 'You need to replace this API key';
 
 /**
  * Template credentials per backend, keyed by the field they occupy in the `Target` block.
  * Floppy is absent because it ships no template: it needs a self-hosted `url` the app
  * cannot guess a placeholder for.
- *
- * `saveFile` is deliberately absent from the `trakt` entry: `./config/.trakt` is a
- * sensible default users are expected to keep, not a placeholder to replace.
  */
 export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Record<string, string>>>> = {
-  trakt: {
-    clientId: TRAKT_TEMPLATE_CLIENT_ID,
-    clientSecret: TRAKT_TEMPLATE_CLIENT_SECRET,
-  },
   mdblist: {
     apiKey: MDBLIST_TEMPLATE_API_KEY,
   },
@@ -237,14 +222,12 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
 /**
  * The backend selector and its credentials form one discriminated union rather than a
  * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
- * backend needs and "type: floppy with only Trakt credentials" is not representable.
+ * backend needs and "type: floppy with only mdblist credentials" is not representable.
  */
-export const TraktTargetSchema = TraktOptionsSchema.extend({ type: z.literal('trakt') });
 export const FloppyTargetSchema = FloppyOptionsSchema.extend({ type: z.literal('floppy') });
 export const MdblistTargetSchema = MdblistOptionsSchema.extend({ type: z.literal('mdblist') });
 
 export const TargetSchema = z.discriminatedUnion('type', [
-  TraktTargetSchema,
   FloppyTargetSchema,
   MdblistTargetSchema,
 ]);
@@ -327,14 +310,13 @@ export type FlixPatrolWeekly = z.infer<typeof FlixPatrolWeeklySchema>;
 export type FlixPatrolWeeklyPlatform = z.infer<typeof FlixPatrolWeeklyPlatformSchema>;
 export type FlixPatrolWeeklyLanguage = z.infer<typeof FlixPatrolWeeklyLanguageSchema>;
 export type FlixPatrolWeeklyLocation = z.infer<typeof FlixPatrolWeeklyLocationSchema>;
-export type TraktAPIOptions = z.infer<typeof TraktOptionsSchema>;
 export type TargetBackendName = (typeof targetBackend)[number];
 export type FloppyOptions = z.infer<typeof FloppyOptionsSchema>;
 export type MdblistOptions = z.infer<typeof MdblistOptionsSchema>;
 
 /** A discriminated union on `type`, which is what `createTarget` narrows on. */
 export type TargetOptions = z.infer<typeof TargetSchema>;
-export type TraktPrivacy = z.infer<typeof TraktPrivacySchema>;
+export type ListPrivacy = z.infer<typeof ListPrivacySchema>;
 
 export type CacheOptions = z.infer<typeof CacheOptionsSchema>;
 export type NotificationsConfigFromSchema = z.infer<typeof NotificationsSchema>;

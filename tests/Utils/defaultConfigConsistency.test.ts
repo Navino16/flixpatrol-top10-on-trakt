@@ -73,6 +73,9 @@ describe('default configuration consistency', () => {
       Target: Record<string, unknown>;
     };
 
-    expect(tracked.Target.apiKey).toBe(MDBLIST_TEMPLATE_API_KEY);
+    expect(tracked.Target).toEqual({
+      type: 'mdblist',
+      apiKey: MDBLIST_TEMPLATE_API_KEY,
+    });
   });
 });

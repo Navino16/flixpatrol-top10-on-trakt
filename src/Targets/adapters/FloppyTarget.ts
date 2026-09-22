@@ -177,8 +177,8 @@ export class FloppyTarget implements ListTarget {
    * Single point of passage to the API, one attempt only. Any status outside `expected`
    * throws a FloppyError carrying that status.
    *
-   * Unlike the Trakt path there is no delay between calls: the server is self-hosted,
-   * so the per-item sleep rate limits exist to respect would only slow it down.
+   * There is no delay between calls: the server is self-hosted, so a per-item sleep to
+   * respect a remote rate limit would only slow it down.
    */
   private async requestOnce(
     method: HttpMethod,

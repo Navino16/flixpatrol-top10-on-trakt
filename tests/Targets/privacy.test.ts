@@ -6,9 +6,7 @@ describe('isPrivate', () => {
     expect(isPrivate('private')).toBe(true);
   });
 
-  it('maps public, link and friends to false', () => {
+  it('maps public to false', () => {
     expect(isPrivate('public')).toBe(false);
-    expect(isPrivate('link')).toBe(false);
-    expect(isPrivate('friends')).toBe(false);
   });
 });

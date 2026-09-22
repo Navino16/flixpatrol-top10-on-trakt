@@ -74,7 +74,7 @@ describe('resolveThroughCache', () => {
     const { cache, set } = fakeCache('27205');
     const search = vi.fn(async () => 'fresh');
     expect(await resolveThroughCache({
-      cache, backend: 'Trakt', item, kind: 'movie', search,
+      cache, backend: 'Floppy', item, kind: 'movie', search,
     })).toBe('27205');
     expect(search).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
@@ -100,8 +100,8 @@ describe('resolveThroughCache', () => {
   it('reports an unknown year explicitly in the warning', async () => {
     const { cache } = fakeCache();
     await resolveThroughCache({
-      cache, backend: 'Trakt', item: { title: 'Nope', year: null }, kind: 'show', search: async () => null,
+      cache, backend: 'Floppy', item: { title: 'Nope', year: null }, kind: 'show', search: async () => null,
     });
-    expect(logger.warn).toHaveBeenCalledWith('No Trakt match for show "Nope" (unknown year)');
+    expect(logger.warn).toHaveBeenCalledWith('No Floppy match for show "Nope" (unknown year)');
   });
 });

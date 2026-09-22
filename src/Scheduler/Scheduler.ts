@@ -63,7 +63,7 @@ export class Scheduler {
       await task.stop();
     }
     if (this.currentRun) {
-      logger.info('Scheduler: waiting for current run to finish (graceful stop after current Trakt write)');
+      logger.info('Scheduler: waiting for current run to finish (graceful stop after current write)');
       await this.currentRun;
     }
   }

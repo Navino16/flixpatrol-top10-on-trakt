@@ -1,9 +1,8 @@
 import type { ListPrivacy } from './ListTarget';
 
 /**
- * Reduces the four Trakt levels to the boolean Floppy and mdblist understand. `link`
- * and `friends` are rejected at startup on these backends, so collapsing them to
- * public here is only a safety net.
+ * Reduces the configuration's privacy vocabulary to the boolean Floppy and mdblist
+ * understand. Kept as the single place the mapping lives, for the next backend to hook into.
  */
 export function isPrivate(privacy: ListPrivacy): boolean {
   return privacy === 'private';

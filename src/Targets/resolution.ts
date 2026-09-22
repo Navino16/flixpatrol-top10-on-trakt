@@ -26,7 +26,7 @@ export async function resolveSequentially(
 /** What `resolveThroughCache` needs to turn a backend search into a cached resolution. */
 export interface CachedResolution {
   cache: ResolutionCache;
-  /** Backend name as it appears in the "no match" warning, e.g. `Trakt`, `Floppy`, `mdblist`. */
+  /** Backend name as it appears in the "no match" warning, e.g. `Floppy`, `mdblist`. */
   backend: string;
   item: MediaItem;
   kind: MediaKind;

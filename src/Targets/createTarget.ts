@@ -1,6 +1,5 @@
 import type { CacheOptions, TargetOptions } from '../types';
 import type { ListTarget } from './ListTarget';
-import { TraktTarget } from './adapters/TraktTarget';
 import { FloppyTarget } from './adapters/FloppyTarget';
 import { MdblistTarget } from './adapters/MdblistTarget';
 
@@ -16,7 +15,11 @@ export function createTarget(
       return new FloppyTarget(options, cacheOptions, dryRun);
     case 'mdblist':
       return new MdblistTarget(options, cacheOptions, dryRun);
-    default:
-      return new TraktTarget(options, cacheOptions, dryRun);
+    default: {
+      // Compiler-checked exhaustiveness: a third TargetOptions variant fails to build here
+      // instead of silently landing on whichever adapter used to be the catch-all.
+      const exhaustive: never = options;
+      throw new Error(`Unhandled Target.type: ${JSON.stringify(exhaustive)}`);
+    }
   }
 }

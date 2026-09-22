@@ -25,7 +25,6 @@ import type {
   FlixPatrolWeekly,
   TargetOptions,
   TargetBackendName,
-  TraktPrivacy,
   CacheOptions,
   ScheduleOptions,
   FlareSolverrOptions,
@@ -60,7 +59,7 @@ function validateConfig<T>(schema: z.ZodSchema<T>, data: unknown, context: strin
   return result.data;
 }
 
-/** Every list block, as `checkTargetCompatibility` needs all five at once. */
+/** Every list block, bundled for `checkTargetCompatibility` even though it only reads one today. */
 export interface ListConfigs {
   FlixPatrolTop10: FlixPatrolTop10[];
   FlixPatrolPopular: FlixPatrolPopular[];
@@ -79,7 +78,6 @@ const OBSOLETE_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
 type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
 
 const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
-  trakt: 'Trakt',
   floppy: 'Floppy',
   mdblist: 'Mdblist',
 };
@@ -90,11 +88,6 @@ const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
  * that file are ever echoed back, so a placeholder is never a secret.
  */
 const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: string }[]> = {
-  trakt: [
-    { key: 'saveFile', placeholder: './config/.trakt' },
-    { key: 'clientId', placeholder: '<your Trakt client id>' },
-    { key: 'clientSecret', placeholder: '<your Trakt client secret>' },
-  ],
   floppy: [
     { key: 'url', placeholder: '<your Floppy instance URL>' },
     { key: 'apiKey', placeholder: '<your Floppy API token>' },
@@ -120,6 +113,16 @@ function renderTargetBlock(
   return `  "Target": {\n${body}\n  }`;
 }
 
+/** "Then remove the old `X`, `Y` blocks." — or, when there is none, that there never was one. */
+function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
+  if (presentObsoleteBlocks.length === 0) {
+    return 'Credentials live in the `Target` block itself: there is no separate root-level '
+      + 'credential block.';
+  }
+  return `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
+    + `block${presentObsoleteBlocks.length > 1 ? 's' : ''}.`;
+}
+
 /**
  * Builds the migration message. It shows the block to write rather than the schema
  * error, whose "invalid discriminator value" says nothing about what to do next.
@@ -134,11 +137,6 @@ function buildMigrationMessage(
   const head = presentObsoleteBlocks.includes(sourceBlock)
     ? `Replace your root-level \`${sourceBlock}\` block with:`
     : 'Your `Target` block must now carry the credentials of the selected backend. Replace it with:';
-  const tail = presentObsoleteBlocks.length > 0
-    ? `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
-      + `block${presentObsoleteBlocks.length > 1 ? 's' : ''}.`
-    : 'Credentials live in the `Target` block itself: there is no separate root-level '
-      + 'credential block.';
 
   return [
     'Configuration format changed in 3.0.0.',
@@ -149,7 +147,36 @@ function buildMigrationMessage(
     // wrote most recently rather than the obsolete block's.
     renderTargetBlock(type, [targetRecord, obsoleteRecord]),
     '',
-    tail,
+    buildRemovalTail(presentObsoleteBlocks),
+  ].join('\n');
+}
+
+/**
+ * Builds the message for a Trakt-flavoured configuration: a root-level `Trakt` block, a
+ * `Target.type` of `"trakt"`, or both. Trakt was removed outright in 4.0.0 rather than
+ * renamed like Floppy/mdblist, and nothing in a Trakt config maps onto either surviving
+ * backend, so this offers both instead of guessing one on the user's behalf.
+ */
+function buildTraktRemovedMessage(
+  presentObsoleteBlocks: ObsoleteBlockName[],
+  targetRecord: Record<string, unknown> | undefined,
+): string {
+  const head = presentObsoleteBlocks.includes('Trakt')
+    ? 'Replace your root-level `Trakt` block with one of:'
+    : 'Your `Target` block still selects the removed `trakt` backend. Replace it with one of:';
+
+  return [
+    'Trakt support was removed in 4.0.0.',
+    '',
+    head,
+    '',
+    renderTargetBlock('floppy', [targetRecord]),
+    '',
+    'or',
+    '',
+    renderTargetBlock('mdblist', [targetRecord]),
+    '',
+    buildRemovalTail(presentObsoleteBlocks),
   ].join('\n');
 }
 
@@ -170,8 +197,6 @@ function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): vo
 
 /** Where the real credentials come from. Only backends shipping templates need an entry. */
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
-  trakt: 'Create a Trakt API application at https://trakt.tv/oauth/applications, then copy its '
-    + 'client id and client secret into the `Target` block.',
   mdblist: 'Copy your API key from https://mdblist.com/preferences/ into the `Target` block.',
 };
 
@@ -234,25 +259,6 @@ function checkMostWatchedMigration(data: unknown): void {
     '',
     'Delete the `orderByViews` line from each entry listed above. Nothing else changes.',
   ].join('\n'));
-}
-
-/**
- * Every list entry using a privacy level only Trakt can express, rendered as
- * `block[index].privacy = "value"`. Shared by the fatal path (non-Trakt backends) and
- * the deprecation warning (Trakt), so the two cannot drift apart.
- */
-function collectPrivacyOffenders(lists: ListConfigs): string[] {
-  const blocks: [string, { privacy: TraktPrivacy }[]][] = [
-    ['FlixPatrolTop10', lists.FlixPatrolTop10],
-    ['FlixPatrolPopular', lists.FlixPatrolPopular],
-    ['FlixPatrolMostWatched', lists.FlixPatrolMostWatched],
-    ['FlixPatrolMostHours', lists.FlixPatrolMostHours],
-    ['FlixPatrolWeekly', lists.FlixPatrolWeekly],
-  ];
-  return blocks.flatMap(([block, entries]) => entries
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.privacy === 'link' || entry.privacy === 'friends')
-    .map(({ entry, index }) => `  ${block}[${index}].privacy = "${entry.privacy}"`));
 }
 
 export class GetAndValidateConfigs {
@@ -319,18 +325,28 @@ export class GetAndValidateConfigs {
    *
    * Two signals mark an unmigrated file: a root-level credential block nothing reads
    * any more, and a `Target` carrying only the selector — including no `Target` at all.
+   * A Trakt-flavoured file is detected first and handled separately, since Trakt has no
+   * single replacement backend to default to.
    */
   private static detectUnmigratedConfig(
     rawTarget: unknown,
     presentObsoleteBlocks: ObsoleteBlockName[],
   ): string | null {
     const targetRecord = isRecord(rawTarget) ? rawTarget : undefined;
+    const selectedType = targetRecord?.type;
+
+    // Trakt was removed, not renamed: unlike Floppy/mdblist there is no single backend to
+    // default to, so an explicit `type: "trakt"`, or a leftover root `Trakt` block with no
+    // backend chosen yet, always offers both rather than guessing one for the user.
+    if (selectedType === 'trakt' || (presentObsoleteBlocks.includes('Trakt') && selectedType === undefined)) {
+      return buildTraktRemovedMessage(presentObsoleteBlocks, targetRecord);
+    }
 
     // A `Target` present but not an object is not an unmigrated shape, so let the schema
     // report it instead of guessing a migration.
     if (rawTarget !== undefined && targetRecord === undefined) {
       if (presentObsoleteBlocks.length === 0) return null;
-      return buildMigrationMessage('trakt', presentObsoleteBlocks, undefined, undefined);
+      return buildMigrationMessage('mdblist', presentObsoleteBlocks, undefined, undefined);
     }
 
     const selectorOnly = targetRecord === undefined
@@ -339,13 +355,12 @@ export class GetAndValidateConfigs {
 
     // Which backend to show: what the user selected, else the single obsolete block they
     // kept, else the default.
-    const selected = targetRecord?.type;
-    let type: TargetBackendName = 'trakt';
-    if (isBackendName(selected)) {
-      type = selected;
+    let type: TargetBackendName = 'mdblist';
+    if (isBackendName(selectedType)) {
+      type = selectedType;
     } else if (presentObsoleteBlocks.length === 1) {
       type = targetBackend
-        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'trakt';
+        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'mdblist';
     }
 
     const obsoleteBlock = OBSOLETE_BLOCK_OF[type];
@@ -390,25 +405,6 @@ export class GetAndValidateConfigs {
    * are emitted, so they appear once per run rather than once per list entry.
    */
   public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
-    const offenders = collectPrivacyOffenders(lists);
-
-    if (target.type === 'trakt') {
-      logger.warn('Trakt support is deprecated and will be removed in 4.0.0. Move `Target` to '
-        + '"floppy" or "mdblist" — see the "Choosing Your Platform" section of the README. '
-        + 'Your current configuration keeps working until then.');
-      if (offenders.length > 0) {
-        logger.warn(['The "link" and "friends" privacy levels are removed in 4.0.0 alongside Trakt, '
-          + 'as no other backend can express them. Use "private" or "public" instead for:',
-        ...offenders].join('\n'));
-      }
-    } else if (offenders.length > 0) {
-      throw new ConfigurationError([
-        `Target.type is "${target.type}", which cannot express the "link" and "friends" privacy `
-        + 'levels — they only exist on Trakt. Use "private" or "public" instead for:',
-        ...offenders,
-      ].join('\n'));
-    }
-
     if (target.type === 'floppy') {
       logger.warn('The Floppy API cannot set list visibility, so the `privacy` field of every list '
         + 'entry is ignored: lists are always created private. Flip the ones you want to share by '
