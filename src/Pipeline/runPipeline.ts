@@ -13,6 +13,9 @@ import type {
   FlixPatrolPopular, FlixPatrolTop10, FlixPatrolType, FlixPatrolWeekly,
 } from '../types';
 
+/** One list as FlixPatrol returned it, before any backend resolution. */
+type ScrapedList = Partial<Record<MediaKind, MediaItem[]>>;
+
 /** What every entry of the four twin blocks carries, whatever extra options it also has. */
 interface ListBlockEntry {
   type: FlixPatrolConfigType;
@@ -278,26 +281,33 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       // Popular and MostWatched build a distinct URL per kind, so a dead page on one kind
       // must not discard the other: each kind gets its own skipIfDeadPath, and the entry
       // itself is skipped only once every requested kind died.
-      const content: ListContent = {};
+      // Scraping is hoisted out of the resolution so it stays paid once whatever the
+      // number of targets. It is the expensive half and the only one facing Cloudflare.
+      const scraped: ScrapedList = {};
       const kindSucceeded: boolean[] = [];
 
       if (entry.type === 'movies' || entry.type === 'both') {
         kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
-          const items = await block.scrape('Movies', entry);
-          const ids = await resolveSection(items, 'movie', listName);
-          if (ids !== null) content.movie = ids;
+          scraped.movie = await block.scrape('Movies', entry);
         })));
       }
 
       if (entry.type === 'shows' || entry.type === 'both') {
         kindSucceeded.push(!(await skipIfDeadPath(listName, async () => {
-          const items = await block.scrape('TV Shows', entry);
-          const ids = await resolveSection(items, 'show', listName);
-          if (ids !== null) content.show = ids;
+          scraped.show = await block.scrape('TV Shows', entry);
         })));
       }
 
       if (!kindSucceeded.some(Boolean)) continue;
+
+      const content: ListContent = {};
+      for (const kind of MEDIA_KINDS) {
+        const items = scraped[kind];
+        if (items === undefined) continue;
+        const ids = await resolveSection(items, kind, listName);
+        if (ids !== null) content[kind] = ids;
+      }
+
       if (await writeList(content, listName, entry.privacy)) return true;
       summary.listsProcessed++;
     }
@@ -324,7 +334,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     logger.info(`[${currentList}/${totalLists}] Processing "${baseListName}"`);
     logger.info(`Scraping FlixPatrol ${kindsLabel(top10.type)} for "${baseListName}"`);
 
-    const content: ListContent = {};
+    const scraped: ScrapedList = {};
     const skipped = await skipIfDeadPath(baseListName, async () => {
       const { movies, shows, rawCounts } = await flixpatrol.getTop10Sections(top10);
 
@@ -332,18 +342,25 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
         if (rawCounts.movies > movies.length) {
           logger.warn(`Some movies scraped from FlixPatrol were dropped (${rawCounts.movies} found, ${movies.length} kept) — their detail page had no usable title, or they were duplicates`);
         }
-        const ids = await resolveSection(movies, 'movie', baseListName);
-        if (ids !== null) content.movie = ids;
+        scraped.movie = movies;
       }
       if (shows.length > 0) {
         if (rawCounts.shows > shows.length) {
           logger.warn(`Some shows scraped from FlixPatrol were dropped (${rawCounts.shows} found, ${shows.length} kept) — their detail page had no usable title, or they were duplicates`);
         }
-        const ids = await resolveSection(shows, 'show', baseListName);
-        if (ids !== null) content.show = ids;
+        scraped.show = shows;
       }
     });
     if (skipped) continue;
+
+    const content: ListContent = {};
+    for (const kind of MEDIA_KINDS) {
+      const items = scraped[kind];
+      if (items === undefined) continue;
+      const ids = await resolveSection(items, kind, baseListName);
+      if (ids !== null) content[kind] = ids;
+    }
+
     if (await writeList(content, baseListName, top10.privacy)) return summary;
     summary.listsProcessed++;
   }
