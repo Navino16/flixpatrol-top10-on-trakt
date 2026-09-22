@@ -1,6 +1,6 @@
 import Cache, { FileSystemCache } from 'file-system-cache';
 import { Impit } from 'impit';
-import { logger, FlixPatrolError } from '../Utils';
+import { logger, FlixPatrolError, FlixPatrolPageNotFoundError } from '../Utils';
 import type { MediaItem } from '../Targets';
 import type { FlareSolverrClient } from '../FlareSolverr';
 import type {
@@ -145,7 +145,7 @@ export class FlixPatrol {
    */
   private static assertPageExists(html: string, path: string): void {
     if (isNotFoundPage(html)) {
-      throw new FlixPatrolError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
+      throw new FlixPatrolPageNotFoundError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`);
     }
   }
 

@@ -178,8 +178,14 @@ async function main(): Promise<void> {
     });
 
     try {
-      await runPipeline(deps);
+      const summary = await runPipeline(deps);
       await flushPendingDispatches();
+      // A dead FlixPatrol path is reported via run_end, not a separate error notification
+      // (see the SIGINT handling above), but the process must still fail so cron/systemd
+      // sees it.
+      if (summary.deadPaths.length > 0) {
+        process.exit(1);
+      }
     } catch (err) {
       await dispatchErrorAndExit(err);
     }

@@ -30,6 +30,18 @@ export class FlixPatrolError extends AppError {
 }
 
 /**
+ * A FlixPatrol path that answered 200 with its "Page Not Found" body. Distinguished from
+ * the base class so callers can skip just that entry, unlike a genuine fetch failure —
+ * which hits every list alike and must stay fatal.
+ */
+export class FlixPatrolPageNotFoundError extends FlixPatrolError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FlixPatrolPageNotFoundError';
+  }
+}
+
+/**
  * Error thrown by a destination platform. Carries the backend concerned so that
  * messages stay readable when several adapters coexist.
  */

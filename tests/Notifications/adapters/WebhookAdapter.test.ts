@@ -42,13 +42,13 @@ describe('WebhookAdapter', () => {
       body: 'finished',
       timestamp: '2026-06-26T10:00:00.000Z',
       summary: {
-        listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000,
+        listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000, deadPaths: [],
       },
     });
     const init = fetchMock.mock.calls[0][1];
     const sentBody = JSON.parse(init.body as string);
     expect(sentBody.summary).toEqual({
-      listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000,
+      listsProcessed: 5, moviesAdded: 100, showsAdded: 50, durationMs: 12000, deadPaths: [],
     });
   });
 

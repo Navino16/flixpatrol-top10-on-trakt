@@ -61,10 +61,11 @@ vi.mock('../../src/Utils', async (importOriginal) => {
 
 import { runPipeline } from '../../src/Pipeline/runPipeline';
 import type { RunPipelineDeps } from '../../src/Pipeline/runPipeline';
-import { logger } from '../../src/Utils';
+import { logger, FlixPatrolError, FlixPatrolPageNotFoundError } from '../../src/Utils';
 
 const infoSpy = logger.info as unknown as ReturnType<typeof vi.fn>;
 const warnSpy = logger.warn as unknown as ReturnType<typeof vi.fn>;
+const errorSpy = logger.error as unknown as ReturnType<typeof vi.fn>;
 const sillySpy = logger.silly as unknown as ReturnType<typeof vi.fn>;
 const debugSpy = logger.debug as unknown as ReturnType<typeof vi.fn>;
 
@@ -904,5 +905,86 @@ describe('a scrape that returns no item', () => {
       }] as unknown as RunPipelineDeps['flixPatrolMostWatched'],
     }));
     expect(kindsOfWrite(0)).toEqual(['movie']);
+  });
+});
+
+// A dead FlixPatrol path (HTTP 200 + "Page Not Found" body) must skip only the entry
+// that hit it, not the whole run — see FlixPatrol.assertPageExists.
+describe('runPipeline dead FlixPatrol paths', () => {
+  const deadTop10Config = [
+    {
+      platform: 'netflix', location: 'world', fallback: false, privacy: 'private', limit: 10, type: 'both', name: 'dead',
+    },
+    {
+      platform: 'hbo-max', location: 'world', fallback: false, privacy: 'private', limit: 10, type: 'both', name: 'ok-1',
+    },
+    {
+      platform: 'disney', location: 'world', fallback: false, privacy: 'private', limit: 10, type: 'both', name: 'ok-2',
+    },
+  ] as unknown as RunPipelineDeps['flixPatrolTop10'];
+
+  const notFoundMessage = 'FlixPatrol does not serve /top10/netflix/world — it answered its "Page Not Found" page';
+
+  it('skips a dead Top10 entry and still writes the remaining lists', async () => {
+    getTop10Sections
+      .mockRejectedValueOnce(new FlixPatrolPageNotFoundError(notFoundMessage))
+      .mockResolvedValue({ movies: oneItem, shows: [], rawCounts: { movies: 1, shows: 0 } });
+
+    await runPipeline(baseDeps({ flixPatrolTop10: deadTop10Config }));
+
+    expect(pushToList).toHaveBeenCalledTimes(2);
+    expect(listNameOfWrite(0)).toBe('ok-1');
+    expect(listNameOfWrite(1)).toBe('ok-2');
+  });
+
+  it('skips a dead entry going through processBlock (Popular) and still writes the rest', async () => {
+    const config = [
+      {
+        platform: 'wikipedia', privacy: 'private', limit: 10, type: 'movies', name: 'dead-popular',
+      },
+      {
+        platform: 'youtube', privacy: 'private', limit: 10, type: 'movies', name: 'ok-popular',
+      },
+    ] as unknown as RunPipelineDeps['flixPatrolPopulars'];
+    const path = '/popular/movies/wikipedia';
+    getPopular
+      .mockRejectedValueOnce(new FlixPatrolPageNotFoundError(`FlixPatrol does not serve ${path} — it answered its "Page Not Found" page`))
+      .mockResolvedValue(oneItem);
+
+    const summary = await runPipeline(baseDeps({ flixPatrolPopulars: config }));
+
+    expect(pushToList).toHaveBeenCalledTimes(1);
+    expect(listNameOfWrite(0)).toBe('ok-popular');
+    expect(summary.listsProcessed).toBe(1);
+  });
+
+  it('records the dead path in the summary and excludes the entry from listsProcessed', async () => {
+    getTop10Sections
+      .mockRejectedValueOnce(new FlixPatrolPageNotFoundError(notFoundMessage))
+      .mockResolvedValue({ movies: oneItem, shows: [], rawCounts: { movies: 1, shows: 0 } });
+
+    const summary = await runPipeline(baseDeps({ flixPatrolTop10: deadTop10Config }));
+
+    expect(summary.deadPaths).toHaveLength(1);
+    expect(summary.deadPaths[0]).toContain('/top10/netflix/world');
+    expect(summary.listsProcessed).toBe(2);
+  });
+
+  it('logs an error naming the dead path', async () => {
+    getTop10Sections
+      .mockRejectedValueOnce(new FlixPatrolPageNotFoundError(notFoundMessage))
+      .mockResolvedValue({ movies: oneItem, shows: [], rawCounts: { movies: 1, shows: 0 } });
+
+    await runPipeline(baseDeps({ flixPatrolTop10: deadTop10Config }));
+
+    const messages = errorSpy.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.includes('/top10/netflix/world'))).toBe(true);
+  });
+
+  it('still fails the run on a plain fetch failure, not just a dead path', async () => {
+    getTop10Sections.mockRejectedValueOnce(new FlixPatrolError('Unable to get FlixPatrol top10 page'));
+
+    await expect(runPipeline(baseDeps({ flixPatrolTop10: top10Config })))
+      .rejects.toThrow('Unable to get FlixPatrol top10 page');
   });
 });
