@@ -1035,29 +1035,20 @@ describe('runPipeline dead FlixPatrol paths', () => {
     expect(summary.listsProcessed).toBe(0);
   });
 
-  // The second entry uses location 'world' rather than a country: amazon-prime + a
-  // country is filtered out earlier by isAmazonCountryWeekly, so 'world' is the only way
-  // to reach getWeekly on that platform here — the path naming under test does not
-  // depend on which branch of getWeekly threw.
-  it('records two distinct dead paths when two different Weekly platforms have no listed week', async () => {
-    const netflixPath = '/hours/netflix/';
-    const amazonPath = '/hours/amazon-prime/';
-    getWeekly
-      .mockRejectedValueOnce(
-        new FlixPatrolPageNotFoundError(netflixPath, `FlixPatrol lists no weekly page for netflix — treating ${netflixPath} as dead`),
-      )
-      .mockRejectedValueOnce(
-        new FlixPatrolPageNotFoundError(amazonPath, `FlixPatrol lists no weekly page for amazon-prime — treating ${amazonPath} as dead`),
-      );
+  it('collapses two entries that hit the same dead path into a single deadPaths entry', async () => {
+    const deadPath = '/hours/netflix/';
+    getWeekly.mockRejectedValue(
+      new FlixPatrolPageNotFoundError(deadPath, `FlixPatrol lists no weekly page for netflix — treating ${deadPath} as dead`),
+    );
 
     const summary = await runPipeline(baseDeps({
       flixPatrolWeekly: [
         ...weeklyConfig({ type: 'movies', platform: 'netflix', location: 'france' }),
-        ...weeklyConfig({ type: 'movies', platform: 'amazon-prime', location: 'world' }),
+        ...weeklyConfig({ type: 'movies', platform: 'netflix', location: 'spain' }),
       ],
     }));
 
-    expect(summary.deadPaths.sort()).toEqual([amazonPath, netflixPath].sort());
+    expect(summary.deadPaths).toEqual([deadPath]);
     expect(summary.listsProcessed).toBe(0);
   });
 

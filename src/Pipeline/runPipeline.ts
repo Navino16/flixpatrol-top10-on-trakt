@@ -152,12 +152,14 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     durationMs: 0,
     deadPaths: [],
   };
+  // Kept alongside summary.deadPaths (bare paths, the machine-readable field consumers
+  // parse) so the run_end notification body can explain itself in prose.
+  const deadPathMessages: string[] = [];
 
   /**
-   * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead —
-   * reported and skipped, entry left untouched, rather than aborting the other lists
-   * still queued. Any other `FlixPatrolError` — typically a fetch failure — stays fatal,
-   * since it would hit every list alike.
+   * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead — reported
+   * and skipped, entry left untouched, rather than aborting the other lists still queued.
+   * Any other `FlixPatrolError` stays fatal, since it would hit every list alike.
    */
   const skipIfDeadPath = async (listName: string, run: () => Promise<void>): Promise<boolean> => {
     try {
@@ -166,10 +168,11 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     } catch (err) {
       if (err instanceof FlixPatrolPageNotFoundError) {
         logger.error(`Skipping "${listName}": ${err.message}`);
-        // The weekly index page is memoized per FlixPatrol instance: if it is the dead
-        // page, every weekly entry re-throws the same path.
+        // Several entries can hit the same dead page — a dead /hours/ index fails every
+        // weekly entry — so the same path must not be reported N times.
         if (!summary.deadPaths.includes(err.path)) {
           summary.deadPaths.push(err.path);
+          deadPathMessages.push(err.message);
         }
         return true;
       }
@@ -389,8 +392,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
   summary.durationMs = Date.now() - runStartAt;
   const movedVerb = deps.dryRun ? 'would be added' : 'added';
-  const deadPathsSuffix = summary.deadPaths.length > 0
-    ? ` — ${summary.deadPaths.length} dead path(s) skipped: ${summary.deadPaths.join('; ')}`
+  const deadPathsSuffix = deadPathMessages.length > 0
+    ? ` — ${deadPathMessages.length} dead path(s) skipped: ${deadPathMessages.join('; ')}`
     : '';
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
