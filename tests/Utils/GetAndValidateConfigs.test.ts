@@ -733,6 +733,64 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toContain('unrelated');
         });
 
+        it('gives the block to paste when `Targets` was renamed but kept as a single object', () => {
+          useConfig({ Targets: { type: 'mdblist', apiKey: 'REALKEY123' } });
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetsOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).toContain('`Targets` must be an array of entries, not a single object.');
+          expect(message).toContain('Replace your `Targets` block with:');
+          expect(message).toContain('"type": "mdblist"');
+          expect(message).toContain('"apiKey": "<keep your current apiKey>"');
+          expect(message).not.toContain('REALKEY123');
+          expect(message).not.toMatch(/expected array/i);
+        });
+
+        it('explains the Trakt removal when `Targets` is a single trakt object', () => {
+          useConfig({ Targets: { type: 'trakt', clientId: 'my-id', clientSecret: 'my-secret' } });
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetsOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).toContain('Trakt support was removed in 4.0.0.');
+          expect(message).toContain('Your `Targets` block still selects the removed `trakt` backend.');
+          expect(message).not.toContain('my-secret');
+        });
+
+        it('explains the Trakt removal when a trakt entry is kept inside the Targets array', () => {
+          useConfig({
+            Targets: [
+              { id: 'main', type: 'mdblist', apiKey: 'key' },
+              { id: 'old', type: 'trakt', clientId: 'my-id', clientSecret: 'my-secret' },
+            ],
+          });
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetsOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).toContain('Trakt support was removed in 4.0.0.');
+          expect(message).toContain('`Targets[1]` still selects the removed `trakt` backend.');
+          expect(message).toContain('"type": "floppy"');
+          expect(message).toContain('"type": "mdblist"');
+          expect(message).toContain('./config/.trakt');
+          expect(message).not.toContain('my-id');
+          expect(message).not.toContain('my-secret');
+          expect(message).not.toMatch(/invalid discriminator/i);
+        });
+
         // A genuinely empty config — nothing migrated yet, nothing left over either — must
         // still get a block to paste, not a bare Zod "expected array, received undefined".
         it('gives an example Targets block on an empty configuration', () => {
@@ -816,6 +874,18 @@ describe('GetAndValidateConfigs', () => {
           expect(() => GetAndValidateConfigs.getTargetsOptions()).not.toThrow();
           expect(warn).toHaveBeenCalledTimes(1);
           expect(warn.mock.calls[0][0]).toContain('`Trakt`, `Mdblist`');
+          warn.mockRestore();
+        });
+
+        it('warns once when the singular Target block is left next to Targets', () => {
+          const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+          useConfig({ Targets: validTargets, Target: { type: 'mdblist', apiKey: 'REALKEY123' } });
+
+          expect(GetAndValidateConfigs.getTargetsOptions()).toEqual(validTargets);
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(warn.mock.calls[0][0]).toContain('`Target`');
+          expect(warn.mock.calls[0][0]).toMatch(/no longer\s+read and can be deleted/);
+          expect(warn.mock.calls[0][0]).not.toContain('REALKEY123');
           warn.mockRestore();
         });
 

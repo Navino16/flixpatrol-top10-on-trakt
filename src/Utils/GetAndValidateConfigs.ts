@@ -120,16 +120,10 @@ function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
 }
 
 /**
- * Builds the message for a Trakt-flavoured configuration: a root-level `Trakt` block, a
- * `Target.type` of `"trakt"`, or both. Trakt was removed outright in 4.0.0 rather than
- * renamed like Floppy/mdblist, and nothing in a Trakt config maps onto either surviving
- * backend, so this offers both instead of guessing one on the user's behalf.
+ * Nothing in a Trakt configuration maps onto either surviving backend, so this offers both
+ * instead of guessing one on the user's behalf. `head` names what has to be replaced.
  */
-function buildTraktRemovedMessage(presentObsoleteBlocks: ObsoleteBlockName[]): string {
-  const head = presentObsoleteBlocks.includes('Trakt')
-    ? 'Replace your root-level `Trakt` block with one of:'
-    : 'Your `Target` block still selects the removed `trakt` backend. Replace it with one of:';
-
+function buildTraktRemovedMessage(head: string, presentObsoleteBlocks: ObsoleteBlockName[]): string {
   return [
     'Trakt support was removed in 4.0.0.',
     '',
@@ -150,22 +144,29 @@ function buildTraktRemovedMessage(presentObsoleteBlocks: ObsoleteBlockName[]): s
 /**
  * Two distinct situations, and conflating them would leave a Trakt user without an answer:
  * a kept backend only needs an `id`, a removed one needs a different backend entirely.
+ * `block` is the singular object being replaced: the old `Target`, or a `Targets` left as one.
  */
 function buildTargetsMigrationMessage(
   targetRecord: Record<string, unknown> | undefined,
   presentObsoleteBlocks: ObsoleteBlockName[],
+  block: 'Target' | 'Targets',
 ): string {
   const selected = targetRecord?.type;
 
   if (selected === 'trakt' || (targetRecord === undefined && presentObsoleteBlocks.includes('Trakt'))) {
-    return buildTraktRemovedMessage(presentObsoleteBlocks);
+    const head = presentObsoleteBlocks.includes('Trakt')
+      ? 'Replace your root-level `Trakt` block with one of:'
+      : `Your \`${block}\` block still selects the removed \`trakt\` backend. Replace it with one of:`;
+    return buildTraktRemovedMessage(head, presentObsoleteBlocks);
   }
 
   const type: TargetBackendName = isBackendName(selected) ? selected : 'mdblist';
   return [
-    'Configuration format changed in 4.0.0: `Target` became `Targets`, an array.',
+    block === 'Target'
+      ? 'Configuration format changed in 4.0.0: `Target` became `Targets`, an array.'
+      : '`Targets` must be an array of entries, not a single object.',
     '',
-    'Replace your `Target` block with:',
+    `Replace your \`${block}\` block with:`,
     '',
     renderTargetsBlock(type, targetRecord),
     '',
@@ -179,7 +180,7 @@ function buildTargetsMigrationMessage(
  * config is never read, so this warns rather than failing: refusing to start would turn
  * a successful migration into an outage.
  */
-function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): void {
+function warnAboutObsoleteBlocks(presentObsoleteBlocks: readonly string[]): void {
   if (presentObsoleteBlocks.length === 0) return;
 
   const names = presentObsoleteBlocks.map((block) => `\`${block}\``).join(', ');
@@ -321,18 +322,30 @@ export class GetAndValidateConfigs {
       const parsed = TargetsSchema.safeParse(rawTargets);
       if (parsed.success) {
         parsed.data.forEach(checkForTemplateCredentials);
-        warnAboutObsoleteBlocks(presentObsoleteBlocks);
+        warnAboutObsoleteBlocks([...(config.has('Target') ? ['Target'] : []), ...presentObsoleteBlocks]);
         return parsed.data;
       }
 
-      // Absent `Targets` covers every pre-4.0.0 shape, including an empty config: it gets
-      // the block to paste rather than a raw discriminated-union error saying nothing
-      // about what to do next.
+      // The likeliest hand-migration mistakes get the block to paste rather than a raw Zod
+      // error saying nothing about what to do next: `Targets` absent (every pre-4.0.0 shape,
+      // an empty config included), left as a single object, or still holding a trakt entry.
       if (rawTargets === undefined) {
         const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
         throw new ConfigurationError(
-          buildTargetsMigrationMessage(isRecord(rawTarget) ? rawTarget : undefined, presentObsoleteBlocks),
+          buildTargetsMigrationMessage(isRecord(rawTarget) ? rawTarget : undefined, presentObsoleteBlocks, 'Target'),
         );
+      }
+      if (isRecord(rawTargets)) {
+        throw new ConfigurationError(buildTargetsMigrationMessage(rawTargets, presentObsoleteBlocks, 'Targets'));
+      }
+      const traktIndex = Array.isArray(rawTargets)
+        ? rawTargets.findIndex((entry) => isRecord(entry) && entry.type === 'trakt')
+        : -1;
+      if (traktIndex >= 0) {
+        throw new ConfigurationError(buildTraktRemovedMessage(
+          `\`Targets[${traktIndex}]\` still selects the removed \`trakt\` backend. Replace that entry with one of:`,
+          presentObsoleteBlocks,
+        ));
       }
 
       return validateConfig(TargetsSchema, rawTargets, 'Targets');
