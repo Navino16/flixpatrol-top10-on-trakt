@@ -5,6 +5,7 @@ import type {
 import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
+import { formatRunSummary } from '../Notifications';
 import type {
   NotificationEvent, NotificationPayload, RunSummary, TargetSummary,
 } from '../Notifications';
@@ -174,9 +175,6 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     durationMs: 0,
     deadPaths: [],
   };
-  // Kept alongside summary.deadPaths (bare paths, the machine-readable field consumers
-  // parse) so the run_end notification body can explain itself in prose.
-  const deadPathMessages: string[] = [];
 
   /**
    * A `FlixPatrolPageNotFoundError` means that entry's FlixPatrol page is dead — reported
@@ -194,7 +192,6 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
         // weekly entry — so the same path must not be reported N times.
         if (!summary.deadPaths.includes(err.path)) {
           summary.deadPaths.push(err.path);
-          deadPathMessages.push(err.message);
         }
         return true;
       }
@@ -248,6 +245,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   /**
    * Writes a list once with both kinds, so whatever the backend does per list rather
    * than per kind is paid a single time. Returns true when a shutdown signal stopped it.
+   * Only a list `pushToList` actually ran for counts as processed, never one where nothing resolved.
    */
   const writeList = async (
     entry: ActiveTarget,
@@ -265,6 +263,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       return true;
     }
     await entry.target.pushToList(content, listName, privacy);
+    entry.summary.listsProcessed++;
     const written: string[] = [];
     for (const kind of kinds) {
       const count = (content[kind] as string[]).length;
@@ -286,6 +285,10 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     entry.summary.error = `${err}`;
     logger.error(`Target "${entry.target.id}" (${entry.target.backend}) failed ${during} and is dropped `
       + `from this run: ${err}`);
+    // The catch around a target is broad enough to swallow genuine bugs too.
+    if (err instanceof Error && err.stack !== undefined) {
+      logger.debug(err.stack);
+    }
     if (allDropped()) {
       logger.error('Every target has been dropped — the remaining lists are skipped');
     }
@@ -311,7 +314,6 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
           if (ids !== null) content[kind] = ids;
         }
         if (await writeList(entry, content, listName, privacy)) return true;
-        entry.summary.listsProcessed++;
       } catch (err) {
         dropTarget(entry, err, `on "${listName}"`);
       }
@@ -455,19 +457,22 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   })) return summary;
 
   summary.durationMs = Date.now() - runStartAt;
-  const movedVerb = deps.dryRun ? 'would be added' : 'added';
-  const deadPathsSuffix = deadPathMessages.length > 0
-    ? ` — ${deadPathMessages.length} dead path(s) skipped: ${deadPathMessages.join('; ')}`
-    : '';
-  const perTarget = summary.targets.map((target) => (target.status === 'aborted'
-    ? `${target.id} (${target.backend}): aborted — ${target.error ?? 'unknown error'}`
-    : `${target.id} (${target.backend}): ${target.listsProcessed}/${totalLists} lists, ${target.moviesAdded} movies / ${target.showsAdded} shows ${movedVerb}`));
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
-    body: `${dryRunTag}Processed in ${Math.round(summary.durationMs / 1000)}s — ${perTarget.join('; ')}${deadPathsSuffix}`,
+    body: `${dryRunTag}${formatRunSummary(summary)}`,
     timestamp: new Date().toISOString(),
     summary,
   });
+  // A partial loss stays a run_end: `error` means nothing was written anywhere, which with
+  // a single target is any backend failure.
+  if (allDropped()) {
+    await deps.dispatch('error', {
+      title: `${dryRunTag}${deps.appName} run failed`,
+      body: `${dryRunTag}Every target was dropped from the run\n${formatRunSummary(summary)}`,
+      timestamp: new Date().toISOString(),
+      summary,
+    });
+  }
 
   return summary;
 }

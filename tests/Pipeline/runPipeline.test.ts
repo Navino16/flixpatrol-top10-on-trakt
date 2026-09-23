@@ -649,7 +649,7 @@ describe('runPipeline Weekly section', () => {
 
     expect(summary.targets[0].listsProcessed).toBe(1);
     expect(lastPayload(deps.dispatch, 'run_start').body).toContain('1 lists');
-    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('1/1 lists');
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 1 lists');
   });
 
   it('scrapes movies only when type is "movies"', async () => {
@@ -709,7 +709,7 @@ describe('runPipeline run accounting', () => {
     expect(summary.targets[0].listsProcessed).toBe(4);
     expect(summary.targets[0].moviesAdded).toBe(2);
     expect(summary.targets[0].showsAdded).toBe(2);
-    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('4/4 lists');
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 4 lists, 2 movies, 2 shows');
   });
 
   it('reports items without a known year by title alone', async () => {
@@ -770,7 +770,7 @@ describe('runPipeline log narrative', () => {
 });
 
 describe('runPipeline dry-run reporting', () => {
-  it('tags both notifications and reports additions as hypothetical', async () => {
+  it('tags both notifications and the run_end body', async () => {
     const deps = baseDeps({
       flixPatrolPopulars: popularConfig({ type: 'movies' }),
       dryRun: true,
@@ -781,19 +781,19 @@ describe('runPipeline dry-run reporting', () => {
     expect(lastPayload(deps.dispatch, 'run_start').title).toContain('[DRY-RUN]');
     const end = lastPayload(deps.dispatch, 'run_end');
     expect(end.title).toContain('[DRY-RUN]');
-    expect(end.body).toContain('would be added');
-    expect(end.body).not.toContain('1 movies / 0 shows added');
+    expect(end.body.startsWith('[DRY-RUN] ')).toBe(true);
+    expect(end.body).toContain('main (floppy): 1 lists, 1 movies, 0 shows');
   });
 
-  it('reports additions as effective when the run is not a dry run', async () => {
+  it('leaves the run_end body untagged when the run is not a dry run', async () => {
     const deps = baseDeps({ flixPatrolPopulars: popularConfig({ type: 'movies' }) });
 
     await runPipeline(deps);
 
     expect(lastPayload(deps.dispatch, 'run_start').title).not.toContain('[DRY-RUN]');
     const end = lastPayload(deps.dispatch, 'run_end');
-    expect(end.body).toContain('1 movies / 0 shows added');
-    expect(end.body).not.toContain('would be added');
+    expect(end.body).toContain('main (floppy): 1 lists, 1 movies, 0 shows');
+    expect(end.body).not.toContain('[DRY-RUN]');
   });
 
   it('tags the interruption notification too', async () => {
@@ -1240,5 +1240,132 @@ describe('runPipeline with several targets', () => {
     expect(first.pushToList).toHaveBeenCalledOnce();
     expect(second.pushToList).not.toHaveBeenCalled();
     expect(summary.targets[0].listsProcessed).toBe(1);
+  });
+});
+
+// A list counts as processed on a target only when pushToList actually ran for it.
+describe('runPipeline listsProcessed', () => {
+  it('does not count a list whose kinds all failed to resolve', async () => {
+    resolveMany.mockResolvedValue([]);
+    const deps = baseDeps({ flixPatrolPopulars: popularConfig() });
+
+    const summary = await runPipeline(deps);
+
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(summary.targets[0].listsProcessed).toBe(0);
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 0 lists, 0 movies, 0 shows');
+  });
+
+  it('does not count a list whose scrape returned nothing at all', async () => {
+    getTop10Sections.mockResolvedValue({ movies: [], shows: [], rawCounts: { movies: 0, shows: 0 } });
+
+    const summary = await runPipeline(baseDeps({ flixPatrolTop10: top10Config }));
+
+    expect(pushToList).not.toHaveBeenCalled();
+    expect(summary.targets[0].listsProcessed).toBe(0);
+  });
+
+  it('counts per target, so a backend that matched nothing is not reported as written', async () => {
+    const matchesNothing = fakeTarget('cloud', 'mdblist');
+    matchesNothing.resolveMany = vi.fn().mockResolvedValue([]);
+    const healthy = fakeTarget('disk', 'floppy');
+
+    const summary = await runPipeline(baseDeps({
+      targets: [matchesNothing, healthy], flixPatrolPopulars: popularConfig(),
+    }));
+
+    expect(matchesNothing.pushToList).not.toHaveBeenCalled();
+    expect(summary.targets).toEqual([
+      expect.objectContaining({ id: 'cloud', status: 'ok', listsProcessed: 0 }),
+      expect.objectContaining({ id: 'disk', status: 'ok', listsProcessed: 1 }),
+    ]);
+  });
+});
+
+describe('runPipeline end-of-run notifications', () => {
+  function events(deps: RunPipelineDeps): string[] {
+    return (deps.dispatch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+  }
+
+  it('dispatches run_end and no error when every target succeeded', async () => {
+    const deps = baseDeps({
+      targets: [fakeTarget('disk', 'floppy'), fakeTarget('cloud', 'mdblist')],
+      flixPatrolPopulars: popularConfig(),
+    });
+
+    await runPipeline(deps);
+
+    expect(events(deps)).toEqual(['run_start', 'run_end']);
+    const { body } = lastPayload(deps.dispatch, 'run_end');
+    expect(body).toContain('disk (floppy): 1 lists, 1 movies, 1 shows');
+    expect(body).toContain('cloud (mdblist): 1 lists, 1 movies, 1 shows');
+  });
+
+  it('reports a partial loss in run_end only, without an error notification', async () => {
+    const broken = fakeTarget('cloud', 'mdblist');
+    broken.pushToList = vi.fn().mockRejectedValue(new Error('mdblist is down'));
+    const deps = baseDeps({
+      targets: [fakeTarget('disk', 'floppy'), broken],
+      flixPatrolPopulars: popularConfig(),
+    });
+
+    await runPipeline(deps);
+
+    expect(events(deps)).toEqual(['run_start', 'run_end']);
+    const { body } = lastPayload(deps.dispatch, 'run_end');
+    expect(body).toContain('disk (floppy): 1 lists, 1 movies, 1 shows');
+    expect(body).toContain('cloud (mdblist): aborted — Error: mdblist is down');
+  });
+
+  it('dispatches run_end then error when every target was dropped', async () => {
+    const first = fakeTarget('disk', 'floppy');
+    const second = fakeTarget('cloud', 'mdblist');
+    first.pushToList = vi.fn().mockRejectedValue(new Error('floppy is down'));
+    second.pushToList = vi.fn().mockRejectedValue(new Error('mdblist is down'));
+    const deps = baseDeps({ targets: [first, second], flixPatrolPopulars: popularConfig() });
+
+    await runPipeline(deps);
+
+    expect(events(deps)).toEqual(['run_start', 'run_end', 'error']);
+    const error = lastPayload(deps.dispatch, 'error');
+    expect(error.title).toContain('run failed');
+    expect(error.body).toContain('disk (floppy): aborted — Error: floppy is down');
+    expect(error.body).toContain('cloud (mdblist): aborted — Error: mdblist is down');
+  });
+
+  it('raises the error notification when the only target is dropped', async () => {
+    pushToList.mockRejectedValue(new Error('401 Unauthorized'));
+    const deps = baseDeps({ flixPatrolPopulars: popularConfig(), dryRun: true });
+
+    const summary = await runPipeline(deps);
+
+    expect(summary.targets[0].status).toBe('aborted');
+    expect(events(deps)).toEqual(['run_start', 'run_end', 'error']);
+    expect(lastPayload(deps.dispatch, 'error').title).toContain('[DRY-RUN]');
+  });
+
+  it('names the dead paths in the run_end body without raising an error notification', async () => {
+    const path = '/popular/movies/wikipedia';
+    getPopular.mockRejectedValueOnce(new FlixPatrolPageNotFoundError(path, `FlixPatrol does not serve ${path}`));
+    const deps = baseDeps({ flixPatrolPopulars: popularConfig() });
+
+    await runPipeline(deps);
+
+    expect(events(deps)).toEqual(['run_start', 'run_end']);
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain(`Dead FlixPatrol paths skipped: ${path}`);
+  });
+});
+
+describe('runPipeline dropped target diagnostics', () => {
+  it('logs the stack of a dropped target at debug level and keeps the stored error short', async () => {
+    const failure = new Error('search exploded');
+    resolveMany.mockRejectedValue(failure);
+
+    const summary = await runPipeline(baseDeps({ flixPatrolPopulars: popularConfig() }));
+
+    expect(summary.targets[0]).toEqual(expect.objectContaining({
+      status: 'aborted', error: 'Error: search exploded',
+    }));
+    expect(debugSpy).toHaveBeenCalledWith(failure.stack);
   });
 });

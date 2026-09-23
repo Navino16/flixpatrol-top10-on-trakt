@@ -18,8 +18,8 @@ export interface RunSummary {
   targets: TargetSummary[];
   durationMs: number;
   /**
-   * FlixPatrol paths that answered "Page Not Found" — each one's entry was skipped on every
-   * target. Kept beyond the plan's shape: it is what makes a one-shot run exit 1 on a dead path.
+   * FlixPatrol paths that answered "Page Not Found"; each one's entry was skipped on every
+   * target. Non-empty makes a one-shot run exit 1.
    */
   deadPaths: string[];
 }

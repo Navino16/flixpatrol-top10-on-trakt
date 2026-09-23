@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { NotificationManager } from '../../src/Notifications/NotificationManager';
+import { NotificationManager, formatRunSummary } from '../../src/Notifications/NotificationManager';
 
 describe('NotificationManager', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -99,5 +99,50 @@ describe('NotificationManager', () => {
     });
     await manager.dispatch('run_end', payload);
     expect(fetchMock.mock.calls[0][0]).toBe('http://apprise:8000/notify/flix');
+  });
+});
+
+describe('formatRunSummary', () => {
+  it('renders a per-target breakdown in the run_end body', () => {
+    const body = formatRunSummary({
+      durationMs: 12_000,
+      deadPaths: [],
+      targets: [
+        { id: 'disk', backend: 'floppy', listsProcessed: 3, moviesAdded: 30, showsAdded: 30, status: 'ok' },
+        {
+          id: 'cloud', backend: 'mdblist', listsProcessed: 1, moviesAdded: 10, showsAdded: 0,
+          status: 'aborted', error: 'rate limited',
+        },
+      ],
+    });
+
+    expect(body).toContain('disk (floppy): 3 lists, 30 movies, 30 shows');
+    expect(body).toContain('cloud (mdblist): aborted — rate limited');
+  });
+
+  it('names every dead FlixPatrol path and the run duration', () => {
+    const body = formatRunSummary({
+      durationMs: 61_400,
+      deadPaths: ['/top10/hulu/russia', '/hours/netflix/'],
+      targets: [
+        { id: 'disk', backend: 'floppy', listsProcessed: 2, moviesAdded: 5, showsAdded: 4, status: 'ok' },
+      ],
+    });
+
+    expect(body.split('\n')).toEqual([
+      'disk (floppy): 2 lists, 5 movies, 4 shows',
+      'Dead FlixPatrol paths skipped: /top10/hulu/russia, /hours/netflix/',
+      'Duration: 61s',
+    ]);
+  });
+
+  it('falls back to a placeholder when an aborted target carries no error', () => {
+    const body = formatRunSummary({
+      durationMs: 0,
+      deadPaths: [],
+      targets: [{ id: 'cloud', backend: 'mdblist', listsProcessed: 0, moviesAdded: 0, showsAdded: 0, status: 'aborted' }],
+    });
+
+    expect(body).toBe('cloud (mdblist): aborted — unknown error\nDuration: 0s');
   });
 });

@@ -188,11 +188,10 @@ async function main(): Promise<void> {
     try {
       const summary = await runPipeline(deps);
       await flushPendingDispatches();
-      // run_end already carries the dead paths, so no separate error notification is
-      // dispatched here — but the process must still fail so cron/systemd sees it.
-      if (summary.deadPaths.length > 0) {
-        process.exit(1);
-      }
+      // A partial loss or a dead path still fails the run so cron/systemd sees it. The
+      // pipeline has already notified both, so nothing more is dispatched here.
+      const lost = summary.targets.filter((target) => target.status === 'aborted');
+      process.exit(lost.length > 0 || summary.deadPaths.length > 0 ? 1 : 0);
     } catch (err) {
       await dispatchErrorAndExit(err);
     }
@@ -203,7 +202,7 @@ async function main(): Promise<void> {
   const scheduler = new Scheduler({
     crons: schedule.crons,
     runOnStart: schedule.runOnStart,
-    runner: (signal) => runPipeline({ ...deps, signal }).then(() => undefined),
+    runner: (signal) => runPipeline({ ...deps, signal }),
     onError: async (err) => {
       logger.error(`Run failed: ${(err as Error).message}`);
       await dispatch('error', {
