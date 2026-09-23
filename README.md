@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">Flixpatrol Top 10 on Trakt</h1>
+  <h1 align="center">FlixPatrol Top 10</h1>
 </p>
 
 <p align="center">
@@ -8,27 +8,27 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/ci.yml?label=CI&style=flat-square" alt="CI"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/release.yml?branch=develop&label=Docker%20Image&style=flat-square" alt="Docker Image"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/actions/workflows/flixpatrol-drift.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10-on-trakt/flixpatrol-drift.yml?label=FlixPatrol%20markup&style=flat-square" alt="FlixPatrol markup"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10/ci.yml?label=CI&style=flat-square" alt="CI"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10/release.yml?branch=develop&label=Docker%20Image&style=flat-square" alt="Docker Image"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/actions/workflows/flixpatrol-drift.yml"><img src="https://img.shields.io/github/actions/workflow/status/Navino16/flixpatrol-top10/flixpatrol-drift.yml?label=FlixPatrol%20markup&style=flat-square" alt="FlixPatrol markup"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/pkgs/container/flixpatrol-top10-on-trakt"><img src="https://img.shields.io/badge/Docker-blue?style=flat-square&logo=docker&logoColor=black" alt="Docker"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/Windows-blue?style=flat-square&logo=windows&logoColor=black" alt="Windows"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black" alt="Linux"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black" alt="macOS"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/pkgs/container/flixpatrol-top10"><img src="https://img.shields.io/badge/Docker-blue?style=flat-square&logo=docker&logoColor=black" alt="Docker"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/releases"><img src="https://img.shields.io/badge/Windows-blue?style=flat-square&logo=windows&logoColor=black" alt="Windows"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/releases"><img src="https://img.shields.io/badge/Linux-blue?style=flat-square&logo=linux&logoColor=black" alt="Linux"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/releases"><img src="https://img.shields.io/badge/macOS-blue?style=flat-square&logo=apple&logoColor=black" alt="macOS"></a>
   <a href="https://discord.gg/XgCBF3sMSh"><img src="https://img.shields.io/discord/1483405134003175607?style=flat-square&logo=discord&label=Discord" alt="Discord"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/stargazers"><img src="https://img.shields.io/github/stars/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/LICENSE"><img src="https://img.shields.io/github/license/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="License"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/stargazers"><img src="https://img.shields.io/github/stars/navino16/flixpatrol-top10?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/blob/main/LICENSE"><img src="https://img.shields.io/github/license/navino16/flixpatrol-top10?style=flat-square" alt="License"></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/downloads/navino16/flixpatrol-top10-on-trakt/total?style=flat-square" alt="Downloads">
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/releases"><img src="https://img.shields.io/github/v/release/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Release"></a>
-  <a href="https://github.com/navino16/flixpatrol-top10-on-trakt/tree/develop"><img src="https://img.shields.io/github/commits-since/navino16/flixpatrol-top10-on-trakt/latest/develop?label=Commits%20in%20Develop&style=flat-square" alt="Commits in Develop"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/issues"><img src="https://img.shields.io/github/issues/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Issues"></a>
-  <a href="https://github.com/Navino16/flixpatrol-top10-on-trakt/pulls"><img src="https://img.shields.io/github/issues-pr/navino16/flixpatrol-top10-on-trakt?style=flat-square" alt="Pull Requests"></a>
+  <img src="https://img.shields.io/github/downloads/navino16/flixpatrol-top10/total?style=flat-square" alt="Downloads">
+  <a href="https://github.com/Navino16/flixpatrol-top10/releases"><img src="https://img.shields.io/github/v/release/navino16/flixpatrol-top10?style=flat-square" alt="Release"></a>
+  <a href="https://github.com/navino16/flixpatrol-top10/tree/develop"><img src="https://img.shields.io/github/commits-since/navino16/flixpatrol-top10/latest/develop?label=Commits%20in%20Develop&style=flat-square" alt="Commits in Develop"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/issues"><img src="https://img.shields.io/github/issues/navino16/flixpatrol-top10?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/Navino16/flixpatrol-top10/pulls"><img src="https://img.shields.io/github/issues-pr/navino16/flixpatrol-top10?style=flat-square" alt="Pull Requests"></a>
 </p>
 
 <p align="center">
@@ -75,12 +75,12 @@ below, then follow the [next steps](#next-steps-all-platforms) — they are the 
 ### Docker
 
 ```bash
-docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
 ```
 
 ### Linux / macOS
 
-1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for your platform
+1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10/releases/latest) for your platform
 2. Make the binary executable and run it:
     ```bash
     chmod +x flixpatrol-top10-linux-x64
@@ -89,7 +89,7 @@ docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top
 
 ### Windows
 
-1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10-on-trakt/releases/latest) for Windows
+1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10/releases/latest) for Windows
 2. Run the binary from the command line (double-clicking will close the window automatically)
 
 ### Next steps (all platforms)
@@ -251,7 +251,7 @@ Run the tool without modifying any list on the configured backend. Useful for te
 DRY_RUN=true ./flixpatrol-top10-linux-x64
 
 # Docker
-docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
 ```
 
 In dry-run mode:
@@ -270,7 +270,7 @@ Prepend a fixed string to every list name. Useful when running the tool against 
 LIST_NAME_PREFIX='[TEST]' ./flixpatrol-top10-linux-x64
 
 # Docker
-docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
 ```
 
 The prefix is applied verbatim, **after** the normalization step (so brackets, spaces, and special characters in the prefix are preserved as-is). When active, a warning is emitted at startup so you don't forget it is set.
@@ -320,7 +320,7 @@ The `apprise` destination talks to an [Apprise API](https://github.com/caronc/ap
 # docker-compose.yml excerpt
 services:
   flixpatrol:
-    image: ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+    image: ghcr.io/navino16/flixpatrol-top10:latest
     volumes:
       - ./config:/app/config
     depends_on:
@@ -351,9 +351,9 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                          | Default                                    |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
-| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
-| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts))          |                                            |
-| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) | false                                      |
+| platform        | Which platform to get from Flixpatrol                                                      | Yes       | Any Flixpatrol platform ([see this](https://github.com/Navino16/flixpatrol-top10/blob/main/src/types/Config.types.ts))          |                                            |
+| location        | Which location to get from Flixpatrol                                                      | Yes       | Any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10/blob/main/src/types/Config.types.ts))          |                                            |
+| fallback        | Fallback to another location if no results?                                                | Yes       | False or any Flixpatrol location ([see this](https://github.com/Navino16/flixpatrol-top10/blob/main/src/types/Config.types.ts)) | false                                      |
 | privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                  | private                                    |
 | limit           | How many movie/show to get                                                                 | Yes       | Number >= 1                                                                                                                                     | 10                                         |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                             | both                                       |
@@ -370,7 +370,7 @@ If there is any configuration error, the tool will exit with information about t
 
 | Name            | Description                                                                                | Mandatory | Values                                                                                                                                         | Default                                      |
 |-----------------|--------------------------------------------------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)) |                                              |
+| platform        | Which popular source to get from Flixpatrol                                                | Yes       | Any Flixpatrol popular platform ([see this](https://github.com/Navino16/flixpatrol-top10/blob/main/src/types/Config.types.ts)) |                                              |
 | privacy         | Privacy of the generated list ([backend support varies](#privacy-levels-per-backend))      | Yes       | private, link, friends, public                                                                                                                 | private                                      |
 | limit           | How many movie/show to get                                                                 | Yes       | Number between 1 and 100                                                                                                                       | 100                                          |
 | type            | Movies, shows or both?                                                                     | Yes       | movies, shows, both                                                                                                                            | both                                         |
@@ -851,7 +851,7 @@ and any API response reports it in `x-ratelimit-remaining`.
 
 `world`, `united-states`, `france`, `united-kingdom`, `germany`, `canada`, `australia`, `japan`, and 191 more countries...
 
-For the complete list, see the source code: [Config.types.ts](https://github.com/Navino16/flixpatrol-top10-on-trakt/blob/main/src/types/Config.types.ts)
+For the complete list, see the source code: [Config.types.ts](https://github.com/Navino16/flixpatrol-top10/blob/main/src/types/Config.types.ts)
 
 ## Scheduling
 
@@ -869,7 +869,7 @@ For the complete list, see the source code: [Config.types.ts](https://github.com
 
 ```bash
 # Run daily at 6 AM
-0 6 * * * docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+0 6 * * * docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
 ```
 
 ### Windows Task Scheduler
@@ -930,7 +930,7 @@ Run the container as a long-lived daemon instead of a one-shot job:
 # docker-compose.yml
 services:
   flixpatrol:
-    image: ghcr.io/navino16/flixpatrol-top10-on-trakt:latest
+    image: ghcr.io/navino16/flixpatrol-top10:latest
     restart: unless-stopped
     environment:
       - TZ=Europe/Paris

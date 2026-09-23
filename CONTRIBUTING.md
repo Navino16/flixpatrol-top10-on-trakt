@@ -13,8 +13,8 @@ Node **24** is what CI runs and what the release binaries target (`pkg.targets` 
 `package.json`).
 
 ```bash
-git clone https://github.com/Navino16/flixpatrol-top10-on-trakt.git
-cd flixpatrol-top10-on-trakt
+git clone https://github.com/Navino16/flixpatrol-top10.git
+cd flixpatrol-top10
 npm install
 ```
 
