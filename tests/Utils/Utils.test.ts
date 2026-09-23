@@ -245,11 +245,13 @@ describe('Utils', () => {
       expect(message).toContain(path.join('./config/.cache', 'resolution-trakt'));
       expect(message).toContain(path.join('./config/.cache', 'resolution-floppy'));
       expect(message).toContain(path.join('./config/.cache', 'resolution-mdblist'));
-      expect(message).toMatch(/no longer read/);
+      expect(message).toMatch(/they are no longer read/);
+      expect(message).toContain('`resolution-<backend>-<id>`');
+      expect(message).not.toMatch(/`resolution-<backend>`/);
       warn.mockRestore();
     });
 
-    it('names a pre-multi-target Floppy or mdblist namespace as orphaned', () => {
+    it('names a per-backend resolution namespace as orphaned', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync)
         .mockImplementation((target) => `${target}`.endsWith('resolution-floppy') || `${target}`.endsWith('resolution-mdblist'));
@@ -264,7 +266,7 @@ describe('Utils', () => {
       warn.mockRestore();
     });
 
-    it('warns when only one of the three directories is left', () => {
+    it('warns in the singular when only one directory is left', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync)
         .mockImplementation((target) => `${target}`.endsWith('tv-shows'));
@@ -275,6 +277,7 @@ describe('Utils', () => {
       const message = warn.mock.calls[0][0] as unknown as string;
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).not.toContain(path.join('./config/.cache', 'movies'));
+      expect(message).toMatch(/Leftover cache directory .* it is no longer read/);
       warn.mockRestore();
     });
 
