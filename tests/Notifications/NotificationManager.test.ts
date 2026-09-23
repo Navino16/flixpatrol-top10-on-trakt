@@ -146,6 +146,22 @@ describe('formatRunSummary', () => {
     expect(body).toBe('cloud (mdblist): aborted — unknown error\nDuration: 0s');
   });
 
+  it('uses the singular for a count of one and the plural otherwise', () => {
+    const body = formatRunSummary({
+      durationMs: 0,
+      deadPaths: [],
+      targets: [
+        { id: 'one', backend: 'floppy', listsProcessed: 1, moviesAdded: 1, showsAdded: 1, status: 'ok' },
+        { id: 'none', backend: 'mdblist', listsProcessed: 0, moviesAdded: 0, showsAdded: 2, status: 'ok' },
+      ],
+    });
+
+    expect(body.split('\n').slice(0, 2)).toEqual([
+      'one (floppy): 1 list, 1 movie, 1 show',
+      'none (mdblist): 0 lists, 0 movies, 2 shows',
+    ]);
+  });
+
   it('formats an error body as name and message, and stringifies a non-Error', () => {
     expect(formatErrorBody(new TypeError('boom'))).toBe('TypeError: boom');
     expect(formatErrorBody('plain')).toBe('plain');

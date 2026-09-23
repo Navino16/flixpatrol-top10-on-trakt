@@ -5,7 +5,7 @@ import type {
 import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
-import { formatRunSummary } from '../Notifications';
+import { countOf, formatRunSummary } from '../Notifications';
 import type {
   NotificationEvent, NotificationPayload, RunSummary, TargetSummary,
 } from '../Notifications';
@@ -87,11 +87,6 @@ export async function runPipeline(deps: RunPipelineDeps): Promise<RunSummary> {
 
 function describeItems(items: MediaItem[]): string {
   return items.map((item) => (item.year === null ? item.title : `${item.title} (${item.year})`)).join(', ');
-}
-
-/** "3 movies" / "1 movie", so a single-item list never reads as "1 movies". */
-function countLabel(count: number, kind: MediaKind): string {
-  return `${count} ${kind}${count === 1 ? '' : 's'}`;
 }
 
 /** Names the kinds a list covers, for the line announcing its FlixPatrol scrape. */
@@ -235,7 +230,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       logger.warn(`Some ${kind}s from FlixPatrol could not be matched on ${labelOf(target)} `
         + `(${items.length} found, ${ids.length} matched)`);
     }
-    logger.info(`Resolved ${ids.length}/${countLabel(items.length, kind)} for "${listName}" on ${labelOf(target)}`);
+    logger.info(`Resolved ${ids.length}/${countOf(items.length, kind)} for "${listName}" on ${labelOf(target)}`);
     logger.debug(`${listName} ${kind}s: ${describeItems(items)}`);
     return ids;
   };
@@ -265,7 +260,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
     const written: string[] = [];
     for (const kind of kinds) {
       const count = (content[kind] as string[]).length;
-      written.push(countLabel(count, kind));
+      written.push(countOf(count, kind));
       if (kind === 'movie') {
         entry.summary.moviesAdded += count;
       } else {
@@ -373,7 +368,7 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   // tracks the dispatch and flushes it before any process.exit.
   void deps.dispatch('run_start', {
     title: `${dryRunTag}${deps.appName} v${deps.appVersion} run started`,
-    body: `Processing ${totalLists} lists`,
+    body: `Processing ${countOf(totalLists, 'list')}`,
     timestamp: new Date().toISOString(),
   });
 

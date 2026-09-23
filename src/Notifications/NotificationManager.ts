@@ -20,6 +20,11 @@ export function formatErrorBody(err: unknown): string {
   return err instanceof Error ? `${err.name}: ${err.message}` : `${err}`;
 }
 
+/** "1 list" / "3 lists", so a single item never reads as "1 lists". */
+export function countOf(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 /**
  * One line per target: a flat total would hide a list written on one backend and missing
  * on another.
@@ -30,8 +35,8 @@ export function formatRunSummary(summary: RunSummary): string {
     if (target.status === 'aborted') {
       return `${head}: aborted — ${target.error ?? 'unknown error'}`;
     }
-    return `${head}: ${target.listsProcessed} lists, ${target.moviesAdded} movies, `
-      + `${target.showsAdded} shows`;
+    return `${head}: ${countOf(target.listsProcessed, 'list')}, ${countOf(target.moviesAdded, 'movie')}, `
+      + countOf(target.showsAdded, 'show');
   });
   if (summary.deadPaths.length > 0) {
     lines.push(`Dead FlixPatrol paths skipped: ${summary.deadPaths.join(', ')}`);

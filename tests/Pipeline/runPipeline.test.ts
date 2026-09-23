@@ -648,8 +648,8 @@ describe('runPipeline Weekly section', () => {
     const summary = await runPipeline(deps);
 
     expect(summary.targets[0].listsProcessed).toBe(1);
-    expect(lastPayload(deps.dispatch, 'run_start').body).toContain('1 lists');
-    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 1 lists');
+    expect(lastPayload(deps.dispatch, 'run_start').body).toContain('Processing 1 list');
+    expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 1 list,');
   });
 
   it('scrapes movies only when type is "movies"', async () => {
@@ -782,7 +782,7 @@ describe('runPipeline dry-run reporting', () => {
     const end = lastPayload(deps.dispatch, 'run_end');
     expect(end.title).toContain('[DRY-RUN]');
     expect(end.body.startsWith('[DRY-RUN] ')).toBe(true);
-    expect(end.body).toContain('main (floppy): 1 lists, 1 movies, 0 shows');
+    expect(end.body).toContain('main (floppy): 1 list, 1 movie, 0 shows');
   });
 
   it('leaves the run_end body untagged when the run is not a dry run', async () => {
@@ -792,7 +792,7 @@ describe('runPipeline dry-run reporting', () => {
 
     expect(lastPayload(deps.dispatch, 'run_start').title).not.toContain('[DRY-RUN]');
     const end = lastPayload(deps.dispatch, 'run_end');
-    expect(end.body).toContain('main (floppy): 1 lists, 1 movies, 0 shows');
+    expect(end.body).toContain('main (floppy): 1 list, 1 movie, 0 shows');
     expect(end.body).not.toContain('[DRY-RUN]');
   });
 
@@ -1297,8 +1297,8 @@ describe('runPipeline end-of-run notifications', () => {
 
     expect(events(deps)).toEqual(['run_start', 'run_end']);
     const { body } = lastPayload(deps.dispatch, 'run_end');
-    expect(body).toContain('disk (floppy): 1 lists, 1 movies, 1 shows');
-    expect(body).toContain('cloud (mdblist): 1 lists, 1 movies, 1 shows');
+    expect(body).toContain('disk (floppy): 1 list, 1 movie, 1 show');
+    expect(body).toContain('cloud (mdblist): 1 list, 1 movie, 1 show');
   });
 
   it('reports a partial loss in run_end only, without an error notification', async () => {
@@ -1313,7 +1313,7 @@ describe('runPipeline end-of-run notifications', () => {
 
     expect(events(deps)).toEqual(['run_start', 'run_end']);
     const { body } = lastPayload(deps.dispatch, 'run_end');
-    expect(body).toContain('disk (floppy): 1 lists, 1 movies, 1 shows');
+    expect(body).toContain('disk (floppy): 1 list, 1 movie, 1 show');
     expect(body).toContain('cloud (mdblist): aborted — Error: mdblist is down');
   });
 
