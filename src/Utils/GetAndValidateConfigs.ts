@@ -79,8 +79,8 @@ type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
 
 /**
  * Fields each `Targets` entry must carry per backend, with the placeholder shown when the
- * value cannot be recovered from the user's own configuration. Only values read from
- * that file are ever echoed back, so a placeholder is never a secret.
+ * user has no value yet. A value they already have is never echoed: this message is also
+ * dispatched to every `error` notification destination.
  */
 const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: string }[]> = {
   floppy: [
@@ -95,14 +95,11 @@ const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: strin
 const isBackendName = (value: unknown): value is TargetBackendName => typeof value === 'string'
   && (targetBackend as readonly string[]).includes(value);
 
-/** Renders the exact `Targets` block the user has to paste, values carried across verbatim. */
-function renderTargetsBlock(
-  type: TargetBackendName,
-  sources: (Record<string, unknown> | undefined)[],
-): string {
+/** Renders the exact `Targets` block the user has to paste. Only `type` is carried across. */
+function renderTargetsBlock(type: TargetBackendName, source?: Record<string, unknown>): string {
   const fields = TARGET_FIELDS[type].map(({ key, placeholder }) => {
-    const carried = sources.map((source) => source?.[key]).find((value) => typeof value === 'string');
-    return `      ${JSON.stringify(key)}: ${JSON.stringify(carried ?? placeholder)}`;
+    const value = typeof source?.[key] === 'string' ? `<keep your current ${key}>` : placeholder;
+    return `      ${JSON.stringify(key)}: ${JSON.stringify(value)}`;
   });
   const body = [
     '      "id": "main"',
@@ -138,11 +135,11 @@ function buildTraktRemovedMessage(presentObsoleteBlocks: ObsoleteBlockName[]): s
     '',
     head,
     '',
-    renderTargetsBlock('floppy', [undefined]),
+    renderTargetsBlock('floppy'),
     '',
     'or',
     '',
-    renderTargetsBlock('mdblist', [undefined]),
+    renderTargetsBlock('mdblist'),
     '',
     buildRemovalTail(presentObsoleteBlocks),
     '',
@@ -170,7 +167,7 @@ function buildTargetsMigrationMessage(
     '',
     'Replace your `Target` block with:',
     '',
-    renderTargetsBlock(type, [targetRecord]),
+    renderTargetsBlock(type, targetRecord),
     '',
     'Each entry needs a unique `id`, which names the target in the logs and namespaces its',
     'resolution cache. Add as many entries as you want backends written in the same run.',

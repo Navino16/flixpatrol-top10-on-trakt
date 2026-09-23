@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { NotificationManager, formatRunSummary } from '../../src/Notifications/NotificationManager';
+import { NotificationManager, formatErrorBody, formatRunSummary } from '../../src/Notifications/NotificationManager';
 
 describe('NotificationManager', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -144,5 +144,10 @@ describe('formatRunSummary', () => {
     });
 
     expect(body).toBe('cloud (mdblist): aborted — unknown error\nDuration: 0s');
+  });
+
+  it('formats an error body as name and message, and stringifies a non-Error', () => {
+    expect(formatErrorBody(new TypeError('boom'))).toBe('TypeError: boom');
+    expect(formatErrorBody('plain')).toBe('plain');
   });
 });

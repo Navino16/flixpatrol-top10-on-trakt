@@ -15,6 +15,11 @@ import { AppriseAdapter } from './adapters/AppriseAdapter';
 
 export const DISPATCH_TIMEOUT_MS = 6000;
 
+/** Body of every `error` notification: the error exactly as logged, nothing more. */
+export function formatErrorBody(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : `${err}`;
+}
+
 /**
  * One line per target: a flat total would hide a list written on one backend and missing
  * on another.

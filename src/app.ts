@@ -1,7 +1,7 @@
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
 import { createTargets } from './Targets';
 import type { ListTarget } from './Targets';
-import { NotificationManager } from './Notifications';
+import { NotificationManager, formatErrorBody } from './Notifications';
 import type {
   NotificationEvent,
   NotificationPayload,
@@ -79,7 +79,7 @@ async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> 
   try {
     await dispatch('error', {
       title: `${dryRunTag}${name} run failed`,
-      body: `${(err as Error).name}: ${(err as Error).message}`,
+      body: formatErrorBody(err),
       timestamp: new Date().toISOString(),
     });
   } finally {
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       logger.error(`Run failed: ${(err as Error).message}`);
       await dispatch('error', {
         title: `${dryRunTag}${name} run failed`,
-        body: `${(err as Error).name}: ${(err as Error).message}`,
+        body: formatErrorBody(err),
         timestamp: new Date().toISOString(),
       });
       await flushPendingDispatches();

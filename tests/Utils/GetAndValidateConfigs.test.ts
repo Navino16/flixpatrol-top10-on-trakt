@@ -10,6 +10,7 @@ import {
 } from '../../src/Utils/GetAndValidateConfigs';
 import { ConfigurationError } from '../../src/Utils/Errors';
 import { logger } from '../../src/Utils/Logger';
+import { NotificationManager, formatErrorBody } from '../../src/Notifications/NotificationManager';
 import { MDBLIST_TEMPLATE_API_KEY, ListPrivacySchema, TargetsSchema } from '../../src/types';
 
 vi.mock('config', () => ({
@@ -518,12 +519,61 @@ describe('GetAndValidateConfigs', () => {
         (config.get as unknown as Mock).mockImplementation((key: string) => blocks[key]);
       }
 
-      it('carries a floppy Target across verbatim and only asks for an id', () => {
-        givenConfig({ Target: { type: 'floppy', url: 'http://host:8000', apiKey: 'token' } });
+      const migrationMessage = (): string => {
+        try {
+          GetAndValidateConfigs.getTargetsOptions();
+        } catch (err) {
+          return (err as Error).message;
+        }
+        return '';
+      };
 
-        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"url": "http:\/\/host:8000"/);
-        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"apiKey": "token"/);
-        expect(() => GetAndValidateConfigs.getTargetsOptions()).toThrow(/"Targets"/);
+      it('carries only the type of a floppy Target, never its url or apiKey', () => {
+        givenConfig({ Target: { type: 'floppy', url: 'http://10.0.0.7:8000', apiKey: 'REALTOKEN456' } });
+
+        const message = migrationMessage();
+        expect(message).toContain('"Targets"');
+        expect(message).toContain('"id": "main"');
+        expect(message).toContain('"type": "floppy"');
+        expect(message).toContain('"url": "<keep your current url>"');
+        expect(message).toContain('"apiKey": "<keep your current apiKey>"');
+        expect(message).not.toContain('10.0.0.7');
+        expect(message).not.toContain('REALTOKEN456');
+      });
+
+      it('carries only the type of an mdblist Target, never its apiKey', () => {
+        givenConfig({ Target: { type: 'mdblist', apiKey: 'REALKEY123' } });
+
+        const message = migrationMessage();
+        expect(message).toContain('"type": "mdblist"');
+        expect(message).toContain('"apiKey": "<keep your current apiKey>"');
+        expect(message).not.toContain('REALKEY123');
+      });
+
+      // app.ts builds the `error` notification body with formatErrorBody; this drives that
+      // exact body through a real webhook adapter and inspects what goes on the wire.
+      it('never posts a carried credential to an error notification destination', async () => {
+        givenConfig({ Target: { type: 'floppy', url: 'http://10.0.0.7:8000', apiKey: 'REALKEY123' } });
+        const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        let error: unknown;
+        try {
+          GetAndValidateConfigs.getTargetsOptions();
+        } catch (err) {
+          error = err;
+        }
+        const notifier = NotificationManager.fromConfig({ error: [{ type: 'webhook', url: 'https://hook.example.com/x' }] });
+        await notifier.dispatch('error', { title: 'run failed', body: formatErrorBody(error), timestamp: 'now' });
+        vi.unstubAllGlobals();
+
+        expect(error).toBeInstanceOf(ConfigurationError);
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const posted = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+        expect(posted).toContain('ConfigurationError');
+        expect(posted).toContain('<keep your current apiKey>');
+        expect(posted).not.toContain('REALKEY123');
+        expect(posted).not.toContain('10.0.0.7');
       });
 
       it('explains the removal when the old Target selected trakt', () => {
