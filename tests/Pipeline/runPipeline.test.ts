@@ -648,7 +648,7 @@ describe('runPipeline Weekly section', () => {
     const summary = await runPipeline(deps);
 
     expect(summary.targets[0].listsProcessed).toBe(1);
-    expect(lastPayload(deps.dispatch, 'run_start').body).toContain('Processing 1 list');
+    expect(lastPayload(deps.dispatch, 'run_start').body).toBe('Processing 1 list');
     expect(lastPayload(deps.dispatch, 'run_end').body).toContain('main (floppy): 1 list,');
   });
 
