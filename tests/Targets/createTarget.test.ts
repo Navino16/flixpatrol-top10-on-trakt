@@ -18,10 +18,17 @@ describe('createTarget', () => {
     expect(target.backend).toBe('mdblist');
   });
 
-  it('throws on a Target.type the schema should already have rejected', () => {
+  it('throws on a Targets entry type the schema should already have rejected', () => {
     // Only reachable past a schema bug, since TargetSchema rejects any other `type` first.
-    const bogus = { type: 'plex', apiKey: 'k' } as unknown as TargetOptions;
-    expect(() => createTarget(bogus, cacheOptions, false)).toThrow(/Unhandled Targets entry type/);
+    const bogus = { type: 'plex', apiKey: 'some-secret-key' } as unknown as TargetOptions;
+    let message = '';
+    try {
+      createTarget(bogus, cacheOptions, false);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe('Unhandled Targets entry type: plex');
+    expect(message).not.toContain('some-secret-key');
   });
 
   it('builds one adapter per entry, preserving order and ids', () => {
