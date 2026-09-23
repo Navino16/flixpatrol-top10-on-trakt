@@ -19,7 +19,7 @@ export function createTarget(
       // Compiler-checked exhaustiveness: a third TargetOptions variant fails to build here
       // instead of silently landing on whichever adapter used to be the catch-all.
       const exhaustive: never = options;
-      throw new Error(`Unhandled Target.type: ${JSON.stringify(exhaustive)}`);
+      throw new Error(`Unhandled Targets entry type: ${JSON.stringify(exhaustive)}`);
     }
   }
 }

@@ -21,7 +21,7 @@ describe('createTarget', () => {
   it('throws on a Target.type the schema should already have rejected', () => {
     // Only reachable past a schema bug, since TargetSchema rejects any other `type` first.
     const bogus = { type: 'plex', apiKey: 'k' } as unknown as TargetOptions;
-    expect(() => createTarget(bogus, cacheOptions, false)).toThrow(/Unhandled Target\.type/);
+    expect(() => createTarget(bogus, cacheOptions, false)).toThrow(/Unhandled Targets entry type/);
   });
 
   it('builds one adapter per entry, preserving order and ids', () => {

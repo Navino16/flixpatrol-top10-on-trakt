@@ -627,8 +627,7 @@ describe('GetAndValidateConfigs', () => {
         expect(GetAndValidateConfigs.getTargetsOptions()).toHaveLength(2);
       });
 
-      // Task 3 made `id` mandatory on every Targets entry, so an invalid entry can now fail
-      // for more than one reason. Isolating the URL as the cause keeps this test meaningful.
+      // Every other field is valid, so the URL is the only possible cause of the failure.
       it('throws when url is not a valid URL', () => {
         useConfig({ Targets: [{ id: 'main', type: 'floppy', url: 'not-a-url', apiKey: 'token' }] });
 

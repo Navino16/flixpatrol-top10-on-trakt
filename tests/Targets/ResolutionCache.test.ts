@@ -3,11 +3,8 @@ import {
 } from 'vitest';
 
 /**
- * Mocks file-system-cache with one in-memory store per `basePath`, shared across every
- * `Cache()` call that requests it — mirroring the real library, where two instances
- * pointed at the same basePath read and write the same directory. This is what makes
- * the "separate namespaces" test below a real regression test: without the target id
- * in the namespace, two backend-only namespaces collide on the same store.
+ * One in-memory store per `basePath`, shared like the real library shares a directory, so
+ * two namespaces that resolve to the same path genuinely collide in the tests below.
  */
 const cacheCalls: Record<string, unknown>[] = [];
 const stores = new Map<string, Map<string, unknown>>();

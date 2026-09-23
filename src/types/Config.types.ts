@@ -209,7 +209,7 @@ export const targetBackend = ['floppy', 'mdblist'] as const;
 export const MDBLIST_TEMPLATE_API_KEY = 'You need to replace this API key';
 
 /**
- * Template credentials per backend, keyed by the field they occupy in the `Target` block.
+ * Template credentials per backend, keyed by the field they occupy in a `Targets` entry.
  * Floppy is absent because it ships no template: it needs a self-hosted `url` the app
  * cannot guess a placeholder for.
  */
@@ -223,7 +223,7 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
  * An id becomes a path segment of the resolution cache (`resolution-<backend>-<id>`), so the
  * pattern excludes anything that could escape the cache directory.
  */
-export const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 const TargetIdSchema = z.string()
   .min(1, 'id must not be empty')
@@ -233,7 +233,7 @@ const TargetIdSchema = z.string()
 
 /**
  * The backend selector and its credentials form one discriminated union rather than a
- * selector plus sibling credential blocks, so a `Target` carries exactly the fields its
+ * selector plus sibling credential blocks, so a `Targets` entry carries exactly the fields its
  * backend needs and "type: floppy with only mdblist credentials" is not representable.
  */
 export const FloppyTargetSchema = FloppyOptionsSchema.extend({

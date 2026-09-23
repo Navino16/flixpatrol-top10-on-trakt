@@ -225,10 +225,8 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
 
     const ids = await target.resolveMany(items, kind);
     // Items scraped but nothing resolved means the backend is failing, not that the list
-    // should be emptied — so return null and let the key be omitted, which spares this
-    // kind while the other is still written. A genuinely empty scrape returns an empty
-    // array instead, and does wipe the kind.
-    if (items.length > 0 && ids.length === 0) {
+    // should be emptied: omitting the key spares this kind while the other is still written.
+    if (ids.length === 0) {
       logger.warn(`None of the ${items.length} ${kind}s scraped from FlixPatrol could be matched on `
         + `${labelOf(target)} — list "${listName}" left unchanged`);
       return null;
@@ -243,9 +241,9 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   };
 
   /**
-   * Writes a list once with both kinds, so whatever the backend does per list rather
-   * than per kind is paid a single time. Returns true when a shutdown signal stopped it.
-   * Only a list `pushToList` actually ran for counts as processed, never one where nothing resolved.
+   * Writes a list once with both kinds, so per-list backend work is paid a single time.
+   * Returns true when a shutdown signal stopped it. Only a list `pushToList` ran for counts as
+   * processed, never one whose every kind was left untouched (nothing scraped or resolved).
    */
   const writeList = async (
     entry: ActiveTarget,
@@ -338,11 +336,9 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
       logger.info(`[${currentList}/${totalLists}] Processing "${listName}"`);
       logger.info(`Scraping FlixPatrol ${kindsLabel(entry.type)} for "${listName}"`);
 
-      // Popular and MostWatched build a distinct URL per kind, so a dead page on one kind
-      // must not discard the other: each kind gets its own skipIfDeadPath, and the entry
-      // itself is skipped only once every requested kind died.
-      // Scraping is hoisted out of the resolution so it stays paid once whatever the
-      // number of targets. It is the expensive half and the only one facing Cloudflare.
+      // Scraped once per entry whatever the number of targets. Each kind gets its own
+      // skipIfDeadPath, since Popular and MostWatched build a distinct URL per kind, and the
+      // entry is skipped only once every requested kind died.
       const scraped: ScrapedList = {};
       const kindSucceeded: boolean[] = [];
 
