@@ -1,14 +1,25 @@
+import type { TargetBackend } from '../Targets';
+
 export const NOTIFICATION_EVENTS = ['run_start', 'run_end', 'error'] as const;
 export type NotificationEvent = typeof NOTIFICATION_EVENTS[number];
 
-export interface RunSummary {
+export interface TargetSummary {
+  id: string;
+  backend: TargetBackend;
   listsProcessed: number;
   moviesAdded: number;
   showsAdded: number;
+  status: 'ok' | 'aborted';
+  /** Present only when `status` is `aborted`. */
+  error?: string;
+}
+
+export interface RunSummary {
+  targets: TargetSummary[];
   durationMs: number;
   /**
-   * FlixPatrol paths that answered "Page Not Found" — each one's entry was skipped,
-   * not counted in `listsProcessed`.
+   * FlixPatrol paths that answered "Page Not Found"; each one's entry was skipped on every
+   * target. Non-empty makes a one-shot run exit 1.
    */
   deadPaths: string[];
 }

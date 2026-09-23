@@ -4,10 +4,12 @@ import { logger } from './Logger';
 import { MDBLIST_TEMPLATE_API_KEY } from '../types';
 
 /**
- * Cache directories no longer read: the 2.x scraping layout, plus the resolution
- * namespace of the Trakt backend removed in 4.0.0.
+ * Cache directories nothing reads: the current layout is `details` plus one
+ * `resolution-<backend>-<id>` per target, so two targets of one backend never collide.
  */
-const ORPHANED_CACHE_DIRECTORIES = ['movies', 'tv-shows', 'resolution-trakt'] as const;
+const ORPHANED_CACHE_DIRECTORIES = [
+  'movies', 'tv-shows', 'resolution-trakt', 'resolution-floppy', 'resolution-mdblist',
+] as const;
 
 export class Utils {
   public static sleep(time: number) {
@@ -15,9 +17,8 @@ export class Utils {
   }
 
   /**
-   * Warns once when the 2.x cache directories are still on disk. They are never
-   * deleted here: the app does not remove user files, and the cache directory is
-   * often a mounted volume the user manages themselves.
+   * Warns once when orphaned cache directories are still on disk. They are never deleted
+   * here: the app does not remove user files, and the cache is often a user-managed volume.
    */
   public static warnAboutOrphanedCaches(savePath: string): void {
     const orphaned = ORPHANED_CACHE_DIRECTORIES
@@ -25,9 +26,11 @@ export class Utils {
       .filter((directory) => fs.existsSync(directory));
     if (orphaned.length === 0) return;
 
-    logger.warn(`Leftover cache director${orphaned.length > 1 ? 'ies' : 'y'} from a previous version `
-      + `found: ${orphaned.join(', ')}. They are no longer read since the cache was split into `
-      + '`details` and `resolution-<backend>`, and can safely be deleted.');
+    const plural = orphaned.length > 1;
+    logger.warn(`Leftover cache director${plural ? 'ies' : 'y'} from a previous version found: `
+      + `${orphaned.join(', ')}. The cache now lives in \`details\` and one `
+      + `\`resolution-<backend>-<id>\` directory per target, so ${plural ? 'they are' : 'it is'} no `
+      + 'longer read and can safely be deleted.');
   }
 
   public static getListName(
@@ -127,10 +130,13 @@ export class Utils {
           },
         ],
         FlixPatrolWeekly: [],
-        Target: {
-          type: 'mdblist',
-          apiKey: MDBLIST_TEMPLATE_API_KEY,
-        },
+        Targets: [
+          {
+            id: 'main',
+            type: 'mdblist',
+            apiKey: MDBLIST_TEMPLATE_API_KEY,
+          },
+        ],
         Cache: {
           enabled: true,
           savePath: './config/.cache',

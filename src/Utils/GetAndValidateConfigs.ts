@@ -9,13 +9,15 @@ import {
   FlixPatrolMostWatchedSchema,
   FlixPatrolMostHoursSchema,
   FlixPatrolWeeklySchema,
-  TargetSchema,
+  TargetsSchema,
   CacheOptionsSchema,
   NotificationsSchema,
   ScheduleOptionsSchema,
   FlareSolverrOptionsSchema,
   targetBackend,
   TEMPLATE_CREDENTIALS,
+  TARGET_ID_PATTERN,
+  TARGET_ID_MAX_LENGTH,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -77,15 +79,10 @@ const OBSOLETE_CREDENTIAL_BLOCKS = ['Trakt', 'Floppy', 'Mdblist'] as const;
 
 type ObsoleteBlockName = (typeof OBSOLETE_CREDENTIAL_BLOCKS)[number];
 
-const OBSOLETE_BLOCK_OF: Record<TargetBackendName, ObsoleteBlockName> = {
-  floppy: 'Floppy',
-  mdblist: 'Mdblist',
-};
-
 /**
- * Fields the `Target` block must carry per backend, with the placeholder shown when the
- * value cannot be recovered from the user's own configuration. Only values read from
- * that file are ever echoed back, so a placeholder is never a secret.
+ * Fields each `Targets` entry must carry per backend, with the placeholder shown when the
+ * user has no value yet. A value they already have is never echoed: this message is also
+ * dispatched to every `error` notification destination.
  */
 const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: string }[]> = {
   floppy: [
@@ -100,23 +97,29 @@ const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: strin
 const isBackendName = (value: unknown): value is TargetBackendName => typeof value === 'string'
   && (targetBackend as readonly string[]).includes(value);
 
-/** Renders the exact `Target` block the user has to paste, values carried across verbatim. */
-function renderTargetBlock(
-  type: TargetBackendName,
-  sources: (Record<string, unknown> | undefined)[],
-): string {
+/** Renders a single `Targets` entry object, with no array wrapper around it. */
+function renderTargetEntry(type: TargetBackendName, id: string, source?: Record<string, unknown>): string {
   const fields = TARGET_FIELDS[type].map(({ key, placeholder }) => {
-    const carried = sources.map((source) => source?.[key]).find((value) => typeof value === 'string');
-    return `    ${JSON.stringify(key)}: ${JSON.stringify(carried ?? placeholder)}`;
+    const value = typeof source?.[key] === 'string' ? `<keep your current ${key}>` : placeholder;
+    return `      ${JSON.stringify(key)}: ${JSON.stringify(value)}`;
   });
-  const body = [`    "type": ${JSON.stringify(type)}`, ...fields].join(',\n');
-  return `  "Target": {\n${body}\n  }`;
+  const body = [
+    `      "id": ${JSON.stringify(id)}`,
+    `      "type": ${JSON.stringify(type)}`,
+    ...fields,
+  ].join(',\n');
+  return `    {\n${body}\n    }`;
+}
+
+/** Renders the exact `Targets` block the user has to paste. Only `type` is carried across. */
+function renderTargetsBlock(type: TargetBackendName, source?: Record<string, unknown>): string {
+  return `  "Targets": [\n${renderTargetEntry(type, 'main', source)}\n  ]`;
 }
 
 /** "Then remove the old `X`, `Y` blocks." — or, when there is none, that there never was one. */
 function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
   if (presentObsoleteBlocks.length === 0) {
-    return 'Credentials live in the `Target` block itself: there is no separate root-level '
+    return 'Credentials live inside each `Targets` entry: there is no separate root-level '
       + 'credential block.';
   }
   return `Then remove the old ${presentObsoleteBlocks.map((b) => `\`${b}\``).join(', ')} `
@@ -124,59 +127,109 @@ function buildRemovalTail(presentObsoleteBlocks: ObsoleteBlockName[]): string {
 }
 
 /**
- * Builds the migration message. It shows the block to write rather than the schema
- * error, whose "invalid discriminator value" says nothing about what to do next.
+ * Nothing in a Trakt configuration maps onto either surviving backend, so this offers both
+ * instead of guessing one on the user's behalf. `head` names what has to be replaced.
  */
-function buildMigrationMessage(
-  type: TargetBackendName,
-  presentObsoleteBlocks: ObsoleteBlockName[],
-  targetRecord: Record<string, unknown> | undefined,
-  obsoleteRecord: Record<string, unknown> | undefined,
-): string {
-  const sourceBlock = OBSOLETE_BLOCK_OF[type];
-  const head = presentObsoleteBlocks.includes(sourceBlock)
-    ? `Replace your root-level \`${sourceBlock}\` block with:`
-    : 'Your `Target` block must now carry the credentials of the selected backend. Replace it with:';
-
-  return [
-    'Configuration format changed in 3.0.0.',
-    '',
-    head,
-    '',
-    // `Target` is listed first so a partial migration echoes back the values the user
-    // wrote most recently rather than the obsolete block's.
-    renderTargetBlock(type, [targetRecord, obsoleteRecord]),
-    '',
-    buildRemovalTail(presentObsoleteBlocks),
-  ].join('\n');
-}
-
-/**
- * Builds the message for a Trakt-flavoured configuration: a root-level `Trakt` block, a
- * `Target.type` of `"trakt"`, or both. Trakt was removed outright in 4.0.0 rather than
- * renamed like Floppy/mdblist, and nothing in a Trakt config maps onto either surviving
- * backend, so this offers both instead of guessing one on the user's behalf.
- */
-function buildTraktRemovedMessage(
-  presentObsoleteBlocks: ObsoleteBlockName[],
-  targetRecord: Record<string, unknown> | undefined,
-): string {
-  const head = presentObsoleteBlocks.includes('Trakt')
-    ? 'Replace your root-level `Trakt` block with one of:'
-    : 'Your `Target` block still selects the removed `trakt` backend. Replace it with one of:';
-
+function buildTraktRemovedMessage(head: string, presentObsoleteBlocks: ObsoleteBlockName[]): string {
   return [
     'Trakt support was removed in 4.0.0.',
     '',
     head,
     '',
-    renderTargetBlock('floppy', [targetRecord]),
+    renderTargetsBlock('floppy'),
     '',
     'or',
     '',
-    renderTargetBlock('mdblist', [targetRecord]),
+    renderTargetsBlock('mdblist'),
     '',
     buildRemovalTail(presentObsoleteBlocks),
+    '',
+    'You can also delete `./config/.trakt`, which nothing reads any more.',
+  ].join('\n');
+}
+
+/**
+ * Same offer as `buildTraktRemovedMessage`, but for a trakt entry sitting inside an otherwise
+ * valid `Targets` array: pasting a full `"Targets": [...]` block in place of one element would
+ * be structurally invalid JSON, so only the bare entry objects are rendered here.
+ */
+function buildTraktEntryReplacementMessage(
+  head: string,
+  id: string,
+  presentObsoleteBlocks: ObsoleteBlockName[],
+): string {
+  return [
+    'Trakt support was removed in 4.0.0.',
+    '',
+    head,
+    '',
+    renderTargetEntry('floppy', id),
+    '',
+    'or',
+    '',
+    renderTargetEntry('mdblist', id),
+    '',
+    buildRemovalTail(presentObsoleteBlocks),
+    '',
+    'You can also delete `./config/.trakt`, which nothing reads any more.',
+  ].join('\n');
+}
+
+/**
+ * The trakt entry's own id is reused when valid and free: it is already the id the user
+ * knows this entry by. Otherwise the first `target-N` not already taken by a sibling entry.
+ */
+function pickReplacementId(traktEntry: Record<string, unknown>, takenIds: ReadonlySet<string>): string {
+  const currentId = traktEntry.id;
+  if (
+    typeof currentId === 'string'
+    && currentId.length > 0
+    && currentId.length <= TARGET_ID_MAX_LENGTH
+    && TARGET_ID_PATTERN.test(currentId)
+    && !takenIds.has(currentId)
+  ) {
+    return currentId;
+  }
+  let suffix = 1;
+  let candidate = `target-${suffix}`;
+  while (takenIds.has(candidate)) {
+    suffix += 1;
+    candidate = `target-${suffix}`;
+  }
+  return candidate;
+}
+
+/**
+ * Two distinct situations, and conflating them would leave a Trakt user without an answer:
+ * a kept backend only needs an `id`, a removed one needs a different backend entirely.
+ * `block` is the singular object being replaced: the old `Target`, or a `Targets` left as one.
+ */
+function buildTargetsMigrationMessage(
+  targetRecord: Record<string, unknown> | undefined,
+  presentObsoleteBlocks: ObsoleteBlockName[],
+  block: 'Target' | 'Targets',
+): string {
+  const selected = targetRecord?.type;
+
+  if (selected === 'trakt' || (targetRecord === undefined && presentObsoleteBlocks.includes('Trakt'))) {
+    const head = presentObsoleteBlocks.includes('Trakt')
+      ? 'Replace your root-level `Trakt` block with one of:'
+      : `Your \`${block}\` block still selects the removed \`trakt\` backend. Replace it with one of:`;
+    return buildTraktRemovedMessage(head, presentObsoleteBlocks);
+  }
+
+  const type: TargetBackendName = isBackendName(selected) ? selected : 'mdblist';
+  return [
+    block === 'Target'
+      ? 'Configuration format changed in 4.0.0: `Target` became `Targets`, an array.'
+      : '`Targets` must be an array of entries, not a single object.',
+    '',
+    `Replace your \`${block}\` block with:`,
+    '',
+    renderTargetsBlock(type, targetRecord),
+    '',
+    'Each entry needs a unique `id`, which names the target in the logs and namespaces its',
+    'resolution cache. Add as many entries as you want backends written in the same run.',
   ].join('\n');
 }
 
@@ -185,19 +238,19 @@ function buildTraktRemovedMessage(
  * config is never read, so this warns rather than failing: refusing to start would turn
  * a successful migration into an outage.
  */
-function warnAboutObsoleteBlocks(presentObsoleteBlocks: ObsoleteBlockName[]): void {
+function warnAboutObsoleteBlocks(presentObsoleteBlocks: readonly string[]): void {
   if (presentObsoleteBlocks.length === 0) return;
 
   const names = presentObsoleteBlocks.map((block) => `\`${block}\``).join(', ');
   const plural = presentObsoleteBlocks.length > 1;
   logger.warn(`Obsolete root-level ${names} block${plural ? 's' : ''} found in your configuration. `
-    + `Credentials now live in the \`Target\` block, so ${plural ? 'they are' : 'it is'} no longer `
+    + `Credentials now live in the \`Targets\` array, so ${plural ? 'they are' : 'it is'} no longer `
     + `read and can be deleted.`);
 }
 
 /** Where the real credentials come from. Only backends shipping templates need an entry. */
 const CREDENTIAL_SOURCE_HINT: Partial<Record<TargetBackendName, string>> = {
-  mdblist: 'Copy your API key from https://mdblist.com/preferences/ into the `Target` block.',
+  mdblist: 'Copy your API key from https://mdblist.com/preferences/ into the matching `Targets` entry.',
 };
 
 /** "a", "a and b", "a, b and c". */
@@ -207,9 +260,9 @@ function formatFieldList(names: string[]): string {
 }
 
 /**
- * Refuses to start while the `Target` block still carries the template credentials.
- * They satisfy every schema, so without this the failure surfaces much later as
- * `403 Forbidden` and `No match` noise that never names the configuration as the cause.
+ * Refuses to start while a `Targets` entry still carries the template credentials. They
+ * satisfy every schema, so without this the failure surfaces much later as `403 Forbidden`
+ * and `No match` noise that never names the configuration as the cause.
  *
  * Checked field by field, so replacing only some of the credentials is still caught and
  * the message names the ones left over.
@@ -223,7 +276,7 @@ function checkForTemplateCredentials(target: TargetOptions): void {
   if (untouched.length === 0) return;
 
   const plural = untouched.length > 1;
-  const names = formatFieldList(untouched.map((key) => `\`Target.${key}\``));
+  const names = formatFieldList(untouched.map((key) => `\`Targets[${JSON.stringify(target.id)}].${key}\``));
   const hint = CREDENTIAL_SOURCE_HINT[target.type];
 
   throw new ConfigurationError([
@@ -319,79 +372,49 @@ export class GetAndValidateConfigs {
     }
   }
 
-  /**
-   * Returns the migration message for a configuration that has not moved to the
-   * `Target` block, or null when the schema should report the problem itself.
-   *
-   * Two signals mark an unmigrated file: a root-level credential block nothing reads
-   * any more, and a `Target` carrying only the selector — including no `Target` at all.
-   * A Trakt-flavoured file is detected first and handled separately, since Trakt has no
-   * single replacement backend to default to.
-   */
-  private static detectUnmigratedConfig(
-    rawTarget: unknown,
-    presentObsoleteBlocks: ObsoleteBlockName[],
-  ): string | null {
-    const targetRecord = isRecord(rawTarget) ? rawTarget : undefined;
-    const selectedType = targetRecord?.type;
-
-    // Trakt was removed, not renamed: unlike Floppy/mdblist there is no single backend to
-    // default to, so an explicit `type: "trakt"`, or a leftover root `Trakt` block with no
-    // backend chosen yet, always offers both rather than guessing one for the user.
-    if (selectedType === 'trakt' || (presentObsoleteBlocks.includes('Trakt') && selectedType === undefined)) {
-      return buildTraktRemovedMessage(presentObsoleteBlocks, targetRecord);
-    }
-
-    // A `Target` present but not an object is not an unmigrated shape, so let the schema
-    // report it instead of guessing a migration.
-    if (rawTarget !== undefined && targetRecord === undefined) {
-      if (presentObsoleteBlocks.length === 0) return null;
-      return buildMigrationMessage('mdblist', presentObsoleteBlocks, undefined, undefined);
-    }
-
-    const selectorOnly = targetRecord === undefined
-      || Object.keys(targetRecord).every((key) => key === 'type');
-    if (presentObsoleteBlocks.length === 0 && !selectorOnly) return null;
-
-    // Which backend to show: what the user selected, else the single obsolete block they
-    // kept, else the default.
-    let type: TargetBackendName = 'mdblist';
-    if (isBackendName(selectedType)) {
-      type = selectedType;
-    } else if (presentObsoleteBlocks.length === 1) {
-      type = targetBackend
-        .find((backend) => OBSOLETE_BLOCK_OF[backend] === presentObsoleteBlocks[0]) ?? 'mdblist';
-    }
-
-    const obsoleteBlock = OBSOLETE_BLOCK_OF[type];
-    const rawObsolete: unknown = config.has(obsoleteBlock) ? config.get(obsoleteBlock) : undefined;
-    return buildMigrationMessage(
-      type,
-      presentObsoleteBlocks,
-      targetRecord,
-      isRecord(rawObsolete) ? rawObsolete : undefined,
-    );
-  }
-
-  public static getTargetOptions(): TargetOptions {
+  public static getTargetsOptions(): TargetOptions[] {
     try {
       const presentObsoleteBlocks = OBSOLETE_CREDENTIAL_BLOCKS.filter((block) => config.has(block));
-      const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
+      const rawTargets: unknown = config.has('Targets') ? config.get('Targets') : undefined;
 
-      // A valid `Target` means a migrated configuration whatever else is lying around.
-      const parsed = TargetSchema.safeParse(rawTarget);
+      const parsed = TargetsSchema.safeParse(rawTargets);
       if (parsed.success) {
-        // Ordered before the obsolete-block warning: unreplaced credentials are fatal, so
-        // advice about dead config would only be noise ahead of the error.
-        checkForTemplateCredentials(parsed.data);
-        warnAboutObsoleteBlocks(presentObsoleteBlocks);
+        parsed.data.forEach(checkForTemplateCredentials);
+        warnAboutObsoleteBlocks([...(config.has('Target') ? ['Target'] : []), ...presentObsoleteBlocks]);
         return parsed.data;
       }
 
-      const migration = GetAndValidateConfigs.detectUnmigratedConfig(rawTarget, presentObsoleteBlocks);
-      if (migration !== null) throw new ConfigurationError(migration);
+      // The likeliest hand-migration mistakes get the block to paste rather than a raw Zod
+      // error saying nothing about what to do next: `Targets` absent (every pre-4.0.0 shape,
+      // an empty config included), left as a single object, or still holding a trakt entry.
+      if (rawTargets === undefined) {
+        const rawTarget: unknown = config.has('Target') ? config.get('Target') : undefined;
+        throw new ConfigurationError(
+          buildTargetsMigrationMessage(isRecord(rawTarget) ? rawTarget : undefined, presentObsoleteBlocks, 'Target'),
+        );
+      }
+      if (isRecord(rawTargets)) {
+        throw new ConfigurationError(buildTargetsMigrationMessage(rawTargets, presentObsoleteBlocks, 'Targets'));
+      }
+      const traktIndex = Array.isArray(rawTargets)
+        ? rawTargets.findIndex((entry) => isRecord(entry) && entry.type === 'trakt')
+        : -1;
+      if (Array.isArray(rawTargets) && traktIndex >= 0) {
+        const traktEntry = rawTargets[traktIndex] as Record<string, unknown>;
+        const takenIds = new Set(
+          rawTargets
+            .filter((_, index) => index !== traktIndex)
+            .map((entry) => (isRecord(entry) ? entry.id : undefined))
+            .filter((id): id is string => typeof id === 'string'),
+        );
+        throw new ConfigurationError(buildTraktEntryReplacementMessage(
+          `\`Targets[${traktIndex}]\` still selects the removed \`trakt\` backend. Replace that entry with one of:`,
+          pickReplacementId(traktEntry, takenIds),
+          presentObsoleteBlocks,
+        ));
+      }
 
-      return validateConfig(TargetSchema, rawTarget, 'Target');
+      return validateConfig(TargetsSchema, rawTargets, 'Targets');
     } catch (err) {
       if (err instanceof ConfigurationError) throw err;
       throw new ConfigurationError(`${err}`);
@@ -399,17 +422,20 @@ export class GetAndValidateConfigs {
   }
 
   /**
-   * Cross-check between the selected backend and every list entry. It cannot live in a
-   * Zod schema, because `config` loads `Target` and the list blocks independently and
-   * the two halves only meet here. Also the one place the backend-wide startup warnings
-   * are emitted, so they appear once per run rather than once per list entry.
+   * Cross-check between the configured backends and every list entry. It cannot live in a
+   * Zod schema, because `config` loads `Targets` and the list blocks independently and the
+   * two halves only meet here. Also the one place the backend-wide startup warnings are
+   * emitted, so they appear once per run rather than once per list entry.
    */
-  public static checkTargetCompatibility(target: TargetOptions, lists: ListConfigs): void {
-    if (target.type === 'floppy') {
-      logger.warn('The Floppy API cannot set list visibility, so the `privacy` field of every list '
-        + 'entry is ignored: lists are always created private. Flip the ones you want to share by '
-        + 'hand in the Floppy web UI.');
-    }
+  public static checkTargetCompatibility(targets: TargetOptions[], lists: ListConfigs): void {
+    // Once per Floppy target, never once per list: the warning is about the backend.
+    targets
+      .filter((target) => target.type === 'floppy')
+      .forEach((target) => {
+        logger.warn(`Target "${target.id}": the Floppy API cannot set list visibility, so the `
+          + '`privacy` field of every list entry is ignored and lists are always created private. '
+          + 'Flip the ones you want to share by hand in the Floppy web UI.');
+      });
 
     // Neither fails the run, and they differ in what follows: the amazon-prime pairing is skipped
     // by the pipeline, the way an unusable `kids` combination is on Top10, while a country entry

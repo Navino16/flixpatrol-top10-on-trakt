@@ -6,4 +6,4 @@ export { isPrivate } from './privacy';
 export { ResolutionCache } from './ResolutionCache';
 export { FloppyTarget } from './adapters/FloppyTarget';
 export { MdblistTarget } from './adapters/MdblistTarget';
-export { createTarget } from './createTarget';
+export { createTarget, createTargets } from './createTarget';

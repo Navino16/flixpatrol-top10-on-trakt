@@ -66,6 +66,8 @@ const pathnameOf = (url: string): string => {
  * deliberately ignored and no `PATCH` is ever emitted.
  */
 export class FloppyTarget implements ListTarget {
+  public readonly id: string;
+
   public readonly backend: TargetBackend = 'floppy';
 
   public readonly requiresInteractiveAuth = false;
@@ -87,12 +89,15 @@ export class FloppyTarget implements ListTarget {
 
   private readonly cache: ResolutionCache;
 
-  constructor(options: FloppyOptions, cacheOptions: CacheOptions, dryRun: boolean) {
+  // `id` is not part of `FloppyOptions`: it identifies the Target entry, not the backend
+  // credentials, and only this constructor needs it (to namespace the resolution cache).
+  constructor(options: FloppyOptions & { id: string }, cacheOptions: CacheOptions, dryRun: boolean) {
+    this.id = options.id;
     this.url = options.url.replace(/\/+$/, '');
     this.basePath = pathnameOf(this.url);
     this.apiKey = options.apiKey;
     this.dryRun = dryRun;
-    this.cache = new ResolutionCache(cacheOptions, 'floppy');
+    this.cache = new ResolutionCache(cacheOptions, 'floppy', options.id);
   }
 
   public isAuthenticated(): boolean {

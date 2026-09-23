@@ -5,7 +5,7 @@ import { FloppyTarget } from '../../../src/Targets/adapters/FloppyTarget';
 import { FloppyError } from '../../../src/Utils/Errors';
 import { logger } from '../../../src/Utils';
 
-const options = { url: 'http://floppy:8000', apiKey: 'token' };
+const options = { url: 'http://floppy:8000', apiKey: 'token', id: 'main' };
 const cacheOptions = { enabled: false, savePath: './config/.cache', ttl: 1 };
 
 const json = (body: unknown, status = 200) => ({
@@ -347,7 +347,11 @@ describe('FloppyTarget pagination', () => {
   });
 
   it('strips the base path of the configured url before following a cursor', async () => {
-    const behindProxy = new FloppyTarget({ url: 'http://proxy/floppy', apiKey: 'token' }, cacheOptions, false);
+    const behindProxy = new FloppyTarget(
+      { url: 'http://proxy/floppy', apiKey: 'token', id: 'main' },
+      cacheOptions,
+      false,
+    );
     fetchMock
       .mockResolvedValueOnce(page(null, [{ id: 7, name: 'my-list' }]))
       .mockResolvedValueOnce(page('http://proxy/floppy/api/v1/lists/7/items/?offset=20', []))

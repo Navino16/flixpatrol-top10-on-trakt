@@ -191,12 +191,11 @@ describe('Utils', () => {
       expect(parsed).toHaveProperty('FlixPatrolMostWatched');
       expect(parsed).toHaveProperty('Cache');
       expect(parsed).toHaveProperty('Schedule');
-      // The credentials live inside Target: no root-level credential block is generated.
+      // The credentials live inside Targets: no root-level credential block is generated.
       expect(parsed).not.toHaveProperty('Trakt');
-      expect(parsed.Target).toEqual({
-        type: 'mdblist',
-        apiKey: MDBLIST_TEMPLATE_API_KEY,
-      });
+      expect(parsed.Targets).toEqual([
+        { id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY },
+      ]);
     });
 
     it('should include a disabled FlareSolverr block in the generated config', () => {
@@ -244,11 +243,30 @@ describe('Utils', () => {
       expect(message).toContain(path.join('./config/.cache', 'movies'));
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).toContain(path.join('./config/.cache', 'resolution-trakt'));
-      expect(message).toMatch(/no longer read/);
+      expect(message).toContain(path.join('./config/.cache', 'resolution-floppy'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-mdblist'));
+      expect(message).toMatch(/they are no longer read/);
+      expect(message).toContain('`resolution-<backend>-<id>`');
+      expect(message).not.toMatch(/`resolution-<backend>`/);
       warn.mockRestore();
     });
 
-    it('warns when only one of the three directories is left', () => {
+    it('names a per-backend resolution namespace as orphaned', () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+      vi.mocked(fs.existsSync)
+        .mockImplementation((target) => `${target}`.endsWith('resolution-floppy') || `${target}`.endsWith('resolution-mdblist'));
+
+      Utils.warnAboutOrphanedCaches('./config/.cache');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0][0] as unknown as string;
+      expect(message).toContain(path.join('./config/.cache', 'resolution-floppy'));
+      expect(message).toContain(path.join('./config/.cache', 'resolution-mdblist'));
+      expect(message).not.toContain(path.join('./config/.cache', 'resolution-trakt'));
+      warn.mockRestore();
+    });
+
+    it('warns in the singular when only one directory is left', () => {
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
       vi.mocked(fs.existsSync)
         .mockImplementation((target) => `${target}`.endsWith('tv-shows'));
@@ -259,6 +277,7 @@ describe('Utils', () => {
       const message = warn.mock.calls[0][0] as unknown as string;
       expect(message).toContain(path.join('./config/.cache', 'tv-shows'));
       expect(message).not.toContain(path.join('./config/.cache', 'movies'));
+      expect(message).toMatch(/Leftover cache directory .* it is no longer read/);
       warn.mockRestore();
     });
 

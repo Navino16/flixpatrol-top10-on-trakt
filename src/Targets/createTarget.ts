@@ -19,7 +19,19 @@ export function createTarget(
       // Compiler-checked exhaustiveness: a third TargetOptions variant fails to build here
       // instead of silently landing on whichever adapter used to be the catch-all.
       const exhaustive: never = options;
-      throw new Error(`Unhandled Target.type: ${JSON.stringify(exhaustive)}`);
+      // Only `type` is read off the entry: the object may carry credentials, which this
+      // error must never echo into an `error` notification.
+      const { type } = exhaustive as unknown as { type: string };
+      throw new Error(`Unhandled Targets entry type: ${type}`);
     }
   }
+}
+
+/** Builds one adapter per `Targets` entry, preserving array order. */
+export function createTargets(
+  options: TargetOptions[],
+  cacheOptions: CacheOptions,
+  dryRun: boolean,
+): ListTarget[] {
+  return options.map((entry) => createTarget(entry, cacheOptions, dryRun));
 }

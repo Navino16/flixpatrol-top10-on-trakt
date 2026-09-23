@@ -14,6 +14,15 @@ vi.mock('../../src/Utils', () => ({
 import cron from 'node-cron';
 import { logger } from '../../src/Utils';
 import { Scheduler } from '../../src/Scheduler/Scheduler';
+import type { RunSummary, TargetSummary } from '../../src/Notifications';
+
+function completedRun(...targets: TargetSummary[]): RunSummary {
+  return { targets, durationMs: 0, deadPaths: [] };
+}
+
+const okTarget: TargetSummary = {
+  id: 'disk', backend: 'floppy', listsProcessed: 1, moviesAdded: 1, showsAdded: 0, status: 'ok',
+};
 
 // A promise we can resolve/reject on demand to control run timing.
 function deferred<T>() {
@@ -32,7 +41,7 @@ describe('Scheduler', () => {
     const scheduler = new Scheduler({
       crons: ['0 6 * * *', '0 18 * * *'],
       runOnStart: false,
-      runner: vi.fn().mockResolvedValue(undefined),
+      runner: vi.fn().mockResolvedValue(completedRun(okTarget)),
       onError: vi.fn().mockResolvedValue(undefined),
     });
     scheduler.start();
@@ -40,20 +49,20 @@ describe('Scheduler', () => {
   });
 
   it('does not run on start when runOnStart is false', () => {
-    const runner = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn().mockResolvedValue(completedRun(okTarget));
     new Scheduler({ crons: ['* * * * *'], runOnStart: false, runner, onError: vi.fn() }).start();
     expect(runner).not.toHaveBeenCalled();
   });
 
   it('runs immediately on start when runOnStart is true', async () => {
-    const runner = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn().mockResolvedValue(completedRun(okTarget));
     new Scheduler({ crons: ['* * * * *'], runOnStart: true, runner, onError: vi.fn() }).start();
     await Promise.resolve();
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
   it('skips a trigger while a run is already in progress', async () => {
-    const d = deferred<void>();
+    const d = deferred<RunSummary>();
     const runner = vi.fn().mockReturnValue(d.promise);
     const scheduler = new Scheduler({
       crons: ['* * * * *'], runOnStart: false, runner, onError: vi.fn(),
@@ -65,7 +74,35 @@ describe('Scheduler', () => {
     await Promise.resolve();
     expect(runner).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.warn)).toHaveBeenCalled();
-    d.resolve();
+    d.resolve(completedRun(okTarget));
+  });
+
+  it('logs the targets a run dropped, without failing the run or stopping the daemon', async () => {
+    const onError = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn().mockResolvedValue(completedRun(
+      okTarget,
+      { ...okTarget, id: 'cloud', backend: 'mdblist', status: 'aborted', error: 'Error: 401' },
+    ));
+    const scheduler = new Scheduler({
+      crons: ['* * * * *'], runOnStart: true, runner, onError,
+    });
+    scheduler.start();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(onError).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringMatching(/1\/2 target\(s\) dropped.*"cloud" \(mdblist\).*next tick/),
+    );
+    const tick = vi.mocked(cron.schedule).mock.calls[0][1] as () => void;
+    tick();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs nothing about losses when every target succeeded', async () => {
+    const runner = vi.fn().mockResolvedValue(completedRun(okTarget));
+    new Scheduler({ crons: ['* * * * *'], runOnStart: true, runner, onError: vi.fn() }).start();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
   });
 
   it('survives a runner rejection and routes it to onError', async () => {
@@ -105,12 +142,15 @@ describe('Scheduler', () => {
   });
 
   it('stop() aborts the signal, stops tasks and awaits the in-flight run', async () => {
-    const d = deferred<void>();
+    const d = deferred<RunSummary>();
     let received: AbortSignal | undefined;
     let runSettled = false;
     const runner = vi.fn((signal: AbortSignal) => {
       received = signal;
-      return d.promise.then(() => { runSettled = true; });
+      return d.promise.then((summary) => {
+        runSettled = true;
+        return summary;
+      });
     });
     const task = { stop: vi.fn() };
     vi.mocked(cron.schedule).mockReturnValue(task as never);
@@ -130,7 +170,7 @@ describe('Scheduler', () => {
     expect(stopSettled).toBe(false);
     expect(runSettled).toBe(false);
 
-    d.resolve();
+    d.resolve(completedRun(okTarget));
     await stopPromise;
     expect(runSettled).toBe(true);
     expect(stopSettled).toBe(true);

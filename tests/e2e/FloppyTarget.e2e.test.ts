@@ -212,7 +212,7 @@ describe.skipIf(!process.env.E2E_FLOPPY_URL || !process.env.E2E_FLOPPY_API_KEY)(
   let batchMediaIds: string[] = [];
 
   beforeAll(() => {
-    target = new FloppyTarget({ url, apiKey }, cacheOptions, false);
+    target = new FloppyTarget({ url, apiKey, id: 'e2e' }, cacheOptions, false);
   });
 
   afterAll(async () => {

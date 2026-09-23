@@ -1,11 +1,12 @@
 import cron from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
 import { logger } from '../Utils';
+import type { RunSummary } from '../Notifications';
 
 export interface SchedulerOptions {
   crons: string[];
   runOnStart: boolean;
-  runner: (signal: AbortSignal) => Promise<void>;
+  runner: (signal: AbortSignal) => Promise<RunSummary>;
   onError: (err: unknown) => Promise<void>;
 }
 
@@ -40,7 +41,7 @@ export class Scheduler {
     this.isRunning = true;
     this.currentRun = (async () => {
       try {
-        await this.options.runner(this.abortController.signal);
+        Scheduler.reportLosses(await this.options.runner(this.abortController.signal));
       } catch (err) {
         try {
           await this.options.onError(err);
@@ -55,6 +56,15 @@ export class Scheduler {
       this.isRunning = false;
       this.currentRun = null;
     }
+  }
+
+  /** Never exits the process: the next tick retries every target, the dropped ones included. */
+  private static reportLosses(summary: RunSummary): void {
+    const lost = summary.targets.filter((target) => target.status === 'aborted');
+    if (lost.length === 0) return;
+    const names = lost.map((target) => `"${target.id}" (${target.backend})`).join(', ');
+    logger.warn(`Scheduler: ${lost.length}/${summary.targets.length} target(s) dropped from this run: ${names} `
+      + '— retried on the next tick');
   }
 
   public async stop(): Promise<void> {

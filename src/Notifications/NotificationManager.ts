@@ -6,6 +6,7 @@ import type {
   NotificationEvent,
   NotificationPayload,
   NotificationsConfig,
+  RunSummary,
 } from './types';
 import { WebhookAdapter } from './adapters/WebhookAdapter';
 import { GotifyAdapter } from './adapters/GotifyAdapter';
@@ -13,6 +14,35 @@ import { NtfyAdapter } from './adapters/NtfyAdapter';
 import { AppriseAdapter } from './adapters/AppriseAdapter';
 
 export const DISPATCH_TIMEOUT_MS = 6000;
+
+/** Body of every `error` notification: the error exactly as logged, nothing more. */
+export function formatErrorBody(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : `${err}`;
+}
+
+/** "1 list" / "3 lists", so a single item never reads as "1 lists". */
+export function countOf(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * One line per target: a flat total would hide a list written on one backend and missing
+ * on another.
+ */
+export function formatRunSummary(summary: RunSummary): string {
+  const lines = summary.targets.map((target) => {
+    const head = `${target.id} (${target.backend})`;
+    if (target.status === 'aborted') {
+      return `${head}: aborted — ${target.error ?? 'unknown error'}`;
+    }
+    return `${head}: ${countOf(target.listsProcessed, 'list')}, ${countOf(target.moviesAdded, 'movie')}, `
+      + countOf(target.showsAdded, 'show');
+  });
+  if (summary.deadPaths.length > 0) {
+    lines.push(`Dead FlixPatrol paths skipped: ${summary.deadPaths.join(', ')}`);
+  }
+  return [...lines, `Duration: ${Math.round(summary.durationMs / 1000)}s`].join('\n');
+}
 
 function buildAdapter(destination: Destination): Notifier {
   switch (destination.type) {

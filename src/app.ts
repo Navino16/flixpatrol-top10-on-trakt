@@ -1,6 +1,7 @@
 import { logger, Utils, AppError, getPackageInfo } from './Utils';
-import { createTarget } from './Targets';
-import { NotificationManager } from './Notifications';
+import { createTargets } from './Targets';
+import type { ListTarget } from './Targets';
+import { NotificationManager, formatErrorBody } from './Notifications';
 import type {
   NotificationEvent,
   NotificationPayload,
@@ -57,28 +58,33 @@ try {
 // in-flight error dispatches can be cut off mid-flight.
 const pendingDispatches = new Set<Promise<void>>();
 
+// Prevents the SIGINT handler from queuing a duplicate 'error' notification when one,
+// from the pipeline or from a failure path below, is already on its way.
+let errorDispatchInFlight = false;
+
 function dispatch(event: NotificationEvent, payload: NotificationPayload): Promise<void> {
+  if (event === 'error') errorDispatchInFlight = true;
   const p = notifier.dispatch(event, payload);
   pendingDispatches.add(p);
   p.finally(() => pendingDispatches.delete(p));
   return p;
 }
 
+// A SIGINT landing mid-flush can queue one more dispatch outside the first snapshot.
+// Bounded, since each dispatch is time-capped and only a signal can add a new one.
+const MAX_FLUSH_ROUNDS = 3;
+
 async function flushPendingDispatches(): Promise<void> {
-  if (pendingDispatches.size === 0) return;
-  await Promise.allSettled(Array.from(pendingDispatches));
+  for (let round = 0; round < MAX_FLUSH_ROUNDS && pendingDispatches.size > 0; round++) {
+    await Promise.allSettled(Array.from(pendingDispatches));
+  }
 }
 
-// errorDispatchInFlight prevents the SIGINT handler from queuing a duplicate
-// 'error' notification when the catch block is already dispatching one.
-let errorDispatchInFlight = false;
-
 async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> {
-  errorDispatchInFlight = true;
   try {
     await dispatch('error', {
       title: `${dryRunTag}${name} run failed`,
-      body: `${(err as Error).name}: ${(err as Error).message}`,
+      body: formatErrorBody(err),
       timestamp: new Date().toISOString(),
     });
   } finally {
@@ -95,13 +101,14 @@ async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> 
 async function bootstrapConfigs(): Promise<{
   deps: Omit<RunPipelineDeps, 'signal'>;
   schedule: ScheduleOptions;
+  targets: ListTarget[];
 }> {
   try {
     logger.info('Loading all configurations values');
     const cacheOptions = GetAndValidateConfigs.getCacheOptions();
     Utils.warnAboutOrphanedCaches(cacheOptions.savePath);
 
-    const targetOptions = GetAndValidateConfigs.getTargetOptions();
+    const targetsOptions = GetAndValidateConfigs.getTargetsOptions();
     const lists = {
       FlixPatrolTop10: GetAndValidateConfigs.getFlixPatrolTop10(),
       FlixPatrolPopular: GetAndValidateConfigs.getFlixPatrolPopular(),
@@ -111,14 +118,14 @@ async function bootstrapConfigs(): Promise<{
     };
     // Cross-check and backend-wide warnings need both halves loaded, hence here
     // and not inside any single schema.
-    GetAndValidateConfigs.checkTargetCompatibility(targetOptions, lists);
+    GetAndValidateConfigs.checkTargetCompatibility(targetsOptions, lists);
 
-    // Built exactly once per process: the daemon auth gate below and every
-    // scheduled run then share one adapter, and one resolution cache.
-    const target = createTarget(targetOptions, cacheOptions, dryRun);
+    // Built exactly once per process: the daemon auth gate below and every scheduled
+    // run then share the same adapters, and therefore the same resolution caches.
+    const targets = createTargets(targetsOptions, cacheOptions, dryRun);
     const deps: Omit<RunPipelineDeps, 'signal'> = {
       cacheOptions,
-      target,
+      targets,
       flixPatrolTop10: lists.FlixPatrolTop10,
       flixPatrolPopulars: lists.FlixPatrolPopular,
       flixPatrolMostWatched: lists.FlixPatrolMostWatched,
@@ -132,22 +139,28 @@ async function bootstrapConfigs(): Promise<{
       appVersion: version,
     };
     const schedule = GetAndValidateConfigs.getScheduleOptions();
-    return { deps, schedule };
+    return { deps, schedule, targets };
   } catch (err) {
     return dispatchErrorAndExit(err);
   }
 }
 
 async function main(): Promise<void> {
-  const { deps, schedule } = await bootstrapConfigs();
+  const { deps, schedule, targets } = await bootstrapConfigs();
 
-  // Backends whose credentials come straight from the config (floppy, mdblist)
-  // report requiresInteractiveAuth === false, so the daemon starts immediately.
-  // A future backend with an OAuth device flow would need a one-shot run to complete first.
-  const { target } = deps;
-  const authenticated = !target.requiresInteractiveAuth || target.isAuthenticated();
+  // One target still needing a human interaction is enough to force a one-shot run: the
+  // daemon would otherwise tick forever on a backend that can never authenticate itself.
+  const authenticated = targets.every(
+    (target) => !target.requiresInteractiveAuth || target.isAuthenticated(),
+  );
   if (schedule.enabled && !authenticated) {
-    logger.warn(`Schedule is enabled but ${target.backend} has no usable credentials yet — running once so the initial authentication can complete, then exiting. The scheduler will start on the next launch.`);
+    const pending = targets
+      .filter((target) => target.requiresInteractiveAuth && !target.isAuthenticated())
+      .map((target) => `"${target.id}"`)
+      .join(', ');
+    logger.warn(`Schedule is enabled but ${pending} has no usable credentials yet — running once so `
+      + 'the initial authentication can complete, then exiting. The scheduler will start on the '
+      + 'next launch.');
   }
 
   if (!schedule.enabled || !authenticated) {
@@ -180,11 +193,10 @@ async function main(): Promise<void> {
     try {
       const summary = await runPipeline(deps);
       await flushPendingDispatches();
-      // run_end already carries the dead paths, so no separate error notification is
-      // dispatched here — but the process must still fail so cron/systemd sees it.
-      if (summary.deadPaths.length > 0) {
-        process.exit(1);
-      }
+      // A partial loss or a dead path still fails the run so cron/systemd sees it. The
+      // pipeline has already notified both, so nothing more is dispatched here.
+      const lost = summary.targets.filter((target) => target.status === 'aborted');
+      process.exit(lost.length > 0 || summary.deadPaths.length > 0 ? 1 : 0);
     } catch (err) {
       await dispatchErrorAndExit(err);
     }
@@ -195,12 +207,12 @@ async function main(): Promise<void> {
   const scheduler = new Scheduler({
     crons: schedule.crons,
     runOnStart: schedule.runOnStart,
-    runner: (signal) => runPipeline({ ...deps, signal }).then(() => undefined),
+    runner: (signal) => runPipeline({ ...deps, signal }),
     onError: async (err) => {
       logger.error(`Run failed: ${(err as Error).message}`);
       await dispatch('error', {
         title: `${dryRunTag}${name} run failed`,
-        body: `${(err as Error).name}: ${(err as Error).message}`,
+        body: formatErrorBody(err),
         timestamp: new Date().toISOString(),
       });
       await flushPendingDispatches();

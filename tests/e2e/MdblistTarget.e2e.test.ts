@@ -88,7 +88,7 @@ describe.skipIf(!process.env.E2E_MDBLIST_API_KEY)('MdblistTarget (E2E)', () => {
   let updatedBeforeReplace = '';
 
   beforeAll(() => {
-    target = new MdblistTarget({ apiKey }, cacheOptions, false);
+    target = new MdblistTarget({ apiKey, id: 'e2e' }, cacheOptions, false);
   });
 
   afterAll(async () => {

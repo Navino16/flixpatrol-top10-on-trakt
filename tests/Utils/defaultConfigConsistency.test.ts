@@ -70,12 +70,11 @@ describe('default configuration consistency', () => {
    */
   it('config/default.json ships exactly the template credentials the guard matches', () => {
     const tracked = JSON.parse(readFileSync('config/default.json', 'utf8')) as {
-      Target: Record<string, unknown>;
+      Targets: Record<string, unknown>[];
     };
 
-    expect(tracked.Target).toEqual({
-      type: 'mdblist',
-      apiKey: MDBLIST_TEMPLATE_API_KEY,
-    });
+    expect(tracked.Targets).toEqual([
+      { id: 'main', type: 'mdblist', apiKey: MDBLIST_TEMPLATE_API_KEY },
+    ]);
   });
 });

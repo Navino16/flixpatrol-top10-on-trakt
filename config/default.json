@@ -75,10 +75,13 @@
     }
   ],
   "FlixPatrolWeekly": [],
-  "Target": {
-    "type": "mdblist",
-    "apiKey": "You need to replace this API key"
-  },
+  "Targets": [
+    {
+      "id": "main",
+      "type": "mdblist",
+      "apiKey": "You need to replace this API key"
+    }
+  ],
   "Cache": {
     "enabled": true,
     "savePath": "./config/.cache",

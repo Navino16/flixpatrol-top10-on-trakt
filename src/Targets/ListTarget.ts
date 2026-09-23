@@ -35,6 +35,9 @@ export interface MediaItem {
 export type ListContent = Partial<Record<MediaKind, string[]>>;
 
 export interface ListTarget {
+  /** Identifies this target in logs, notifications and its resolution cache namespace. */
+  readonly id: string;
+
   readonly backend: TargetBackend;
 
   /** True when the first setup requires a human interaction (e.g. an OAuth device flow). */

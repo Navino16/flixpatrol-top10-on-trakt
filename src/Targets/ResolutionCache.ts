@@ -9,11 +9,15 @@ import type { MediaItem, MediaKind, TargetBackend } from './ListTarget';
 export class ResolutionCache {
   private readonly cache: FileSystemCache | null = null;
 
-  constructor(cacheOptions: CacheOptions, backend: TargetBackend) {
+  /**
+   * Namespaced by target id, not by backend alone: two instances of the same backend have
+   * distinct catalogues, so a shared namespace would return ids valid on the other one.
+   */
+  constructor(cacheOptions: CacheOptions, backend: TargetBackend, id: string) {
     if (cacheOptions.enabled) {
       this.cache = Cache({
-        basePath: `${cacheOptions.savePath}/resolution-${backend}`,
-        ns: `flixpatrol-resolution-${backend}`,
+        basePath: `${cacheOptions.savePath}/resolution-${backend}-${id}`,
+        ns: `flixpatrol-resolution-${backend}-${id}`,
         hash: 'sha1',
         ttl: cacheOptions.ttl,
       });
