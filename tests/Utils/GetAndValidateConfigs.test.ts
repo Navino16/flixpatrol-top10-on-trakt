@@ -788,6 +788,32 @@ describe('GetAndValidateConfigs', () => {
           expect(message).not.toContain('my-id');
           expect(message).not.toContain('my-secret');
           expect(message).not.toMatch(/invalid discriminator/i);
+          // A bare entry, not a `"Targets": [...]` wrapper: pasting a whole array in place of
+          // one element would be structurally invalid JSON.
+          expect(message).not.toContain('"Targets": [');
+          // The trakt entry's own id is reused, since it does not collide with the other entry.
+          expect(message).toContain('"id": "old"');
+          expect(message).not.toContain('"id": "main"');
+        });
+
+        it('derives a free id when the trakt entry\'s own id collides with another entry', () => {
+          useConfig({
+            Targets: [
+              { id: 'main', type: 'mdblist', apiKey: 'key' },
+              { id: 'main', type: 'trakt', clientId: 'my-id', clientSecret: 'my-secret' },
+            ],
+          });
+
+          let message = '';
+          try {
+            GetAndValidateConfigs.getTargetsOptions();
+          } catch (err) {
+            message = (err as Error).message;
+          }
+
+          expect(message).not.toContain('"Targets": [');
+          expect(message).not.toContain('"id": "main"');
+          expect(message).toContain('"id": "target-1"');
         });
 
         // A genuinely empty config — nothing migrated yet, nothing left over either — must

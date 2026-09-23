@@ -223,11 +223,12 @@ export const TEMPLATE_CREDENTIALS: Partial<Record<TargetBackendName, Readonly<Re
  * An id becomes a path segment of the resolution cache (`resolution-<backend>-<id>`), so the
  * pattern excludes anything that could escape the cache directory.
  */
-const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+export const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+export const TARGET_ID_MAX_LENGTH = 32;
 
 const TargetIdSchema = z.string()
   .min(1, 'id must not be empty')
-  .max(32, 'id must be at most 32 characters')
+  .max(TARGET_ID_MAX_LENGTH, `id must be at most ${TARGET_ID_MAX_LENGTH} characters`)
   .regex(TARGET_ID_PATTERN, 'id must start with a lowercase letter or digit and contain only '
     + 'lowercase letters, digits, hyphens and underscores');
 

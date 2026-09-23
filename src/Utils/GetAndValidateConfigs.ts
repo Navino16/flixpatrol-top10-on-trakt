@@ -16,6 +16,8 @@ import {
   FlareSolverrOptionsSchema,
   targetBackend,
   TEMPLATE_CREDENTIALS,
+  TARGET_ID_PATTERN,
+  TARGET_ID_MAX_LENGTH,
 } from '../types';
 import type {
   FlixPatrolTop10,
@@ -95,18 +97,23 @@ const TARGET_FIELDS: Record<TargetBackendName, { key: string; placeholder: strin
 const isBackendName = (value: unknown): value is TargetBackendName => typeof value === 'string'
   && (targetBackend as readonly string[]).includes(value);
 
-/** Renders the exact `Targets` block the user has to paste. Only `type` is carried across. */
-function renderTargetsBlock(type: TargetBackendName, source?: Record<string, unknown>): string {
+/** Renders a single `Targets` entry object, with no array wrapper around it. */
+function renderTargetEntry(type: TargetBackendName, id: string, source?: Record<string, unknown>): string {
   const fields = TARGET_FIELDS[type].map(({ key, placeholder }) => {
     const value = typeof source?.[key] === 'string' ? `<keep your current ${key}>` : placeholder;
     return `      ${JSON.stringify(key)}: ${JSON.stringify(value)}`;
   });
   const body = [
-    '      "id": "main"',
+    `      "id": ${JSON.stringify(id)}`,
     `      "type": ${JSON.stringify(type)}`,
     ...fields,
   ].join(',\n');
-  return `  "Targets": [\n    {\n${body}\n    }\n  ]`;
+  return `    {\n${body}\n    }`;
+}
+
+/** Renders the exact `Targets` block the user has to paste. Only `type` is carried across. */
+function renderTargetsBlock(type: TargetBackendName, source?: Record<string, unknown>): string {
+  return `  "Targets": [\n${renderTargetEntry(type, 'main', source)}\n  ]`;
 }
 
 /** "Then remove the old `X`, `Y` blocks." — or, when there is none, that there never was one. */
@@ -139,6 +146,57 @@ function buildTraktRemovedMessage(head: string, presentObsoleteBlocks: ObsoleteB
     '',
     'You can also delete `./config/.trakt`, which nothing reads any more.',
   ].join('\n');
+}
+
+/**
+ * Same offer as `buildTraktRemovedMessage`, but for a trakt entry sitting inside an otherwise
+ * valid `Targets` array: pasting a full `"Targets": [...]` block in place of one element would
+ * be structurally invalid JSON, so only the bare entry objects are rendered here.
+ */
+function buildTraktEntryReplacementMessage(
+  head: string,
+  id: string,
+  presentObsoleteBlocks: ObsoleteBlockName[],
+): string {
+  return [
+    'Trakt support was removed in 4.0.0.',
+    '',
+    head,
+    '',
+    renderTargetEntry('floppy', id),
+    '',
+    'or',
+    '',
+    renderTargetEntry('mdblist', id),
+    '',
+    buildRemovalTail(presentObsoleteBlocks),
+    '',
+    'You can also delete `./config/.trakt`, which nothing reads any more.',
+  ].join('\n');
+}
+
+/**
+ * The trakt entry's own id is reused when valid and free: it is already the id the user
+ * knows this entry by. Otherwise the first `target-N` not already taken by a sibling entry.
+ */
+function pickReplacementId(traktEntry: Record<string, unknown>, takenIds: ReadonlySet<string>): string {
+  const currentId = traktEntry.id;
+  if (
+    typeof currentId === 'string'
+    && currentId.length > 0
+    && currentId.length <= TARGET_ID_MAX_LENGTH
+    && TARGET_ID_PATTERN.test(currentId)
+    && !takenIds.has(currentId)
+  ) {
+    return currentId;
+  }
+  let suffix = 1;
+  let candidate = `target-${suffix}`;
+  while (takenIds.has(candidate)) {
+    suffix += 1;
+    candidate = `target-${suffix}`;
+  }
+  return candidate;
 }
 
 /**
@@ -341,9 +399,17 @@ export class GetAndValidateConfigs {
       const traktIndex = Array.isArray(rawTargets)
         ? rawTargets.findIndex((entry) => isRecord(entry) && entry.type === 'trakt')
         : -1;
-      if (traktIndex >= 0) {
-        throw new ConfigurationError(buildTraktRemovedMessage(
+      if (Array.isArray(rawTargets) && traktIndex >= 0) {
+        const traktEntry = rawTargets[traktIndex] as Record<string, unknown>;
+        const takenIds = new Set(
+          rawTargets
+            .filter((_, index) => index !== traktIndex)
+            .map((entry) => (isRecord(entry) ? entry.id : undefined))
+            .filter((id): id is string => typeof id === 'string'),
+        );
+        throw new ConfigurationError(buildTraktEntryReplacementMessage(
           `\`Targets[${traktIndex}]\` still selects the removed \`trakt\` backend. Replace that entry with one of:`,
+          pickReplacementId(traktEntry, takenIds),
           presentObsoleteBlocks,
         ));
       }
