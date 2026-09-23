@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.source="https://github.com/Navino16/flixpatrol-top10"
 LABEL org.opencontainers.image.description="Sync FlixPatrol Top 10 lists to Floppy or mdblist"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
 
 WORKDIR /app
 

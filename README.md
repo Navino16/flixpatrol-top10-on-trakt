@@ -83,14 +83,19 @@ docker run --rm -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top
 > The image was renamed to `ghcr.io/navino16/flixpatrol-top10` in 4.0.0. The old
 > `flixpatrol-top10-on-trakt` image is still published for now, but will stop receiving
 > updates — point your compose file at the new name.
+>
+> Migrating a Trakt setup takes time; pin `ghcr.io/navino16/flixpatrol-top10-on-trakt:3.1.1` to
+> stay on 3.x meanwhile, since the legacy image's `:latest` tag now moves to 4.0.0.
 
 ### Linux / macOS
 
-1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10/releases/latest) for your platform
+1. Download the [latest release](https://github.com/Navino16/flixpatrol-top10/releases/latest) for your
+   platform: `flixpatrol-top10-linux-amd64`, `flixpatrol-top10-linux-arm64`, or
+   `flixpatrol-top10-macos-x64`
 2. Make the binary executable and run it:
     ```bash
-    chmod +x flixpatrol-top10-linux-x64
-    ./flixpatrol-top10-linux-x64
+    chmod +x flixpatrol-top10-linux-amd64
+    ./flixpatrol-top10-linux-amd64
     ```
 
 ### Windows
@@ -165,10 +170,11 @@ written to each target in turn, in array order:
   target in the logs and in the `run_end` summary.
 - **The same `type` may appear several times** — two mdblist accounts, or two Floppy instances,
   as above.
-- **The `id` namespaces the target's resolution cache** (`<Cache.savePath>/resolution-<type>-<id>/`),
+- **The `id` namespaces the target's resolution cache** (`<Cache.savePath>/resolution-<backend>-<id>/`),
   so two entries never share identifiers. Renaming an `id` therefore starts that target from an
   empty cache: the next run costs one backend search per title on it. The lists themselves are
-  found by name, so nothing else is lost.
+  found by name, so nothing else is lost. The old `resolution-<backend>-<oldid>/` directory is left
+  behind on disk — it is not named by the startup orphan-cache warning — and can be deleted by hand.
 - **A failing target does not stop the others.** A target that fails — unreachable, rejected API
   key, rate limit — is dropped from the rest of the run while the others carry on writing. The
   `run_end` notification reports each target's outcome, an `error` notification is sent only when
@@ -267,6 +273,12 @@ the first run, so there is nothing to carry over. The token file `./config/.trak
 read and can be deleted, and a leftover root-level `Trakt` block only produces a warning once
 `Targets` is valid.
 
+A free Trakt account held 5 lists; a free [mdblist](#mdblist-setup) account holds only 4 static
+ones, so a configuration with more list blocks than the account allows drops that target once it
+tries to create the extra one — trim your list blocks or take a paid plan. If a downstream
+consumer such as Kometa read your Trakt lists, repoint its configuration at the new backend's
+lists: there is nothing to migrate in the data itself, only in that consumer's own config.
+
 ### Other breaking changes
 
 - **`link` and `friends` are removed.** They were Trakt-only privacy levels: `privacy` now takes
@@ -301,7 +313,7 @@ Run the tool without modifying any list on the configured backends. Useful for t
 
 ```bash
 # Linux/macOS
-DRY_RUN=true ./flixpatrol-top10-linux-x64
+DRY_RUN=true ./flixpatrol-top10-linux-amd64
 
 # Docker
 docker run --rm -e DRY_RUN=true -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
@@ -320,7 +332,7 @@ Prepend a fixed string to every list name. Useful when running the tool against 
 
 ```bash
 # Linux/macOS — produces lists like "[TEST]netflix-world-top10-without-fallback"
-LIST_NAME_PREFIX='[TEST]' ./flixpatrol-top10-linux-x64
+LIST_NAME_PREFIX='[TEST]' ./flixpatrol-top10-linux-amd64
 
 # Docker
 docker run --rm -e LIST_NAME_PREFIX='[TEST]' -v "/path/to/config:/app/config" ghcr.io/navino16/flixpatrol-top10:latest
@@ -910,10 +922,10 @@ For the complete list, see the source code: [Config.types.ts](https://github.com
 
 ```bash
 # Run daily at 6 AM
-0 6 * * * /path/to/flixpatrol-top10-linux-x64
+0 6 * * * /path/to/flixpatrol-top10-linux-amd64
 
 # Run every 12 hours
-0 */12 * * * /path/to/flixpatrol-top10-linux-x64
+0 */12 * * * /path/to/flixpatrol-top10-linux-amd64
 ```
 
 ### Docker with cron
@@ -969,9 +981,10 @@ The scheduler follows the system clock. There is no timezone field in the config
 - A failed run is logged and sent through the [Notifications](#notifications) system (the `error` event), but it does
   **not** stop the daemon — the scheduler keeps waiting for the next trigger.
 - On `SIGTERM` (e.g. `docker stop`) or `SIGINT` (Ctrl-C), the app performs a graceful shutdown: it stops accepting new
-  triggers and waits for the current run to finish its backend write before exiting, so lists are never left half-updated.
-  Because each list is written in a single call, the stop point always falls between two lists — never between the
-  movies and the shows of the same list.
+  triggers and waits for the current run to finish its backend write before exiting, so no write is cut off mid-way.
+  The abort checkpoint runs right before each target's write, so with several targets a stop can land between two
+  targets of the same list, not only between two lists — a list can already be updated on one target and not yet on
+  the next. It never lands between the movies and the shows of the same write, since both are written in one call.
 
 ### Docker Compose example
 
@@ -998,13 +1011,14 @@ lives inside the app itself.
 
 Roughly ordered by how often each one comes up.
 
-**Startup fails with `Configuration format changed in 4.0.0` or `Trakt support was removed in 4.0.0.`**
-Your configuration predates 4.0.0: a singular `Target` block, a root-level `Trakt` block, or a
-`trakt` entry. The message prints the `Targets` block or entry to write, with placeholders such as
-`<keep your current apiKey>` where your own values go — it never echoes a credential. Copy it into
-`config/default.json` in place of the old block. Your file is never rewritten for you: the config
-directory is frequently a read-only mount and usually version-controlled. See
-[Migrating to 4.0.0](#migrating-to-400).
+**Startup fails with `Configuration format changed in 4.0.0`, `` `Targets` must be an array of
+entries, not a single object.` ``, or `Trakt support was removed in 4.0.0.`**
+Your configuration predates 4.0.0: a singular `Target` block, a `Targets` block written as an
+object instead of an array, a root-level `Trakt` block, or a `trakt` entry. The message prints the
+`Targets` block or entry to write, with placeholders such as `<keep your current apiKey>` where
+your own values go — it never echoes a credential. Copy it into `config/default.json` in place of
+the old block. Your file is never rewritten for you: the config directory is frequently a
+read-only mount and usually version-controlled. See [Migrating to 4.0.0](#migrating-to-400).
 
 **Startup fails saying a `Targets` field still holds a placeholder value.**
 The `config/default.json` the app generated on first run was never edited. A fresh install ships
@@ -1028,9 +1042,10 @@ app never removes your files.
 **A target is reported `aborted` in the `run_end` summary.**
 That target failed and was dropped from the rest of the run; the other targets were still
 written. The summary carries the error. A `401` or `403` means its `apiKey` is wrong, a
-`fetch failed` on Floppy that its `url` is unreachable; a `429` on mdblist means the daily request budget ran out — typically on the first run after
-an upgrade or an `id` rename, which re-resolves every title. The target is retried on the next run,
-and titles it had already resolved stay cached.
+`fetch failed` on Floppy that its `url` is unreachable; a `429` on mdblist means the daily
+request budget ran out — typically on the first run after an upgrade or an `id` rename, which
+re-resolves every title. The target is retried on the next run, and titles it had already
+resolved stay cached.
 
 **One list stopped updating, on a market that charts only one media type.**
 This is the correct behaviour, not a regression. When FlixPatrol publishes no chart for a media
