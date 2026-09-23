@@ -58,24 +58,29 @@ try {
 // in-flight error dispatches can be cut off mid-flight.
 const pendingDispatches = new Set<Promise<void>>();
 
+// Prevents the SIGINT handler from queuing a duplicate 'error' notification when one,
+// from the pipeline or from a failure path below, is already on its way.
+let errorDispatchInFlight = false;
+
 function dispatch(event: NotificationEvent, payload: NotificationPayload): Promise<void> {
+  if (event === 'error') errorDispatchInFlight = true;
   const p = notifier.dispatch(event, payload);
   pendingDispatches.add(p);
   p.finally(() => pendingDispatches.delete(p));
   return p;
 }
 
+// A SIGINT landing mid-flush can queue one more dispatch outside the first snapshot.
+// Bounded, since each dispatch is time-capped and only a signal can add a new one.
+const MAX_FLUSH_ROUNDS = 3;
+
 async function flushPendingDispatches(): Promise<void> {
-  if (pendingDispatches.size === 0) return;
-  await Promise.allSettled(Array.from(pendingDispatches));
+  for (let round = 0; round < MAX_FLUSH_ROUNDS && pendingDispatches.size > 0; round++) {
+    await Promise.allSettled(Array.from(pendingDispatches));
+  }
 }
 
-// errorDispatchInFlight prevents the SIGINT handler from queuing a duplicate
-// 'error' notification when the catch block is already dispatching one.
-let errorDispatchInFlight = false;
-
 async function dispatchErrorAndExit(err: unknown, exitCode = 1): Promise<never> {
-  errorDispatchInFlight = true;
   try {
     await dispatch('error', {
       title: `${dryRunTag}${name} run failed`,
