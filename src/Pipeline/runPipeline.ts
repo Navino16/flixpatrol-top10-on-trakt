@@ -5,7 +5,7 @@ import type {
 import { MEDIA_KINDS } from '../Targets';
 import { FlareSolverrClient } from '../FlareSolverr';
 import { logger, Utils, FlixPatrolPageNotFoundError } from '../Utils';
-import { countOf, formatRunSummary } from '../Notifications';
+import { countOf, formatRunSummary, formatTargetSummary } from '../Notifications';
 import type {
   NotificationEvent, NotificationPayload, RunSummary, TargetSummary,
 } from '../Notifications';
@@ -448,6 +448,13 @@ async function executeRun(deps: RunPipelineDeps, flareSolverr?: FlareSolverrClie
   })) return summary;
 
   summary.durationMs = Date.now() - runStartAt;
+  logger.info('==============================');
+  logger.info(`${dryRunTag}Run finished in ${Math.round(summary.durationMs / 1000)}s`);
+  for (const target of summary.targets) {
+    const line = formatTargetSummary(target);
+    if (target.status === 'aborted') logger.warn(line);
+    else logger.info(line);
+  }
   await deps.dispatch('run_end', {
     title: `${dryRunTag}${deps.appName} run finished`,
     body: `${dryRunTag}${formatRunSummary(summary)}`,

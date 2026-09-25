@@ -740,6 +740,9 @@ describe('runPipeline log narrative', () => {
       'Resolved 1/1 movie for "<list>" on floppy',
       'Resolved 1/1 show for "<list>" on floppy',
       'Updated "<list>" with 1 movie and 1 show',
+      '==============================',
+      'Run finished in 0s',
+      'main (floppy): 1 list, 1 movie, 1 show',
     ]);
   });
 
@@ -753,7 +756,8 @@ describe('runPipeline log narrative', () => {
 
     const shapes = infoShapes();
     const LINES_PER_LIST = 6;
-    expect(shapes).toHaveLength(4 * LINES_PER_LIST);
+    const SUMMARY_LINES = 3;
+    expect(shapes).toHaveLength(4 * LINES_PER_LIST + SUMMARY_LINES);
     const firstList = shapes.slice(0, LINES_PER_LIST);
     for (let list = 1; list < 4; list += 1) {
       expect(shapes.slice(list * LINES_PER_LIST, (list + 1) * LINES_PER_LIST)).toEqual(firstList);
@@ -1315,6 +1319,31 @@ describe('runPipeline end-of-run notifications', () => {
     const { body } = lastPayload(deps.dispatch, 'run_end');
     expect(body).toContain('disk (floppy): 1 list, 1 movie, 1 show');
     expect(body).toContain('cloud (mdblist): aborted — Error: mdblist is down');
+  });
+
+  it('logs one summary line per target at the end of the run', async () => {
+    await runPipeline(baseDeps({
+      targets: [fakeTarget('disk', 'floppy'), fakeTarget('cloud', 'mdblist')],
+      flixPatrolPopulars: popularConfig(),
+    }));
+
+    const messages = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(messages).toContain('disk (floppy): 1 list, 1 movie, 1 show');
+    expect(messages).toContain('cloud (mdblist): 1 list, 1 movie, 1 show');
+  });
+
+  it('logs an aborted target summary line as a warning', async () => {
+    const broken = fakeTarget('cloud', 'mdblist');
+    broken.pushToList = vi.fn().mockRejectedValue(new Error('mdblist is down'));
+
+    await runPipeline(baseDeps({
+      targets: [fakeTarget('disk', 'floppy'), broken],
+      flixPatrolPopulars: popularConfig(),
+    }));
+
+    const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(warnings).toContain('cloud (mdblist): aborted — Error: mdblist is down');
+    expect(infoSpy.mock.calls.map((c) => String(c[0]))).toContain('disk (floppy): 1 list, 1 movie, 1 show');
   });
 
   it('dispatches run_end then error when every target was dropped', async () => {
