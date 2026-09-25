@@ -7,6 +7,7 @@ import type {
   NotificationPayload,
   NotificationsConfig,
   RunSummary,
+  TargetSummary,
 } from './types';
 import { WebhookAdapter } from './adapters/WebhookAdapter';
 import { GotifyAdapter } from './adapters/GotifyAdapter';
@@ -25,19 +26,21 @@ export function countOf(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
+export function formatTargetSummary(target: TargetSummary): string {
+  const head = `${target.id} (${target.backend})`;
+  if (target.status === 'aborted') {
+    return `${head}: aborted — ${target.error ?? 'unknown error'}`;
+  }
+  return `${head}: ${countOf(target.listsProcessed, 'list')}, ${countOf(target.moviesAdded, 'movie')}, `
+    + countOf(target.showsAdded, 'show');
+}
+
 /**
  * One line per target: a flat total would hide a list written on one backend and missing
  * on another.
  */
 export function formatRunSummary(summary: RunSummary): string {
-  const lines = summary.targets.map((target) => {
-    const head = `${target.id} (${target.backend})`;
-    if (target.status === 'aborted') {
-      return `${head}: aborted — ${target.error ?? 'unknown error'}`;
-    }
-    return `${head}: ${countOf(target.listsProcessed, 'list')}, ${countOf(target.moviesAdded, 'movie')}, `
-      + countOf(target.showsAdded, 'show');
-  });
+  const lines = summary.targets.map(formatTargetSummary);
   if (summary.deadPaths.length > 0) {
     lines.push(`Dead FlixPatrol paths skipped: ${summary.deadPaths.join(', ')}`);
   }
