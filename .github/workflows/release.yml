@@ -2,7 +2,10 @@ name: Build Docker Image
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: navino16/flixpatrol-top10-on-trakt
+  IMAGE_NAME: navino16/flixpatrol-top10
+  # Kept published so users still pulling the pre-4.0.0 image keep receiving updates.
+  # GHCR has no redirect, so dropping it would freeze them without any error.
+  LEGACY_IMAGE_NAME: navino16/flixpatrol-top10-on-trakt
 
 on:
   workflow_dispatch:
@@ -135,7 +138,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
@@ -153,7 +158,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}",push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -190,7 +195,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           flavor: |
             latest=auto
           tags: |
@@ -207,15 +214,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create manifest list and push
+      # metadata-action tags every image with the same tag set, so each manifest
+      # list is created separately, filtering $DOCKER_METADATA_OUTPUT_JSON down to
+      # the tags whose prefix matches that image.
+      - name: Create manifest list and push (flixpatrol-top10)
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+          docker buildx imagetools create $(
+            jq -cr --arg prefix "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:" \
+              '.tags | map(select(startswith($prefix))) | map("-t " + .) | join(" ")' \
+              <<< "$DOCKER_METADATA_OUTPUT_JSON"
+          ) $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Inspect image
+      - name: Create manifest list and push (flixpatrol-top10-on-trakt)
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(
+            jq -cr --arg prefix "${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}:" \
+              '.tags | map(select(startswith($prefix))) | map("-t " + .) | join(" ")' \
+              <<< "$DOCKER_METADATA_OUTPUT_JSON"
+          ) $(printf '${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image (flixpatrol-top10)
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+      - name: Inspect image (flixpatrol-top10-on-trakt)
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
 
   release:
     name: Create Release
@@ -298,7 +324,7 @@ jobs:
           BODY=$(echo "$CHANGELOG" | head -c 1800)
           PAYLOAD=$(jq -n \
             --arg content "<@&${{ vars.DISCORD_RELEASE_ROLE_ID }}>" \
-            --arg title "FlixPatrol Top10 on Trakt ${TAG}" \
+            --arg title "FlixPatrol Top10 ${TAG}" \
             --arg url "https://github.com/${{ github.repository }}/releases/tag/${TAG}" \
             --arg description "$BODY" \
             '{content: $content, embeds: [{title: $title, url: $url, description: $description, color: 6500081}]}')

@@ -495,7 +495,7 @@ Winston logger with format: `[YYYY-MM-DD HH:mm:ss.SSS][level] message`
 
 Log levels via `LOG_LEVEL` env var: `error`, `warn`, `info` (default), `debug`, `silly`
 
-Sensitive data (OAuth tokens) redacted in logs.
+Credentials never reach the logs: adapter errors name the request path, never the URL carrying mdblist's `apikey`, and notification failures log only the destination host.
 
 ### Build Targets
 

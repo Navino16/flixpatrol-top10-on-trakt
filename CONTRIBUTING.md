@@ -13,8 +13,8 @@ Node **24** is what CI runs and what the release binaries target (`pkg.targets` 
 `package.json`).
 
 ```bash
-git clone https://github.com/Navino16/flixpatrol-top10-on-trakt.git
-cd flixpatrol-top10-on-trakt
+git clone https://github.com/Navino16/flixpatrol-top10.git
+cd flixpatrol-top10
 npm install
 ```
 
@@ -106,9 +106,8 @@ satisfy, and that cast is worth writing once rather than per file.
 
 `npm run test:e2e` uses a separate config (`vitest.e2e.config.ts`) and runs only
 `tests/e2e/**/*.e2e.test.ts`. There is one suite per backend plus one for FlixPatrol itself, and
-each talks to a **real service** — a real Floppy instance, a real Trakt account, a real mdblist
-account, the live FlixPatrol site — so they are excluded from `npm test` and from the coverage
-numbers.
+each talks to a **real service** — a real Floppy instance, a real mdblist account, the live
+FlixPatrol site — so they are excluded from `npm test` and from the coverage numbers.
 
 All of them are opt-in through environment variables, and each suite **skips cleanly** when its own
 variables are missing. Running `npm run test:e2e` with no environment at all skips everything and
@@ -121,17 +120,12 @@ variable already present in the environment overrides the file, so one-off runs 
 | Suite           | Variables                                                                  |
 |-----------------|----------------------------------------------------------------------------|
 | **Floppy**      | `E2E_FLOPPY_URL`, `E2E_FLOPPY_API_KEY` (both required)                      |
-| **Trakt**       | `E2E_TRAKT_CLIENT_ID`, `E2E_TRAKT_CLIENT_SECRET`, `E2E_TRAKT_SAVE_FILE` (all required) |
 | **mdblist**     | `E2E_MDBLIST_API_KEY`                                                       |
 | **FlixPatrol**  | `E2E_FLARESOLVERR_URL`                                                      |
 
 ```bash
 # Floppy only
 E2E_FLOPPY_URL=http://localhost:8000 E2E_FLOPPY_API_KEY=your-token npm run test:e2e
-
-# Trakt only — E2E_TRAKT_SAVE_FILE must point at an EXISTING token file
-E2E_TRAKT_CLIENT_ID=your-id E2E_TRAKT_CLIENT_SECRET=your-secret \
-  E2E_TRAKT_SAVE_FILE=./config/.trakt npm run test:e2e
 
 # mdblist only
 E2E_MDBLIST_API_KEY=your-key npm run test:e2e
@@ -192,12 +186,6 @@ Every backend suite checks the end state by querying the service directly, never
 adapter, and cleans up after itself: each names the objects it creates with a per-run unique
 suffix, and deletes them in an `afterAll` that runs even when a test failed.
 
-Trakt authenticates through an OAuth **device flow** — a human opens a URL and types a code —
-which cannot happen inside a test. The Trakt suite therefore consumes an **already-obtained**
-token: run the application once to authorise, then point `E2E_TRAKT_SAVE_FILE` at the token file
-it wrote. The suite creates a single `private` list (a free Trakt account is capped at five
-personal lists) and never touches a list it did not create.
-
 ### What runs in CI, and what does not
 
 - **Floppy runs automatically in CI**, as the `E2E - Floppy` job of
@@ -206,11 +194,11 @@ personal lists) and never touches a list it did not create.
   Floppy image) and mints its API token inside them, so it needs **no repository secret**. That
   makes it safe even for pull requests from forks, and it is a first-class gate rather than an
   opt-in extra.
-- **Trakt and mdblist are deliberately local-only.** They write to **real third-party accounts**,
-  so the owner wants to decide, run by run, which credentials are used. They are not part of any
-  workflow and depend on no repository secret — there is nothing to leak and nothing that can
-  quietly burn a metered quota (mdblist's free tier is capped at 1000 requests/day and a handful
-  of lists) or churn a real Trakt profile. Run them by hand, with the commands above.
+- **mdblist is deliberately local-only.** It writes to a **real third-party account**, so the
+  owner wants to decide, run by run, which credentials are used. It is not part of any workflow
+  and depends on no repository secret — there is nothing to leak and nothing that can quietly
+  burn a metered quota (mdblist's free tier is capped at 1000 requests/day and a handful of
+  lists). Run it by hand, with the command above.
 - **The FlixPatrol drift suite runs weekly**, as `.github/workflows/flixpatrol-drift.yml`
   (`schedule` + `workflow_dispatch`). The job stands up its own FlareSolverr container, so it needs
   no secret either. It is deliberately **not** wired to `pull_request`: as the README warns, using
